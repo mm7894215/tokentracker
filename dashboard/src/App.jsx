@@ -40,6 +40,7 @@ import {
   stripRedirectParam,
 } from "./lib/auth-redirect";
 import { insforgeAuthClient } from "./lib/insforge-auth-client";
+import { clearInsforgePersistentStorage } from "./lib/insforge-client";
 
 import { UpgradeAlertModal } from "./ui/matrix-a/components/UpgradeAlertModal.jsx";
 import { VersionBadge } from "./ui/matrix-a/components/VersionBadge.jsx";
@@ -297,12 +298,17 @@ export default function App() {
   }, [hasInsforgeSession, insforgeAuth, useInsforge]);
   const signOut = useMemo(() => {
     return async () => {
-      if (useInsforge) {
-        await insforgeSignOut();
+      try {
+        if (useInsforge) {
+          await insforgeSignOut();
+        }
+      } finally {
+        clearInsforgePersistentStorage();
+        clearAuthStorage();
+        clearSessionExpired();
+        clearSessionSoftExpired();
+        setInsforgeSession(null);
       }
-      clearAuthStorage();
-      clearSessionExpired();
-      clearSessionSoftExpired();
     };
   }, [insforgeSignOut, useInsforge]);
 

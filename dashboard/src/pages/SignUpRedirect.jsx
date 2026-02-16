@@ -3,13 +3,11 @@ import { useNavigate } from "react-router-dom";
 
 import { insforgeAuthClient } from "../lib/insforge-auth-client";
 import {
-  consumePostAuthPath,
   storePostAuthPathFromSearch,
   storeRedirectFromSearch,
   stripNextParam,
   stripRedirectParam,
 } from "../lib/auth-redirect";
-import { isLikelyExpiredAccessToken } from "../lib/auth-token";
 
 function buildCallbackUrl() {
   if (typeof window === "undefined") return "/auth/callback";
@@ -43,17 +41,6 @@ export function SignUpRedirect() {
 
     const run = async () => {
       try {
-        const { data } = await insforgeAuthClient.auth.getCurrentSession();
-        if (!active) return;
-        const sessionToken = data?.session?.accessToken ?? null;
-        if (sessionToken && !isLikelyExpiredAccessToken(sessionToken)) {
-          const nextPath = consumePostAuthPath();
-          const destination =
-            nextPath && nextPath !== "/auth/callback" ? nextPath : "/";
-          navigate(destination, { replace: true });
-          return;
-        }
-
         // Insforge OAuth sign-in also provisions new users when needed.
         const { error } = await insforgeAuthClient.auth.signInWithOAuth({
           provider: "github",

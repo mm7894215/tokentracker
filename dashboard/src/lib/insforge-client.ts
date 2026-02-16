@@ -144,6 +144,44 @@ function removeStorageValue(storage: Storage | null, key: string): void {
   }
 }
 
+export function clearInsforgePersistentStorage() {
+  if (typeof window === "undefined") return;
+  const prefix = `${INSFORGE_STORAGE_KEY}.`;
+  const clearFrom = (storage: Storage | null) => {
+    if (!storage) return;
+    try {
+      const keys: string[] = [];
+      for (let i = 0; i < storage.length; i += 1) {
+        const key = storage.key(i);
+        if (typeof key === "string" && key.startsWith(prefix)) {
+          keys.push(key);
+        }
+      }
+      for (const key of keys) {
+        storage.removeItem(key);
+      }
+    } catch (_e) {
+      // ignore
+    }
+  };
+
+  let localStorage: Storage | null = null;
+  let sessionStorage: Storage | null = null;
+  try {
+    localStorage = window.localStorage;
+  } catch (_e) {
+    localStorage = null;
+  }
+  try {
+    sessionStorage = window.sessionStorage;
+  } catch (_e) {
+    sessionStorage = null;
+  }
+
+  clearFrom(localStorage);
+  clearFrom(sessionStorage);
+}
+
 /**
  * Create a persistent storage adapter using localStorage with session backup.
  * This ensures session survives page reloads and mobile browser backgrounding.
