@@ -31,6 +31,7 @@ import {
   subscribeSessionExpired,
   subscribeSessionSoftExpired,
 } from "./lib/auth-storage";
+import { isLikelyExpiredAccessToken } from "./lib/auth-token";
 import {
   buildRedirectUrl,
   consumePostAuthPath,
@@ -167,18 +168,31 @@ export default function App() {
 
   useEffect(() => {
     if (!insforgeLoaded) return;
-    if (insforgeSession?.accessToken) return;
+    if (
+      insforgeSession?.accessToken &&
+      !isLikelyExpiredAccessToken(insforgeSession.accessToken)
+    ) {
+      return;
+    }
     if (!sessionSoftExpired) return;
     // Avoid getting stuck on dashboard without a usable session token.
     clearSessionSoftExpired();
   }, [insforgeLoaded, insforgeSession, sessionSoftExpired]);
 
   const getInsforgeAccessToken = useCallback(async () => {
+    const fallbackToken =
+      !isLikelyExpiredAccessToken(insforgeSession?.accessToken)
+        ? insforgeSession?.accessToken ?? null
+        : null;
     if (!insforgeSignedIn) {
-      return insforgeSession?.accessToken ?? null;
+      return fallbackToken;
     }
     const { data } = await insforgeAuthClient.auth.getCurrentSession();
-    return data?.session?.accessToken ?? insforgeSession?.accessToken ?? null;
+    const sessionToken = data?.session?.accessToken ?? null;
+    if (!isLikelyExpiredAccessToken(sessionToken)) {
+      return sessionToken;
+    }
+    return fallbackToken;
   }, [insforgeSession, insforgeSignedIn]);
 
   useEffect(() => {
@@ -220,12 +234,13 @@ export default function App() {
   }, [insforgeSignedIn, sessionSoftExpired]);
 
   const insforgeAuth = useMemo(() => {
-    if (!insforgeSession?.accessToken) return null;
+    const sessionToken = insforgeSession?.accessToken ?? null;
+    if (!sessionToken || isLikelyExpiredAccessToken(sessionToken)) return null;
     const user = insforgeSession.user;
     const profileName = user?.profile?.name;
     const displayName = profileName ?? user?.name ?? null;
     return {
-      accessToken: insforgeSession.accessToken,
+      accessToken: sessionToken,
       getAccessToken: getInsforgeAccessToken,
       userId: user?.id ?? null,
       email: user?.email ?? null,
@@ -237,7 +252,10 @@ export default function App() {
   const redirectOnceRef = useRef(false);
   useEffect(() => {
     if (redirectOnceRef.current) return;
-    if (!insforgeSession?.accessToken || sessionExpired) return;
+    const sessionToken = insforgeSession?.accessToken ?? null;
+    if (!sessionToken || isLikelyExpiredAccessToken(sessionToken) || sessionExpired) {
+      return;
+    }
     const target = resolveRedirectTarget(window.location.search);
     if (target) {
       const user = insforgeSession.user;
@@ -245,7 +263,7 @@ export default function App() {
       const displayName = profileName ?? user?.name ?? null;
       redirectOnceRef.current = true;
       const redirectUrl = buildRedirectUrl(target, {
-        accessToken: insforgeSession.accessToken,
+        accessToken: sessionToken,
         userId: user?.id ?? null,
         email: user?.email ?? null,
         name: displayName,
@@ -264,7 +282,10 @@ export default function App() {
     navigate(destination, { replace: true });
   }, [insforgeSession, navigate, sessionExpired]);
 
-  const hasInsforgeSession = Boolean(insforgeSession?.accessToken);
+  const hasInsforgeSession = Boolean(
+    insforgeSession?.accessToken &&
+      !isLikelyExpiredAccessToken(insforgeSession.accessToken)
+  );
   const insforgeReady = insforgeLoaded && insforgeSignedIn;
   const useInsforge = insforgeReady || (insforgeLoaded && hasInsforgeSession);
   // Data API calls only require access token. User profile fields can be absent on

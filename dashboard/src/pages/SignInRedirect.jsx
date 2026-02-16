@@ -9,6 +9,7 @@ import {
   stripNextParam,
   stripRedirectParam,
 } from "../lib/auth-redirect";
+import { isLikelyExpiredAccessToken } from "../lib/auth-token";
 
 function buildCallbackUrl() {
   if (typeof window === "undefined") return "/auth/callback";
@@ -44,7 +45,8 @@ export function SignInRedirect() {
       try {
         const { data } = await insforgeAuthClient.auth.getCurrentSession();
         if (!active) return;
-        if (data?.session?.accessToken) {
+        const sessionToken = data?.session?.accessToken ?? null;
+        if (sessionToken && !isLikelyExpiredAccessToken(sessionToken)) {
           const nextPath = consumePostAuthPath();
           const destination =
             nextPath && nextPath !== "/auth/callback" ? nextPath : "/";

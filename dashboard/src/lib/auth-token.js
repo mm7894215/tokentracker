@@ -4,6 +4,36 @@ export function normalizeAccessToken(token) {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+export function getAccessTokenExpiryMs(token) {
+  const normalized = normalizeAccessToken(token);
+  if (!normalized) return null;
+  const parts = normalized.split(".");
+  if (parts.length < 2) return null;
+  const payloadPart = parts[1];
+  try {
+    const padded = payloadPart
+      .replace(/-/g, "+")
+      .replace(/_/g, "/")
+      .padEnd(payloadPart.length + ((4 - (payloadPart.length % 4)) % 4), "=");
+    const decoded =
+      typeof atob === "function"
+        ? atob(padded)
+        : Buffer.from(padded, "base64").toString("utf8");
+    const payload = JSON.parse(decoded);
+    const exp = payload?.exp;
+    if (typeof exp !== "number" || !Number.isFinite(exp) || exp <= 0) return null;
+    return Math.floor(exp * 1000);
+  } catch {
+    return null;
+  }
+}
+
+export function isLikelyExpiredAccessToken(token, skewMs = 30_000) {
+  const expiryMs = getAccessTokenExpiryMs(token);
+  if (!expiryMs) return false;
+  return expiryMs <= Date.now() + Math.max(0, Number(skewMs) || 0);
+}
+
 export async function resolveAuthAccessToken(auth) {
   if (!auth) return null;
   if (typeof auth === "string") return normalizeAccessToken(auth);
