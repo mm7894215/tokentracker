@@ -78,6 +78,13 @@ Keep this managed block so 'openspec update' can refresh the instructions.
 
 - 完成代码后仅执行本地提交（git commit），未经用户明确指示不得推送（git push）。
 
+# 发布收尾规则（Release Closure）
+
+- 发布后必须通过 CI 检测，才算收尾。
+- 本地预检命令放在 `package.json` 的 `scripts.ci:local`：
+  - `npm run ci:local`
+- 若 GitHub Actions 的 `CI` 工作流未通过，不得标记“发布完成”。
+
 # 复盘协议（Retrospective Contract，CLI 无关）
 
 > 目标：让 Codex/Claude/OpenCode/Gemini 等任何 AI CLI 都走同一条复盘流程。

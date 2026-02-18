@@ -1,6 +1,6 @@
 {
   "name": "vibeusage",
-  "version": "0.2.20",
+  "version": "0.2.21",
   "description": "Codex CLI token usage tracker (macOS-first, notify-driven).",
   "license": "MIT",
   "publishConfig": {
@@ -9,6 +9,7 @@
   "type": "commonjs",
   "scripts": {
     "test": "node --test test/*.test.js",
+    "ci:local": "npm test && npm run validate:copy && npm run validate:ui-hardcode && npm run validate:guardrails && node --test test/architecture-guardrails.test.js && npm run build:insforge:check && npm --prefix dashboard run build",
     "smoke": "node scripts/smoke/insforge-smoke.cjs",
     "build:insforge": "node scripts/build-insforge-functions.cjs",
     "build:insforge:check": "node scripts/build-insforge-functions.cjs --check",

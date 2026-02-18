@@ -7150,6 +7150,19 @@ test('vibeusage-leaderboard-refresh snapshots weekly leaderboard with token fiel
               };
             }
 
+            if (table === 'vibeusage_public_views') {
+              return {
+                select: () => ({
+                  in: (_col, ids) => ({
+                    is: async () => ({
+                      data: ids.map((user_id) => ({ user_id })),
+                      error: null
+                    })
+                  })
+                })
+              };
+            }
+
             throw new Error(`Unexpected table: ${table}`);
           }
         }

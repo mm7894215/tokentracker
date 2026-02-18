@@ -36,10 +36,16 @@ type InsforgeAuthLike = {
   getCurrentSession?: (...args: unknown[]) => Promise<GetCurrentSessionResult>;
 };
 
-type InsforgeClientLike = {
+type InsforgeClientBridgeLike = {
   auth?: InsforgeAuthLike;
-  tokenManager?: InsforgeTokenManagerLike;
 };
+
+function getTokenManager(client: unknown): InsforgeTokenManagerLike | null {
+  if (!client || typeof client !== "object") return null;
+  const candidate = (client as { tokenManager?: unknown }).tokenManager;
+  if (!candidate || typeof candidate !== "object") return null;
+  return candidate as InsforgeTokenManagerLike;
+}
 
 function decodeBase64Url(input: string): string | null {
   if (typeof input !== "string" || input.length === 0) return null;
@@ -328,12 +334,13 @@ export function createInsforgeClient({
 } = {}) {
   if (!baseUrl) throw new Error("Missing baseUrl");
   const anonKey = getInsforgeAnonKey();
+  const timeoutFetch = createTimeoutFetch(globalThis.fetch) as unknown as typeof fetch;
   return createClient({
     baseUrl,
     anonKey: anonKey || undefined,
     edgeFunctionToken: accessToken || undefined,
     storage: createPersistentStorage(),
-    fetch: createTimeoutFetch(globalThis.fetch),
+    fetch: timeoutFetch,
   });
 }
 
@@ -354,11 +361,11 @@ export function createInsforgeAuthClient() {
 }
 
 function persistSessionToStorage(
-  client: InsforgeClientLike,
+  client: InsforgeClientBridgeLike,
   session: InsforgeSessionLike
 ) {
   if (!session?.accessToken) return;
-  const tokenManager = client?.tokenManager;
+  const tokenManager = getTokenManager(client);
   if (!tokenManager || typeof tokenManager.saveSession !== "function") return;
   if (typeof tokenManager.setStorageMode === "function") {
     tokenManager.setStorageMode();
@@ -366,7 +373,7 @@ function persistSessionToStorage(
   tokenManager.saveSession(session);
 }
 
-export function installSessionPersistenceBridge(client: InsforgeClientLike) {
+export function installSessionPersistenceBridge(client: InsforgeClientBridgeLike) {
   const auth = client?.auth;
   if (!auth || typeof auth.getCurrentSession !== "function") return;
 
@@ -384,9 +391,9 @@ export function installSessionPersistenceBridge(client: InsforgeClientLike) {
   bridgeState[marker] = true;
 }
 
-export function forceStorageMode(client: InsforgeClientLike) {
+export function forceStorageMode(client: InsforgeClientBridgeLike) {
   try {
-    const tokenManager = client?.tokenManager;
+    const tokenManager = getTokenManager(client);
     if (!tokenManager || typeof tokenManager.setStorageMode !== "function") {
       return;
     }

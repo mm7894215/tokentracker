@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.21] - 2026-02-18
+### Changed
+- Release workflow now hard-gates publish/deploy on `ci:local` success.
+- Added a single local CI entrypoint: `npm run ci:local`.
+
+### Fixed
+- `init` no longer deletes its own runtime when run from the installed local app path.
+- Added regression coverage for re-running `init` from the local runtime (`test/init-local-runtime-reinstall.test.js`).
+
 ## [0.2.16] - 2026-02-01
 ### Changed
 - Project usage summary now always returns all-time totals, ignoring date filters.

@@ -56,7 +56,9 @@ export async function resolveAuthAccessToken(auth) {
       }
       return normalizeAccessToken(auth.accessToken);
     }
-    return normalizeAccessToken(auth.accessToken);
+    // Keep readiness semantics consistent with isAccessTokenReady:
+    // object-only providers (without getAccessToken) are treated as not ready.
+    return null;
   }
   return normalizeAccessToken(auth);
 }

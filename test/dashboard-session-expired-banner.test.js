@@ -68,10 +68,8 @@ test("App uses InsForge auth hook for signed-in gating", () => {
 
 test("App derives signedIn from InsForge session state", () => {
   const src = read("dashboard/src/App.jsx");
-  assert.match(
-    src,
-    /const signedIn\s*=\s*useInsforge\s*&&\s*hasInsforgeSession\s*&&\s*hasInsforgeIdentity/
-  );
+  assert.match(src, /const signedIn\s*=\s*useInsforge\s*&&\s*hasInsforgeSession/);
+  assert.doesNotMatch(src, /hasInsforgeIdentity/);
 });
 
 test("App keeps auth while session is soft-expired", () => {
@@ -106,11 +104,11 @@ test("App declares getInsforgeAccessToken before revalidate effect", () => {
   assert.ok(tokenIndex < authMemoIndex);
 });
 
-test("App requires InsForge identity before signedIn", () => {
+test("App does not require InsForge identity before signedIn", () => {
   const src = read("dashboard/src/App.jsx");
-  assert.match(src, /const hasInsforgeIdentity/);
-  assert.match(src, /insforgeSession\?\.user/);
+  assert.doesNotMatch(src, /const hasInsforgeIdentity/);
   assert.match(src, /const hasInsforgeSession/);
+  assert.match(src, /don't block signed-in state on `session\.user`/);
 });
 
 test("App does not use legacy safe redirects", () => {

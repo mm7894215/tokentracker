@@ -815,6 +815,12 @@ async function installLocalTrackerApp({ appDir }) {
   const binFrom = path.join(packageRoot, 'bin', 'tracker.js');
   const nodeModulesFrom = path.join(packageRoot, 'node_modules');
 
+  // When running from the installed local runtime (or when appDir is symlinked to this package),
+  // source and destination resolve to the same place. Do not delete appDir in that case.
+  if (await pathsPointToSameLocation(packageRoot, appDir)) {
+    return;
+  }
+
   const srcTo = path.join(appDir, 'src');
   const binToDir = path.join(appDir, 'bin');
   const binTo = path.join(binToDir, 'tracker.js');
@@ -827,6 +833,21 @@ async function installLocalTrackerApp({ appDir }) {
   await fs.copyFile(binFrom, binTo);
   await fs.chmod(binTo, 0o755).catch(() => {});
   await copyRuntimeDependencies({ from: nodeModulesFrom, to: nodeModulesTo });
+}
+
+async function pathsPointToSameLocation(a, b) {
+  const aReal = await safeRealpath(a);
+  const bReal = await safeRealpath(b);
+  if (aReal && bReal) return aReal === bReal;
+  return path.resolve(a) === path.resolve(b);
+}
+
+async function safeRealpath(p) {
+  try {
+    return await fs.realpath(p);
+  } catch (_err) {
+    return null;
+  }
 }
 
 function spawnInitSync({ trackerBinPath, packageName }) {
