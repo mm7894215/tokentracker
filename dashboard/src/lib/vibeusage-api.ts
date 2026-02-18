@@ -255,6 +255,16 @@ export async function getUserStatus({ baseUrl, accessToken }: AnyRecord = {}) {
           },
         ],
       },
+      install: {
+        partial: false,
+        as_of: now,
+        has_active_device_token: false,
+        has_active_device: false,
+        active_device_tokens: 0,
+        active_devices: 0,
+        latest_token_activity_at: null,
+        latest_device_seen_at: null,
+      },
     };
   }
   return requestJson({

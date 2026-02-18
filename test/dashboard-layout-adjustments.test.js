@@ -39,6 +39,14 @@ const projectUsagePath = path.join(
   "components",
   "ProjectUsagePanel.jsx"
 );
+const installStatusPath = path.join(
+  __dirname,
+  "..",
+  "dashboard",
+  "src",
+  "lib",
+  "install-status.js"
+);
 
 function readFile(filePath) {
   return fs.readFileSync(filePath, "utf8");
@@ -161,24 +169,49 @@ test("ProjectUsagePanel constrains identity text width", () => {
   );
 });
 
-test("DashboardPage gates install panel by active days", () => {
+test("DashboardPage wires install panel gating through helper", () => {
   const containerSrc = readFile(containerPath);
+  const installStatusSrc = readFile(installStatusPath);
   const viewSrc = readFile(viewPath);
   assert.ok(
-    containerSrc.includes("const shouldShowInstall"),
-    "expected shouldShowInstall gate"
+    containerSrc.includes("shouldShowInstallCard"),
+    "expected install status helper usage"
   );
   assert.ok(
-    containerSrc.includes("activeDays === 0"),
-    "expected activeDays gate"
+    containerSrc.includes("has_active_device_token"),
+    "expected snake_case install token field usage"
   );
   assert.ok(
-    containerSrc.includes("accessEnabled"),
-    "expected accessEnabled gate"
+    containerSrc.includes("hasActiveDeviceToken"),
+    "expected camelCase fallback usage"
   );
   assert.ok(
-    containerSrc.includes("heatmapLoading"),
-    "expected heatmapLoading gate"
+    containerSrc.includes("const shouldShowInstall = shouldShowInstallCard({"),
+    "expected helper-based install gate assignment"
+  );
+  assert.ok(
+    installStatusSrc.includes("publicMode || screenshotMode"),
+    "expected helper to hide in public/screenshot mode"
+  );
+  assert.ok(
+    installStatusSrc.includes("if (forceInstall) return true"),
+    "expected helper to honor forceInstall"
+  );
+  assert.ok(
+    installStatusSrc.includes("accessEnabled"),
+    "expected helper to check accessEnabled"
+  );
+  assert.ok(
+    installStatusSrc.includes("!heatmapLoading"),
+    "expected helper to check heatmapLoading"
+  );
+  assert.ok(
+    installStatusSrc.includes("activeDays === 0"),
+    "expected helper to gate on activeDays"
+  );
+  assert.ok(
+    installStatusSrc.includes("!hasActiveDeviceToken"),
+    "expected helper to hide card for active device token"
   );
   assert.ok(
     viewSrc.includes("shouldShowInstall ? ("),

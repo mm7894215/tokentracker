@@ -46,6 +46,7 @@ import { ProjectUsagePanel } from "../ui/matrix-a/components/ProjectUsagePanel.j
 import { DashboardView } from "../ui/matrix-a/views/DashboardView.jsx";
 import { getMockNow, isMockEnabled } from "../lib/mock-data";
 import { isScreenshotModeEnabled } from "../lib/screenshot-mode";
+import { shouldShowInstallCard } from "../lib/install-status";
 import {
   isAccessTokenReady,
   normalizeAccessToken,
@@ -1143,10 +1144,19 @@ export function DashboardPage({
   const installCopiedLabel = copy("dashboard.install.copied");
   const sessionExpiredCopyLabel = copy("dashboard.session_expired.copy_label");
   const sessionExpiredCopiedLabel = copy("dashboard.session_expired.copied");
-  const shouldShowInstall =
-    !publicMode &&
-    !screenshotMode &&
-    (forceInstall || (accessEnabled && !heatmapLoading && activeDays === 0));
+  const hasActiveDeviceToken = Boolean(
+    userStatus?.install?.has_active_device_token ??
+      userStatus?.install?.hasActiveDeviceToken
+  );
+  const shouldShowInstall = shouldShowInstallCard({
+    publicMode,
+    screenshotMode,
+    forceInstall,
+    accessEnabled,
+    heatmapLoading,
+    activeDays,
+    hasActiveDeviceToken,
+  });
   const installPrompt = copy("dashboard.install.prompt");
   const publicViewTitle = copy("dashboard.public_view.title");
   const publicViewStatusEnabledLabel = copy("dashboard.public_view.status.enabled");

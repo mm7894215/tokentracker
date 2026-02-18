@@ -66,13 +66,55 @@ module.exports = withRequestLogging('vibeusage-user-status', async function(requ
     .order('updated_at', { ascending: false });
 
   if (subscriptionErr) {
-    if (isMissingRelationError(subscriptionErr)) {
+    if (isMissingRelationError(subscriptionErr, 'vibeusage_tracker_subscriptions')) {
       subscriptionsPartial = true;
     } else {
       return json({ error: subscriptionErr.message }, 500);
     }
   } else {
     subscriptions = normalizeSubscriptions(subscriptionRows);
+  }
+
+  let installPartial = false;
+  let activeDeviceTokens = 0;
+  let activeDevices = 0;
+  let latestTokenActivityAt = null;
+  let latestDeviceSeenAt = null;
+
+  const tokenStats = await loadInstallStats({
+    edgeClient: auth.edgeClient,
+    userId: auth.userId,
+    table: 'vibeusage_tracker_device_tokens',
+    timestampColumn: 'last_used_at'
+  });
+
+  if (tokenStats.error) {
+    if (isMissingRelationError(tokenStats.error, 'vibeusage_tracker_device_tokens')) {
+      installPartial = true;
+    } else {
+      return json({ error: tokenStats.error.message }, 500);
+    }
+  } else {
+    activeDeviceTokens = tokenStats.count;
+    latestTokenActivityAt = tokenStats.latestAt;
+  }
+
+  const deviceStats = await loadInstallStats({
+    edgeClient: auth.edgeClient,
+    userId: auth.userId,
+    table: 'vibeusage_tracker_devices',
+    timestampColumn: 'last_seen_at'
+  });
+
+  if (deviceStats.error) {
+    if (isMissingRelationError(deviceStats.error, 'vibeusage_tracker_devices')) {
+      installPartial = true;
+    } else {
+      return json({ error: deviceStats.error.message }, 500);
+    }
+  } else {
+    activeDevices = deviceStats.count;
+    latestDeviceSeenAt = deviceStats.latestAt;
   }
 
   const asOf = new Date().toISOString();
@@ -93,6 +135,16 @@ module.exports = withRequestLogging('vibeusage-user-status', async function(requ
         partial: subscriptionsPartial,
         as_of: asOf,
         items: subscriptions
+      },
+      install: {
+        partial: installPartial,
+        as_of: asOf,
+        has_active_device_token: activeDeviceTokens > 0,
+        has_active_device: activeDevices > 0,
+        active_device_tokens: activeDeviceTokens,
+        active_devices: activeDevices,
+        latest_token_activity_at: latestTokenActivityAt,
+        latest_device_seen_at: latestDeviceSeenAt
       }
     },
     200
@@ -139,9 +191,92 @@ function normalizeIso(value) {
   return dt.toISOString();
 }
 
-function isMissingRelationError(err) {
+function getLatestIso(rows, key) {
+  const list = Array.isArray(rows) ? rows : [];
+  for (const row of list) {
+    const iso = normalizeIso(row?.[key]);
+    if (iso) return iso;
+  }
+  return null;
+}
+
+async function loadInstallStats({ edgeClient, userId, table, timestampColumn }) {
+  const { count, error: countErr } = await edgeClient.database
+    .from(table)
+    .select('id', { count: 'exact' })
+    .eq('user_id', userId)
+    .is('revoked_at', null)
+    .limit(1);
+
+  if (countErr) {
+    return { count: 0, latestAt: null, error: countErr };
+  }
+
+  const safeCount = toSafeCount(count);
+  if (safeCount === 0) {
+    return { count: 0, latestAt: null, error: null };
+  }
+
+  const { data: latestRows, error: latestErr } = await edgeClient.database
+    .from(table)
+    .select(timestampColumn)
+    .eq('user_id', userId)
+    .is('revoked_at', null)
+    .order(timestampColumn, { ascending: false, nullsFirst: false })
+    .limit(1);
+
+  if (latestErr) {
+    return { count: 0, latestAt: null, error: latestErr };
+  }
+
+  return {
+    count: safeCount,
+    latestAt: getLatestIso(latestRows, timestampColumn),
+    error: null
+  };
+}
+
+function toSafeCount(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return Math.floor(n);
+}
+
+const OPTIONAL_MISSING_RELATIONS = new Set([
+  'vibeusage_tracker_subscriptions',
+  'vibeusage_tracker_device_tokens',
+  'vibeusage_tracker_devices'
+]);
+
+function normalizeRelationName(value) {
+  if (typeof value !== 'string') return '';
+  const trimmed = value.trim().toLowerCase();
+  if (!trimmed) return '';
+  const unquoted = trimmed.replace(/^"+|"+$/g, '').replace(/^'+|'+$/g, '');
+  if (!unquoted) return '';
+  const segments = unquoted.split('.').filter(Boolean);
+  return segments.length > 0 ? segments[segments.length - 1] : '';
+}
+
+function getMissingRelationName(err) {
+  const msg = String(err?.message || '');
+  if (!msg) return '';
+  if (!/relation/i.test(msg) || !/does not exist/i.test(msg)) return '';
+
+  const match = msg.match(/relation\s+(?:"([^"]+)"|'([^']+)'|([a-z0-9_.]+))\s+does not exist/i);
+  if (!match) return '';
+  return normalizeRelationName(match[1] || match[2] || match[3] || '');
+}
+
+function isMissingRelationError(err, relationName) {
+  const rel = normalizeRelationName(relationName);
+  if (!rel || !OPTIONAL_MISSING_RELATIONS.has(rel)) return false;
+
   const code = typeof err?.code === 'string' ? err.code.trim() : '';
-  if (code === '42P01') return true;
-  const msg = String(err?.message || '').toLowerCase();
-  return msg.includes('vibeusage_tracker_subscriptions') && msg.includes('does not exist');
+  if (code && code !== '42P01') return false;
+
+  const missingRel = getMissingRelationName(err);
+  if (!missingRel) return false;
+
+  return missingRel === rel;
 }
