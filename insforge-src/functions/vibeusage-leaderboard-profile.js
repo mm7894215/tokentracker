@@ -19,11 +19,15 @@ module.exports = async function (request) {
   if (methodErr) return methodErr;
 
   const bearer = getBearerToken(request.headers.get("Authorization"));
-  if (!bearer) return json({ error: "Missing bearer token" }, 401);
-
   const baseUrl = getBaseUrl();
-  const auth = await getEdgeClientAndUserId({ baseUrl, bearer });
-  if (!auth.ok) return json({ error: auth.error || "Unauthorized" }, auth.status || 401);
+
+  let auth = { ok: false, edgeClient: null, userId: null };
+  if (bearer) {
+    auth = await getEdgeClientAndUserId({ baseUrl, bearer });
+    if (!auth.ok) return json({ error: auth.error || "Unauthorized" }, auth.status || 401);
+  }
+
+  const viewerUserId = auth.ok ? auth.userId : null;
 
   const url = new URL(request.url);
   const period = normalizePeriod(url.searchParams.get("period")) || "week";
@@ -42,17 +46,9 @@ module.exports = async function (request) {
     edgeFunctionToken: serviceRoleKey,
   });
 
-  const isSelf = requestedUserId === auth.userId;
+  const isSelf = viewerUserId ? requestedUserId === viewerUserId : false;
+
   if (!isSelf) {
-    const { data: settings, error: settingsErr } = await serviceClient.database
-      .from("vibeusage_user_settings")
-      .select("leaderboard_public")
-      .eq("user_id", requestedUserId)
-      .maybeSingle();
-
-    if (settingsErr) return json({ error: "Failed to resolve leaderboard settings" }, 500);
-    if (!settings?.leaderboard_public) return json({ error: "Not found" }, 404);
-
     const { data: activeLink, error: activeLinkErr } = await serviceClient.database
       .from("vibeusage_public_views")
       .select("user_id")
@@ -79,7 +75,6 @@ module.exports = async function (request) {
   if (snapshotErr)
     return json({ error: snapshotErr.message || "Failed to fetch leaderboard snapshot" }, 500);
   if (!snapshot) return json({ error: "Not found" }, 404);
-  if (!isSelf && snapshot.is_public !== true) return json({ error: "Not found" }, 404);
 
   return json(
     {
