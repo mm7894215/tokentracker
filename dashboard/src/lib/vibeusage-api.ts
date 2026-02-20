@@ -34,6 +34,7 @@ const PATHS = {
   publicViewIssue: "vibeusage-public-view-issue",
   publicViewRevoke: "vibeusage-public-view-revoke",
   publicViewProfile: "vibeusage-public-view-profile",
+  publicVisibility: "vibeusage-public-visibility",
 };
 
 const FUNCTION_PREFIX = "/functions";
@@ -173,6 +174,35 @@ export async function setLeaderboardSettings({
     accessToken: resolvedAccessToken,
     slug: PATHS.leaderboardSettings,
     body: { leaderboard_public: Boolean(leaderboardPublic) },
+  });
+}
+
+export async function getPublicVisibility({ baseUrl, accessToken }: AnyRecord = {}) {
+  const resolvedAccessToken = await resolveAccessToken(accessToken);
+  if (isMockEnabled()) {
+    return { enabled: false, updated_at: null, share_token: null };
+  }
+  return requestJson({
+    baseUrl,
+    accessToken: resolvedAccessToken,
+    slug: PATHS.publicVisibility,
+  });
+}
+
+export async function setPublicVisibility({ baseUrl, accessToken, enabled }: AnyRecord = {}) {
+  const resolvedAccessToken = await resolveAccessToken(accessToken);
+  if (isMockEnabled()) {
+    return {
+      enabled: Boolean(enabled),
+      updated_at: new Date().toISOString(),
+      share_token: enabled ? "pv1-mock-token" : null,
+    };
+  }
+  return requestPostJson({
+    baseUrl,
+    accessToken: resolvedAccessToken,
+    slug: PATHS.publicVisibility,
+    body: { enabled: Boolean(enabled) },
   });
 }
 
