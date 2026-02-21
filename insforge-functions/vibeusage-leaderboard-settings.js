@@ -35,7 +35,7 @@ var require_http = __commonJS({
       if (request.method !== method) return json2({ error: "Method not allowed" }, 405);
       return null;
     }
-    async function readJson2(request) {
+    async function readJson(request) {
       if (!request.headers.get("Content-Type")?.includes("application/json")) {
         return { error: "Content-Type must be application/json", status: 415, data: null };
       }
@@ -51,686 +51,120 @@ var require_http = __commonJS({
       handleOptions: handleOptions2,
       json: json2,
       requireMethod,
-      readJson: readJson2
+      readJson
     };
   }
 });
 
-// insforge-src/shared/env.js
-var require_env = __commonJS({
-  "insforge-src/shared/env.js"(exports2, module2) {
+// insforge-src/shared/logging.js
+var require_logging = __commonJS({
+  "insforge-src/shared/logging.js"(exports2, module2) {
     "use strict";
-    function getBaseUrl2() {
-      return Deno.env.get("INSFORGE_INTERNAL_URL") || "http://insforge:7130";
+    function createRequestId() {
+      if (globalThis?.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+      return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
     }
-    function getServiceRoleKey2() {
-      return Deno.env.get("INSFORGE_SERVICE_ROLE_KEY") || Deno.env.get("SERVICE_ROLE_KEY") || Deno.env.get("INSFORGE_API_KEY") || Deno.env.get("API_KEY") || null;
-    }
-    function getAnonKey2() {
-      return Deno.env.get("ANON_KEY") || Deno.env.get("INSFORGE_ANON_KEY") || null;
-    }
-    function getJwtSecret() {
-      return Deno.env.get("INSFORGE_JWT_SECRET") || null;
-    }
-    module2.exports = {
-      getBaseUrl: getBaseUrl2,
-      getServiceRoleKey: getServiceRoleKey2,
-      getAnonKey: getAnonKey2,
-      getJwtSecret
-    };
-  }
-});
-
-// insforge-src/shared/public-view.js
-var require_public_view = __commonJS({
-  "insforge-src/shared/public-view.js"(exports2, module2) {
-    "use strict";
-    var { getAnonKey: getAnonKey2, getServiceRoleKey: getServiceRoleKey2 } = require_env();
-    var PUBLIC_USER_TOKEN_RE = /^pv1-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/;
-    async function resolvePublicView({ baseUrl, shareToken }) {
-      const token = normalizeShareToken(shareToken);
-      if (!token) {
-        return { ok: false, edgeClient: null, userId: null };
-      }
-      const serviceRoleKey = getServiceRoleKey2();
-      if (!serviceRoleKey) return { ok: false, edgeClient: null, userId: null };
-      const anonKey = getAnonKey2();
-      const dbClient = createClient({
-        baseUrl,
-        anonKey: anonKey || serviceRoleKey,
-        edgeFunctionToken: serviceRoleKey
-      });
-      const resolvedUserId = await resolvePublicUserId({ dbClient, token });
-      if (!resolvedUserId) {
-        return { ok: false, edgeClient: null, userId: null };
-      }
-      const { data: settings, error: settingsErr } = await dbClient.database.from("vibeusage_user_settings").select("leaderboard_public").eq("user_id", resolvedUserId).maybeSingle();
-      if (settingsErr || settings?.leaderboard_public !== true) {
-        return { ok: false, edgeClient: null, userId: null };
-      }
-      return { ok: true, edgeClient: dbClient, userId: resolvedUserId };
-    }
-    async function resolvePublicUserId({ dbClient, token }) {
-      if (!dbClient || !token) return null;
-      const { data, error } = await dbClient.database.from("vibeusage_public_views").select("user_id").eq("user_id", token.userId).is("revoked_at", null).maybeSingle();
-      if (error || !data?.user_id) return null;
-      return data.user_id;
-    }
-    function normalizeToken(value) {
-      if (typeof value !== "string") return null;
-      const token = value.trim();
-      if (!token) return null;
-      if (token.length > 256) return null;
-      return token;
-    }
-    function normalizeShareToken(value) {
-      const token = normalizeToken(value);
-      if (!token) return null;
-      const normalized = token.toLowerCase();
-      if (token !== normalized) return null;
-      const publicUserMatch = normalized.match(PUBLIC_USER_TOKEN_RE);
-      if (publicUserMatch?.[1]) {
-        return { kind: "user", userId: publicUserMatch[1] };
-      }
+    function errorCodeFromStatus(status) {
+      if (typeof status !== "number") return "UNKNOWN_ERROR";
+      if (status >= 500) return "SERVER_ERROR";
+      if (status >= 400) return "CLIENT_ERROR";
       return null;
     }
-    function isPublicShareToken(value) {
-      return Boolean(normalizeShareToken(value));
-    }
-    module2.exports = {
-      resolvePublicView,
-      isPublicShareToken
-    };
-  }
-});
-
-// insforge-src/shared/auth.js
-var require_auth = __commonJS({
-  "insforge-src/shared/auth.js"(exports2, module2) {
-    "use strict";
-    var { getAnonKey: getAnonKey2, getJwtSecret } = require_env();
-    var { resolvePublicView, isPublicShareToken } = require_public_view();
-    function getBearerToken2(headerValue) {
-      if (!headerValue) return null;
-      const prefix = "Bearer ";
-      if (!headerValue.startsWith(prefix)) return null;
-      const token = headerValue.slice(prefix.length).trim();
-      return token.length > 0 ? token : null;
-    }
-    function decodeBase64Url(value) {
-      if (typeof value !== "string") return null;
-      let s = value.replace(/-/g, "+").replace(/_/g, "/");
-      const pad = s.length % 4;
-      if (pad) s += "=".repeat(4 - pad);
-      try {
-        if (typeof atob === "function") return atob(s);
-      } catch (_e) {
+    function createLogger({ functionName }) {
+      const requestId = createRequestId();
+      const startMs = Date.now();
+      let upstreamStatus = null;
+      let upstreamLatencyMs = null;
+      function recordUpstream(status, latencyMs) {
+        upstreamStatus = typeof status === "number" ? status : null;
+        upstreamLatencyMs = typeof latencyMs === "number" ? latencyMs : null;
       }
-      try {
-        if (typeof Buffer !== "undefined") {
-          return Buffer.from(s, "base64").toString("utf8");
-        }
-      } catch (_e) {
-      }
-      return null;
-    }
-    function decodeJwtPayload(token) {
-      if (typeof token !== "string") return null;
-      const parts = token.split(".");
-      if (parts.length < 2) return null;
-      const raw = decodeBase64Url(parts[1]);
-      if (!raw) return null;
-      try {
-        return JSON.parse(raw);
-      } catch (_e) {
-        return null;
-      }
-    }
-    function decodeJwtHeader(token) {
-      if (typeof token !== "string") return null;
-      const parts = token.split(".");
-      if (parts.length < 2) return null;
-      const raw = decodeBase64Url(parts[0]);
-      if (!raw) return null;
-      try {
-        return JSON.parse(raw);
-      } catch (_e) {
-        return null;
-      }
-    }
-    function getJwtRole(token) {
-      const payload = decodeJwtPayload(token);
-      const role = payload?.role;
-      if (typeof role === "string" && role.length > 0) return role;
-      const appRole = payload?.app_metadata?.role;
-      if (typeof appRole === "string" && appRole.length > 0) return appRole;
-      const roles = payload?.app_metadata?.roles;
-      if (Array.isArray(roles)) {
-        if (roles.includes("project_admin")) return "project_admin";
-        const match = roles.find((value) => typeof value === "string" && value.length > 0);
-        if (match) return match;
-      }
-      return null;
-    }
-    function isProjectAdminBearer(token) {
-      const role = getJwtRole(token);
-      return role === "project_admin";
-    }
-    function isJwtExpired(payload) {
-      const exp = Number(payload?.exp);
-      if (!Number.isFinite(exp)) return false;
-      return exp * 1e3 <= Date.now();
-    }
-    function base64UrlEncode(value) {
-      let base64 = null;
-      try {
-        if (typeof Buffer !== "undefined") {
-          base64 = Buffer.from(value).toString("base64");
-        }
-      } catch (_e) {
-      }
-      if (!base64 && typeof btoa === "function" && value instanceof ArrayBuffer) {
-        const bytes = new Uint8Array(value);
-        let binary = "";
-        for (const byte of bytes) binary += String.fromCharCode(byte);
-        base64 = btoa(binary);
-      }
-      if (!base64) return null;
-      return base64.replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
-    }
-    async function verifyUserJwtHs256({ token }) {
-      const secret = getJwtSecret();
-      if (!secret) {
-        return { ok: false, userId: null, error: "Missing jwt secret", code: "missing_jwt_secret" };
-      }
-      if (typeof token !== "string") {
-        return { ok: false, userId: null, error: "Invalid token" };
-      }
-      const parts = token.split(".");
-      if (parts.length !== 3) {
-        return { ok: false, userId: null, error: "Invalid token" };
-      }
-      const header = decodeJwtHeader(token);
-      if (!header || header.alg !== "HS256") {
-        return { ok: false, userId: null, error: "Unsupported alg" };
-      }
-      const payload = decodeJwtPayload(token);
-      if (!payload) {
-        return { ok: false, userId: null, error: "Invalid payload" };
-      }
-      const exp = Number(payload?.exp);
-      if (!Number.isFinite(exp)) {
-        return { ok: false, userId: null, error: "Missing exp" };
-      }
-      if (isJwtExpired(payload)) {
-        return { ok: false, userId: null, error: "Token expired" };
-      }
-      const cryptoSubtle = globalThis.crypto?.subtle;
-      if (!cryptoSubtle) {
-        return { ok: false, userId: null, error: "Crypto unavailable" };
-      }
-      const data = `${parts[0]}.${parts[1]}`;
-      const encoder = new TextEncoder();
-      const key = await cryptoSubtle.importKey(
-        "raw",
-        encoder.encode(secret),
-        { name: "HMAC", hash: "SHA-256" },
-        false,
-        ["sign"]
-      );
-      const signature = await cryptoSubtle.sign("HMAC", key, encoder.encode(data));
-      const expected = base64UrlEncode(signature);
-      if (!expected || expected !== parts[2]) {
-        return { ok: false, userId: null, error: "Invalid signature" };
-      }
-      const userId = typeof payload.sub === "string" ? payload.sub : null;
-      if (!userId) {
-        return { ok: false, userId: null, error: "Missing sub" };
-      }
-      return { ok: true, userId, error: null };
-    }
-    async function getEdgeClientAndUserId2({ baseUrl, bearer }) {
-      const auth = await getEdgeClientAndUserIdFast({ baseUrl, bearer });
-      if (!auth.ok) {
-        return {
-          ok: false,
-          edgeClient: null,
-          userId: null,
-          status: auth.status ?? 401,
-          error: auth.error ?? "Unauthorized",
-          code: auth.code ?? null
-        };
-      }
-      return { ok: true, edgeClient: auth.edgeClient, userId: auth.userId };
-    }
-    async function getEdgeClientAndUserIdFast({ baseUrl, bearer }) {
-      const anonKey = getAnonKey2();
-      const edgeClient = createClient({
-        baseUrl,
-        anonKey: anonKey || void 0,
-        edgeFunctionToken: bearer
-      });
-      const local = await verifyUserJwtHs256({ token: bearer });
-      const allowRemoteOnly = !local.ok && local?.code === "missing_jwt_secret";
-      if (!local.ok && !allowRemoteOnly) {
-        return {
-          ok: false,
-          edgeClient: null,
-          userId: null,
-          status: 401,
-          error: "Unauthorized",
-          code: local?.code || "invalid_jwt"
-        };
-      }
-      if (typeof edgeClient?.auth?.getCurrentUser !== "function") {
-        return {
-          ok: false,
-          edgeClient: null,
-          userId: null,
-          status: 503,
-          error: "Service unavailable",
-          code: "missing_auth_client"
-        };
-      }
-      let authResult = null;
-      try {
-        authResult = await edgeClient.auth.getCurrentUser();
-      } catch (e) {
-        const message = getAuthFailureMessage(e);
-        const status = classifyAuthFailure({
-          status: normalizeHttpStatus(e?.statusCode ?? e?.status),
-          message
-        });
-        return {
-          ok: false,
-          edgeClient: null,
-          userId: null,
-          status,
-          error: status === 503 ? "Service unavailable" : "Unauthorized",
-          code: "auth_lookup_failed"
-        };
-      }
-      const authUserId = authResult?.data?.user?.id || null;
-      if (!authUserId || authResult?.error) {
-        const message = getAuthFailureMessage(authResult?.error) || (!authUserId ? "User missing" : "");
-        const status = classifyAuthFailure({
-          status: normalizeHttpStatus(authResult?.error?.statusCode ?? authResult?.error?.status),
-          message
-        });
-        return {
-          ok: false,
-          edgeClient: null,
-          userId: null,
-          status,
-          error: status === 503 ? "Service unavailable" : "Unauthorized",
-          code: "auth_lookup_failed"
-        };
-      }
-      if (!allowRemoteOnly && authUserId !== local.userId) {
-        return {
-          ok: false,
-          edgeClient: null,
-          userId: null,
-          status: 401,
-          error: "Unauthorized",
-          code: "user_mismatch"
-        };
-      }
-      return { ok: true, edgeClient, userId: authUserId };
-    }
-    async function getAccessContext({ baseUrl, bearer, allowPublic = false }) {
-      if (!bearer) {
-        return {
-          ok: false,
-          edgeClient: null,
-          userId: null,
-          accessType: null,
-          status: 401,
-          error: "Unauthorized",
-          code: "missing_bearer"
-        };
-      }
-      const auth = await getEdgeClientAndUserIdFast({ baseUrl, bearer });
-      if (auth.ok) {
-        return { ok: true, edgeClient: auth.edgeClient, userId: auth.userId, accessType: "user" };
-      }
-      if (!allowPublic) {
-        return {
-          ok: false,
-          edgeClient: null,
-          userId: null,
-          accessType: null,
-          status: auth.status ?? 401,
-          error: auth.error ?? "Unauthorized",
-          code: auth.code ?? null
-        };
-      }
-      if (!isPublicShareToken(bearer)) {
-        return {
-          ok: false,
-          edgeClient: null,
-          userId: null,
-          accessType: null,
-          status: auth.status ?? 401,
-          error: auth.error ?? "Unauthorized",
-          code: auth.code ?? null
-        };
-      }
-      const publicView = await resolvePublicView({ baseUrl, shareToken: bearer });
-      if (!publicView.ok) {
-        return {
-          ok: false,
-          edgeClient: null,
-          userId: null,
-          accessType: null,
-          status: 401,
-          error: "Unauthorized"
-        };
-      }
-      return {
-        ok: true,
-        edgeClient: publicView.edgeClient,
-        userId: publicView.userId,
-        accessType: "public"
-      };
-    }
-    module2.exports = {
-      getBearerToken: getBearerToken2,
-      getAccessContext,
-      getEdgeClientAndUserId: getEdgeClientAndUserId2,
-      getEdgeClientAndUserIdFast,
-      isProjectAdminBearer,
-      verifyUserJwtHs256
-    };
-    function normalizeHttpStatus(value) {
-      const n = Number(value);
-      if (!Number.isFinite(n)) return null;
-      const status = Math.trunc(n);
-      if (status < 100 || status > 599) return null;
-      return status;
-    }
-    function getAuthFailureMessage(err) {
-      if (!err) return "";
-      if (typeof err === "string") return err;
-      if (typeof err?.message === "string") return err.message;
-      if (typeof err?.error === "string") return err.error;
-      return "";
-    }
-    function classifyAuthFailure({ status, message } = {}) {
-      const normalizedStatus = normalizeHttpStatus(status);
-      if (normalizedStatus === 401 || normalizedStatus === 403) return 401;
-      if (normalizedStatus != null) return 503;
-      if (isRetryableAuthMessage(message)) return 503;
-      return 401;
-    }
-    function isRetryableAuthMessage(message) {
-      const s = String(message || "").toLowerCase();
-      if (!s) return false;
-      if (s.includes("socket hang up")) return true;
-      if (s.includes("econnreset") || s.includes("econnrefused")) return true;
-      if (s.includes("etimedout") || s.includes("timeout") && s.includes("request")) return true;
-      if (s.includes("networkerror") || s.includes("failed to fetch")) return true;
-      if (s.includes("upstream") || s.includes("proxy")) return true;
-      if (s.includes("deno")) return true;
-      return false;
-    }
-  }
-});
-
-// insforge-src/shared/date.js
-var require_date = __commonJS({
-  "insforge-src/shared/date.js"(exports2, module2) {
-    "use strict";
-    function isDate(s) {
-      return typeof s === "string" && /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(s);
-    }
-    function toUtcDay2(d) {
-      return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
-    }
-    function formatDateUTC2(d) {
-      return toUtcDay2(d).toISOString().slice(0, 10);
-    }
-    function normalizeDateRange(fromRaw, toRaw) {
-      const today = /* @__PURE__ */ new Date();
-      const toDefault = formatDateUTC2(today);
-      const fromDefault = formatDateUTC2(
-        new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() - 29))
-      );
-      const from = isDate(fromRaw) ? fromRaw : fromDefault;
-      const to = isDate(toRaw) ? toRaw : toDefault;
-      return { from, to };
-    }
-    function parseUtcDateString(yyyyMmDd) {
-      if (!isDate(yyyyMmDd)) return null;
-      const [y, m, d] = yyyyMmDd.split("-").map((n) => Number(n));
-      const dt = new Date(Date.UTC(y, m - 1, d));
-      if (!Number.isFinite(dt.getTime())) return null;
-      return formatDateUTC2(dt) === yyyyMmDd ? dt : null;
-    }
-    function addUtcDays2(date, days) {
-      return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() + days));
-    }
-    function computeHeatmapWindowUtc({ weeks, weekStartsOn, to }) {
-      const end = parseUtcDateString(to) || /* @__PURE__ */ new Date();
-      const desired = weekStartsOn === "mon" ? 1 : 0;
-      const endDow = end.getUTCDay();
-      const endWeekStart = addUtcDays2(end, -((endDow - desired + 7) % 7));
-      const gridStart = addUtcDays2(endWeekStart, -7 * (weeks - 1));
-      return { from: formatDateUTC2(gridStart), gridStart, end };
-    }
-    var TIMEZONE_FORMATTERS = /* @__PURE__ */ new Map();
-    function getTimeZoneFormatter(timeZone) {
-      if (TIMEZONE_FORMATTERS.has(timeZone)) return TIMEZONE_FORMATTERS.get(timeZone);
-      const formatter = new Intl.DateTimeFormat("en-US", {
-        timeZone,
-        hour12: false,
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit"
-      });
-      TIMEZONE_FORMATTERS.set(timeZone, formatter);
-      return formatter;
-    }
-    function parseDateParts(yyyyMmDd) {
-      if (!isDate(yyyyMmDd)) return null;
-      const [y, m, d] = yyyyMmDd.split("-").map((n) => Number(n));
-      if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return null;
-      return { year: y, month: m, day: d };
-    }
-    function formatDateParts(parts) {
-      if (!parts) return null;
-      const y = Number(parts.year);
-      const m = Number(parts.month);
-      const d = Number(parts.day);
-      if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return null;
-      return `${String(y).padStart(4, "0")}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-    }
-    function dateFromPartsUTC(parts) {
-      if (!parts) return null;
-      const y = Number(parts.year);
-      const m = Number(parts.month) - 1;
-      const d = Number(parts.day);
-      const h = Number(parts.hour || 0);
-      const min = Number(parts.minute || 0);
-      const s = Number(parts.second || 0);
-      if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return null;
-      return new Date(Date.UTC(y, m, d, h, min, s));
-    }
-    function datePartsFromDateUTC(date) {
-      return {
-        year: date.getUTCFullYear(),
-        month: date.getUTCMonth() + 1,
-        day: date.getUTCDate(),
-        hour: date.getUTCHours(),
-        minute: date.getUTCMinutes(),
-        second: date.getUTCSeconds()
-      };
-    }
-    function addDatePartsDays(parts, days) {
-      const base = dateFromPartsUTC(parts);
-      if (!base) return null;
-      return datePartsFromDateUTC(addUtcDays2(base, days));
-    }
-    function addDatePartsMonths(parts, months) {
-      if (!parts) return null;
-      const y = Number(parts.year);
-      const m = Number(parts.month) - 1 + Number(months || 0);
-      const d = Number(parts.day || 1);
-      if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return null;
-      const dt = new Date(Date.UTC(y, m, d));
-      return {
-        year: dt.getUTCFullYear(),
-        month: dt.getUTCMonth() + 1,
-        day: dt.getUTCDate()
-      };
-    }
-    function parseOffsetMinutes(raw) {
-      if (raw == null || raw === "") return null;
-      const s = String(raw).trim();
-      if (!/^-?\d+$/.test(s)) return null;
-      const v = Number(s);
-      if (!Number.isFinite(v)) return null;
-      if (v < -840 || v > 840) return null;
-      return Math.trunc(v);
-    }
-    function normalizeTimeZone(tzRaw, offsetRaw) {
-      const tz = typeof tzRaw === "string" ? tzRaw.trim() : "";
-      let timeZone = null;
-      if (tz) {
+      async function fetchWithUpstream(url, init) {
+        const upstreamStart = Date.now();
         try {
-          if (typeof Intl !== "undefined" && Intl.DateTimeFormat) {
-            getTimeZoneFormatter(tz).format(/* @__PURE__ */ new Date(0));
-            timeZone = tz;
-          }
-        } catch (_e) {
-          timeZone = null;
+          const res = await fetch(url, init);
+          recordUpstream(res.status, Date.now() - upstreamStart);
+          return res;
+        } catch (err) {
+          recordUpstream(null, Date.now() - upstreamStart);
+          throw err;
         }
       }
-      const offsetMinutes = parseOffsetMinutes(offsetRaw);
-      if (timeZone) return { timeZone, offsetMinutes: null, source: "iana" };
-      if (offsetMinutes != null) return { timeZone: null, offsetMinutes, source: "offset" };
-      return { timeZone: null, offsetMinutes: 0, source: "utc" };
-    }
-    function getUsageTimeZoneContext(url) {
-      if (!url || !url.searchParams) return normalizeTimeZone();
-      const tz = url.searchParams.get("tz");
-      const offset = url.searchParams.get("tz_offset_minutes");
-      return normalizeTimeZone(tz, offset);
-    }
-    function isUtcTimeZone(tzContext) {
-      if (!tzContext) return true;
-      const tz = tzContext.timeZone;
-      if (tz) {
-        const upper = tz.toUpperCase();
-        return upper === "UTC" || upper === "ETC/UTC" || upper === "ETC/GMT";
+      function log({ stage, status, errorCode, ...extra }) {
+        const payload = {
+          ...extra || {},
+          request_id: requestId,
+          function: functionName,
+          stage: stage || "response",
+          status: typeof status === "number" ? status : null,
+          latency_ms: Date.now() - startMs,
+          error_code: errorCode ?? errorCodeFromStatus(status),
+          upstream_status: upstreamStatus ?? null,
+          upstream_latency_ms: upstreamLatencyMs ?? null
+        };
+        console.log(JSON.stringify(payload));
       }
-      return Number(tzContext.offsetMinutes || 0) === 0;
-    }
-    function getTimeZoneParts(date, timeZone) {
-      const formatter = getTimeZoneFormatter(timeZone);
-      const parts = formatter.formatToParts(date);
-      let year = 0;
-      let month = 0;
-      let day = 0;
-      let hour = 0;
-      let minute = 0;
-      let second = 0;
-      for (const part of parts) {
-        if (part.type === "year") year = Number(part.value);
-        if (part.type === "month") month = Number(part.value);
-        if (part.type === "day") day = Number(part.value);
-        if (part.type === "hour") hour = Number(part.value);
-        if (part.type === "minute") minute = Number(part.value);
-        if (part.type === "second") second = Number(part.value);
-      }
-      return { year, month, day, hour, minute, second };
-    }
-    function getTimeZoneOffsetMinutes(date, timeZone) {
-      const parts = getTimeZoneParts(date, timeZone);
-      const asUtc = Date.UTC(
-        parts.year,
-        parts.month - 1,
-        parts.day,
-        parts.hour,
-        parts.minute,
-        parts.second
-      );
-      return Math.round((asUtc - date.getTime()) / 6e4);
-    }
-    function getLocalParts(date, tzContext) {
-      if (tzContext?.timeZone) {
-        return getTimeZoneParts(date, tzContext.timeZone);
-      }
-      const offsetMinutes = Number.isFinite(tzContext?.offsetMinutes) ? tzContext.offsetMinutes : 0;
-      const shifted = new Date(date.getTime() + offsetMinutes * 6e4);
       return {
-        year: shifted.getUTCFullYear(),
-        month: shifted.getUTCMonth() + 1,
-        day: shifted.getUTCDate(),
-        hour: shifted.getUTCHours(),
-        minute: shifted.getUTCMinutes(),
-        second: shifted.getUTCSeconds()
+        requestId,
+        log,
+        fetch: fetchWithUpstream
       };
     }
-    function formatLocalDateKey(date, tzContext) {
-      return formatDateParts(getLocalParts(date, tzContext));
+    function getResponseStatus(response) {
+      if (response && typeof response.status === "number") return response.status;
+      return null;
     }
-    function localDatePartsToUtc(parts, tzContext) {
-      const baseUtc = Date.UTC(
-        Number(parts.year),
-        Number(parts.month) - 1,
-        Number(parts.day),
-        Number(parts.hour || 0),
-        Number(parts.minute || 0),
-        Number(parts.second || 0)
-      );
-      if (tzContext?.timeZone) {
-        let offset = getTimeZoneOffsetMinutes(new Date(baseUtc), tzContext.timeZone);
-        let utc = baseUtc - offset * 6e4;
-        const offset2 = getTimeZoneOffsetMinutes(new Date(utc), tzContext.timeZone);
-        if (offset2 !== offset) {
-          utc = baseUtc - offset2 * 6e4;
+    function resolveFunctionName(functionName, request) {
+      if (request && typeof request.url === "string") {
+        try {
+          const url = new URL(request.url);
+          const match = url.pathname.match(/\/functions\/([^/?#]+)/);
+          if (match && match[1]) return match[1];
+        } catch (_e) {
         }
-        return new Date(utc);
       }
-      const offsetMinutes = Number.isFinite(tzContext?.offsetMinutes) ? tzContext.offsetMinutes : 0;
-      return new Date(baseUtc - offsetMinutes * 6e4);
+      return functionName;
     }
-    function normalizeDateRangeLocal(fromRaw, toRaw, tzContext) {
-      const todayParts = getLocalParts(/* @__PURE__ */ new Date(), tzContext);
-      const toDefault = formatDateParts(todayParts);
-      const fromDefaultParts = addDatePartsDays(
-        { year: todayParts.year, month: todayParts.month, day: todayParts.day },
-        -29
-      );
-      const fromDefault = formatDateParts(fromDefaultParts);
-      const from = isDate(fromRaw) ? fromRaw : fromDefault;
-      const to = isDate(toRaw) ? toRaw : toDefault;
-      return { from, to };
+    function withRequestLogging2(functionName, handler) {
+      return async function(request) {
+        const resolvedName = resolveFunctionName(functionName, request);
+        const logger = createLogger({ functionName: resolvedName });
+        try {
+          const response = await handler(request, logger);
+          const status = getResponseStatus(response);
+          logger.log({ stage: "response", status });
+          return response;
+        } catch (err) {
+          logger.log({ stage: "exception", status: 500, errorCode: "UNHANDLED_EXCEPTION" });
+          throw err;
+        }
+      };
     }
-    function listDateStrings(from, to) {
-      const startParts = parseDateParts(from);
-      const endParts = parseDateParts(to);
-      if (!startParts || !endParts) return [];
-      const start = dateFromPartsUTC(startParts);
-      const end = dateFromPartsUTC(endParts);
-      if (!start || !end || end < start) return [];
-      const days = [];
-      for (let cursor = start; cursor <= end; cursor = addUtcDays2(cursor, 1)) {
-        days.push(formatDateUTC2(cursor));
-      }
-      return days;
+    module2.exports = {
+      withRequestLogging: withRequestLogging2,
+      logSlowQuery,
+      getSlowQueryThresholdMs
+    };
+    function logSlowQuery(logger, fields) {
+      if (!logger || typeof logger.log !== "function") return;
+      const durationMs = Number(fields?.duration_ms ?? fields?.durationMs);
+      if (!Number.isFinite(durationMs)) return;
+      const thresholdMs = getSlowQueryThresholdMs();
+      if (durationMs < thresholdMs) return;
+      logger.log({
+        stage: "slow_query",
+        status: 200,
+        ...fields || {},
+        duration_ms: Math.round(durationMs)
+      });
     }
-    function getUsageMaxDays() {
-      const raw = readEnvValue("VIBEUSAGE_USAGE_MAX_DAYS");
-      if (raw == null || raw === "") return 800;
+    function getSlowQueryThresholdMs() {
+      const raw = readEnvValue("VIBEUSAGE_SLOW_QUERY_MS");
+      if (raw == null || raw === "") return 2e3;
       const n = Number(raw);
-      if (!Number.isFinite(n)) return 800;
-      if (n <= 0) return 800;
-      return clampInt(n, 1, 5e3);
+      if (!Number.isFinite(n)) return 2e3;
+      if (n <= 0) return 0;
+      return clampInt(n, 1, 6e4);
     }
     function readEnvValue(key) {
       try {
@@ -753,205 +187,14 @@ var require_date = __commonJS({
       if (!Number.isFinite(n)) return min;
       return Math.min(max, Math.max(min, Math.floor(n)));
     }
-    module2.exports = {
-      isDate,
-      toUtcDay: toUtcDay2,
-      formatDateUTC: formatDateUTC2,
-      normalizeDateRange,
-      parseUtcDateString,
-      addUtcDays: addUtcDays2,
-      computeHeatmapWindowUtc,
-      parseDateParts,
-      formatDateParts,
-      dateFromPartsUTC,
-      datePartsFromDateUTC,
-      addDatePartsDays,
-      addDatePartsMonths,
-      normalizeTimeZone,
-      getUsageTimeZoneContext,
-      isUtcTimeZone,
-      getTimeZoneOffsetMinutes,
-      getLocalParts,
-      formatLocalDateKey,
-      localDatePartsToUtc,
-      normalizeDateRangeLocal,
-      listDateStrings,
-      getUsageMaxDays
-    };
   }
 });
 
 // insforge-src/functions/vibeusage-leaderboard-settings.js
-var { handleOptions, json, readJson } = require_http();
-var { getBearerToken, getEdgeClientAndUserId } = require_auth();
-var { getAnonKey, getBaseUrl, getServiceRoleKey } = require_env();
-var { toUtcDay, addUtcDays, formatDateUTC } = require_date();
-module.exports = async function(request) {
+var { handleOptions, json } = require_http();
+var { withRequestLogging } = require_logging();
+module.exports = withRequestLogging("vibeusage-leaderboard-settings", async function(request) {
   const opt = handleOptions(request);
   if (opt) return opt;
-  const bearer = getBearerToken(request.headers.get("Authorization"));
-  if (!bearer) return json({ error: "Missing bearer token" }, 401);
-  const baseUrl = getBaseUrl();
-  const auth = await getEdgeClientAndUserId({ baseUrl, bearer });
-  if (!auth.ok) return json({ error: auth.error || "Unauthorized" }, auth.status || 401);
-  if (request.method === "GET") {
-    const { data, error } = await auth.edgeClient.database.from("vibeusage_user_settings").select("leaderboard_public,updated_at").eq("user_id", auth.userId).maybeSingle();
-    if (error) return json({ error: error.message }, 500);
-    return json(
-      {
-        leaderboard_public: Boolean(data?.leaderboard_public),
-        updated_at: typeof data?.updated_at === "string" ? data.updated_at : null
-      },
-      200
-    );
-  }
-  if (request.method !== "POST") {
-    return json({ error: "Method not allowed" }, 405);
-  }
-  const body = await readJson(request);
-  if (body.error) return json({ error: body.error }, body.status);
-  const leaderboardPublic = body.data?.leaderboard_public;
-  if (typeof leaderboardPublic !== "boolean") {
-    return json({ error: "leaderboard_public must be boolean" }, 400);
-  }
-  const updatedAt = (/* @__PURE__ */ new Date()).toISOString();
-  const upsertRow = {
-    user_id: auth.userId,
-    leaderboard_public: leaderboardPublic,
-    updated_at: updatedAt
-  };
-  const settingsTable = auth.edgeClient.database.from("vibeusage_user_settings");
-  if (typeof settingsTable.upsert === "function") {
-    try {
-      const { error: upsertErr } = await settingsTable.upsert([upsertRow], {
-        onConflict: "user_id"
-      });
-      if (!upsertErr) {
-        await trySyncPublicView({
-          edgeClient: auth.edgeClient,
-          userId: auth.userId,
-          leaderboardPublic,
-          updatedAt
-        });
-        await trySyncSnapshot({ baseUrl, userId: auth.userId, leaderboardPublic });
-        return json({ leaderboard_public: leaderboardPublic, updated_at: updatedAt }, 200);
-      }
-    } catch (_err) {
-    }
-  }
-  const { data: existing, error: selErr } = await auth.edgeClient.database.from("vibeusage_user_settings").select("user_id").eq("user_id", auth.userId).maybeSingle();
-  if (selErr) return json({ error: selErr.message }, 500);
-  if (existing?.user_id) {
-    const { error: updErr } = await auth.edgeClient.database.from("vibeusage_user_settings").update({ leaderboard_public: leaderboardPublic, updated_at: updatedAt }).eq("user_id", auth.userId);
-    if (updErr) return json({ error: updErr.message }, 500);
-  } else {
-    const { error: insErr } = await auth.edgeClient.database.from("vibeusage_user_settings").insert([upsertRow]);
-    if (insErr) return json({ error: insErr.message }, 500);
-  }
-  await trySyncPublicView({
-    edgeClient: auth.edgeClient,
-    userId: auth.userId,
-    leaderboardPublic,
-    updatedAt
-  });
-  await trySyncSnapshot({ baseUrl, userId: auth.userId, leaderboardPublic });
-  return json({ leaderboard_public: leaderboardPublic, updated_at: updatedAt }, 200);
-};
-async function trySyncPublicView({ edgeClient, userId, leaderboardPublic, updatedAt }) {
-  if (leaderboardPublic) return;
-  try {
-    await edgeClient.database.from("vibeusage_public_views").update({ revoked_at: updatedAt, updated_at: updatedAt }).eq("user_id", userId);
-  } catch (_err) {
-  }
-}
-async function trySyncSnapshot({ baseUrl, userId, leaderboardPublic }) {
-  const serviceRoleKey = getServiceRoleKey();
-  if (!serviceRoleKey) return;
-  const anonKey = getAnonKey();
-  const serviceClient = createClient({
-    baseUrl,
-    anonKey: anonKey || serviceRoleKey,
-    edgeFunctionToken: serviceRoleKey
-  });
-  const windows = computeWindows();
-  let profileRow = null;
-  try {
-    const { data } = await serviceClient.database.from("users").select("nickname,avatar_url,profile,metadata").eq("id", userId).maybeSingle();
-    profileRow = data || null;
-  } catch (_err) {
-    profileRow = null;
-  }
-  const hasActivePublicLink = leaderboardPublic ? await loadHasActivePublicLink({ serviceClient, userId }) : false;
-  const isPublic = leaderboardPublic && hasActivePublicLink;
-  const resolvedDisplayName = resolveDisplayName(profileRow);
-  const resolvedAvatarUrl = resolveAvatarUrl(profileRow);
-  const displayName = isPublic ? resolvedDisplayName || "Anonymous" : "Anonymous";
-  const nextAvatarUrl = isPublic ? resolvedAvatarUrl : null;
-  for (const w of windows) {
-    try {
-      await serviceClient.database.from("vibeusage_leaderboard_snapshots").update({ display_name: displayName, avatar_url: nextAvatarUrl, is_public: isPublic }).eq("period", w.period).eq("from_day", w.from).eq("to_day", w.to).eq("user_id", userId);
-    } catch (_err) {
-    }
-  }
-}
-async function loadHasActivePublicLink({ serviceClient, userId }) {
-  try {
-    const { data, error } = await serviceClient.database.from("vibeusage_public_views").select("user_id").eq("user_id", userId).is("revoked_at", null).maybeSingle();
-    if (error) return false;
-    return typeof data?.user_id === "string";
-  } catch (_err) {
-    return false;
-  }
-}
-function computeWindows() {
-  const now = /* @__PURE__ */ new Date();
-  const today = toUtcDay(now);
-  const year = today.getUTCFullYear();
-  const month = today.getUTCMonth();
-  const dow = today.getUTCDay();
-  const weekFrom = formatDateUTC(addUtcDays(today, -dow));
-  const weekTo = formatDateUTC(addUtcDays(today, -dow + 6));
-  const monthFrom = formatDateUTC(new Date(Date.UTC(year, month, 1)));
-  const monthTo = formatDateUTC(new Date(Date.UTC(year, month + 1, 0)));
-  const totalFrom = "1970-01-01";
-  const totalTo = "9999-12-31";
-  return [
-    { period: "week", from: weekFrom, to: weekTo },
-    { period: "month", from: monthFrom, to: monthTo },
-    { period: "total", from: totalFrom, to: totalTo }
-  ];
-}
-function resolveDisplayName(row) {
-  const profile = isObject(row?.profile) ? row.profile : null;
-  const metadata = isObject(row?.metadata) ? row.metadata : null;
-  return sanitizeName(row?.nickname) || sanitizeName(profile?.name) || sanitizeName(profile?.full_name) || sanitizeName(metadata?.full_name) || sanitizeName(metadata?.name) || null;
-}
-function resolveAvatarUrl(row) {
-  const profile = isObject(row?.profile) ? row.profile : null;
-  const metadata = isObject(row?.metadata) ? row.metadata : null;
-  return sanitizeAvatarUrl(row?.avatar_url) || sanitizeAvatarUrl(profile?.avatar_url) || sanitizeAvatarUrl(metadata?.avatar_url) || sanitizeAvatarUrl(metadata?.picture) || null;
-}
-function sanitizeName(value) {
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  if (trimmed.includes("@")) return null;
-  if (trimmed.length > 128) return trimmed.slice(0, 128);
-  return trimmed;
-}
-function sanitizeAvatarUrl(value) {
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  if (trimmed.length > 1024) return null;
-  try {
-    const url = new URL(trimmed);
-    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
-    return url.toString();
-  } catch (_e) {
-    return null;
-  }
-}
-function isObject(value) {
-  return Boolean(value && typeof value === "object");
-}
+  return json({ error: "Endpoint retired" }, 410);
+});

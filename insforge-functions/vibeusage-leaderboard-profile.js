@@ -104,10 +104,6 @@ var require_public_view = __commonJS({
       if (!resolvedUserId) {
         return { ok: false, edgeClient: null, userId: null };
       }
-      const { data: settings, error: settingsErr } = await dbClient.database.from("vibeusage_user_settings").select("leaderboard_public").eq("user_id", resolvedUserId).maybeSingle();
-      if (settingsErr || settings?.leaderboard_public !== true) {
-        return { ok: false, edgeClient: null, userId: null };
-      }
       return { ok: true, edgeClient: dbClient, userId: resolvedUserId };
     }
     async function resolvePublicUserId({ dbClient, token }) {
@@ -305,11 +301,7 @@ var require_auth = __commonJS({
     }
     async function getEdgeClientAndUserIdFast({ baseUrl, bearer }) {
       const anonKey = getAnonKey2();
-      const edgeClient = createClient({
-        baseUrl,
-        anonKey: anonKey || void 0,
-        edgeFunctionToken: bearer
-      });
+      const edgeClient = createClient({ baseUrl, anonKey: anonKey || void 0, edgeFunctionToken: bearer });
       const local = await verifyUserJwtHs256({ token: bearer });
       const allowRemoteOnly = !local.ok && local?.code === "missing_jwt_secret";
       if (!local.ok && !allowRemoteOnly) {
@@ -418,14 +410,7 @@ var require_auth = __commonJS({
       }
       const publicView = await resolvePublicView({ baseUrl, shareToken: bearer });
       if (!publicView.ok) {
-        return {
-          ok: false,
-          edgeClient: null,
-          userId: null,
-          accessType: null,
-          status: 401,
-          error: "Unauthorized"
-        };
+        return { ok: false, edgeClient: null, userId: null, accessType: null, status: 401, error: "Unauthorized" };
       }
       return {
         ok: true,
@@ -650,14 +635,7 @@ var require_date = __commonJS({
     }
     function getTimeZoneOffsetMinutes(date, timeZone) {
       const parts = getTimeZoneParts(date, timeZone);
-      const asUtc = Date.UTC(
-        parts.year,
-        parts.month - 1,
-        parts.day,
-        parts.hour,
-        parts.minute,
-        parts.second
-      );
+      const asUtc = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second);
       return Math.round((asUtc - date.getTime()) / 6e4);
     }
     function getLocalParts(date, tzContext) {
@@ -842,10 +820,13 @@ module.exports = async function(request) {
   const methodErr = requireMethod(request, "GET");
   if (methodErr) return methodErr;
   const bearer = getBearerToken(request.headers.get("Authorization"));
-  if (!bearer) return json({ error: "Missing bearer token" }, 401);
   const baseUrl = getBaseUrl();
-  const auth = await getEdgeClientAndUserId({ baseUrl, bearer });
-  if (!auth.ok) return json({ error: auth.error || "Unauthorized" }, auth.status || 401);
+  let auth = { ok: false, edgeClient: null, userId: null };
+  if (bearer) {
+    auth = await getEdgeClientAndUserId({ baseUrl, bearer });
+    if (!auth.ok) return json({ error: auth.error || "Unauthorized" }, auth.status || 401);
+  }
+  const viewerUserId = auth.ok ? auth.userId : null;
   const url = new URL(request.url);
   const period = normalizePeriod(url.searchParams.get("period")) || "week";
   const requestedUserId = normalizeUserId(url.searchParams.get("user_id"));
@@ -859,11 +840,8 @@ module.exports = async function(request) {
     anonKey: anonKey || serviceRoleKey,
     edgeFunctionToken: serviceRoleKey
   });
-  const isSelf = requestedUserId === auth.userId;
+  const isSelf = viewerUserId ? requestedUserId === viewerUserId : false;
   if (!isSelf) {
-    const { data: settings, error: settingsErr } = await serviceClient.database.from("vibeusage_user_settings").select("leaderboard_public").eq("user_id", requestedUserId).maybeSingle();
-    if (settingsErr) return json({ error: "Failed to resolve leaderboard settings" }, 500);
-    if (!settings?.leaderboard_public) return json({ error: "Not found" }, 404);
     const { data: activeLink, error: activeLinkErr } = await serviceClient.database.from("vibeusage_public_views").select("user_id").eq("user_id", requestedUserId).is("revoked_at", null).limit(1).maybeSingle();
     if (activeLinkErr) return json({ error: "Failed to resolve public share state" }, 500);
     if (!activeLink?.user_id) return json({ error: "Not found" }, 404);
@@ -874,7 +852,6 @@ module.exports = async function(request) {
   if (snapshotErr)
     return json({ error: snapshotErr.message || "Failed to fetch leaderboard snapshot" }, 500);
   if (!snapshot) return json({ error: "Not found" }, 404);
-  if (!isSelf && snapshot.is_public !== true) return json({ error: "Not found" }, 404);
   return json(
     {
       period,

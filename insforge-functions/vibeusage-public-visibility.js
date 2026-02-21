@@ -31,7 +31,7 @@ var require_http = __commonJS({
         }
       });
     }
-    function requireMethod2(request, method) {
+    function requireMethod(request, method) {
       if (request.method !== method) return json2({ error: "Method not allowed" }, 405);
       return null;
     }
@@ -50,143 +50,9 @@ var require_http = __commonJS({
       corsHeaders,
       handleOptions: handleOptions2,
       json: json2,
-      requireMethod: requireMethod2,
+      requireMethod,
       readJson: readJson2
     };
-  }
-});
-
-// insforge-src/shared/logging.js
-var require_logging = __commonJS({
-  "insforge-src/shared/logging.js"(exports2, module2) {
-    "use strict";
-    function createRequestId() {
-      if (globalThis?.crypto?.randomUUID) return globalThis.crypto.randomUUID();
-      return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
-    }
-    function errorCodeFromStatus(status) {
-      if (typeof status !== "number") return "UNKNOWN_ERROR";
-      if (status >= 500) return "SERVER_ERROR";
-      if (status >= 400) return "CLIENT_ERROR";
-      return null;
-    }
-    function createLogger({ functionName }) {
-      const requestId = createRequestId();
-      const startMs = Date.now();
-      let upstreamStatus = null;
-      let upstreamLatencyMs = null;
-      function recordUpstream(status, latencyMs) {
-        upstreamStatus = typeof status === "number" ? status : null;
-        upstreamLatencyMs = typeof latencyMs === "number" ? latencyMs : null;
-      }
-      async function fetchWithUpstream(url, init) {
-        const upstreamStart = Date.now();
-        try {
-          const res = await fetch(url, init);
-          recordUpstream(res.status, Date.now() - upstreamStart);
-          return res;
-        } catch (err) {
-          recordUpstream(null, Date.now() - upstreamStart);
-          throw err;
-        }
-      }
-      function log({ stage, status, errorCode, ...extra }) {
-        const payload = {
-          ...extra || {},
-          request_id: requestId,
-          function: functionName,
-          stage: stage || "response",
-          status: typeof status === "number" ? status : null,
-          latency_ms: Date.now() - startMs,
-          error_code: errorCode ?? errorCodeFromStatus(status),
-          upstream_status: upstreamStatus ?? null,
-          upstream_latency_ms: upstreamLatencyMs ?? null
-        };
-        console.log(JSON.stringify(payload));
-      }
-      return {
-        requestId,
-        log,
-        fetch: fetchWithUpstream
-      };
-    }
-    function getResponseStatus(response) {
-      if (response && typeof response.status === "number") return response.status;
-      return null;
-    }
-    function resolveFunctionName(functionName, request) {
-      if (request && typeof request.url === "string") {
-        try {
-          const url = new URL(request.url);
-          const match = url.pathname.match(/\/functions\/([^/?#]+)/);
-          if (match && match[1]) return match[1];
-        } catch (_e) {
-        }
-      }
-      return functionName;
-    }
-    function withRequestLogging2(functionName, handler) {
-      return async function(request) {
-        const resolvedName = resolveFunctionName(functionName, request);
-        const logger = createLogger({ functionName: resolvedName });
-        try {
-          const response = await handler(request, logger);
-          const status = getResponseStatus(response);
-          logger.log({ stage: "response", status });
-          return response;
-        } catch (err) {
-          logger.log({ stage: "exception", status: 500, errorCode: "UNHANDLED_EXCEPTION" });
-          throw err;
-        }
-      };
-    }
-    module2.exports = {
-      withRequestLogging: withRequestLogging2,
-      logSlowQuery,
-      getSlowQueryThresholdMs
-    };
-    function logSlowQuery(logger, fields) {
-      if (!logger || typeof logger.log !== "function") return;
-      const durationMs = Number(fields?.duration_ms ?? fields?.durationMs);
-      if (!Number.isFinite(durationMs)) return;
-      const thresholdMs = getSlowQueryThresholdMs();
-      if (durationMs < thresholdMs) return;
-      logger.log({
-        stage: "slow_query",
-        status: 200,
-        ...fields || {},
-        duration_ms: Math.round(durationMs)
-      });
-    }
-    function getSlowQueryThresholdMs() {
-      const raw = readEnvValue("VIBEUSAGE_SLOW_QUERY_MS");
-      if (raw == null || raw === "") return 2e3;
-      const n = Number(raw);
-      if (!Number.isFinite(n)) return 2e3;
-      if (n <= 0) return 0;
-      return clampInt(n, 1, 6e4);
-    }
-    function readEnvValue(key) {
-      try {
-        if (typeof Deno !== "undefined" && Deno?.env?.get) {
-          const value = Deno.env.get(key);
-          if (value !== void 0) return value;
-        }
-      } catch (_e) {
-      }
-      try {
-        if (typeof process !== "undefined" && process?.env) {
-          return process.env[key];
-        }
-      } catch (_e) {
-      }
-      return null;
-    }
-    function clampInt(value, min, max) {
-      const n = Number(value);
-      if (!Number.isFinite(n)) return min;
-      return Math.min(max, Math.max(min, Math.floor(n)));
-    }
   }
 });
 
@@ -197,10 +63,10 @@ var require_env = __commonJS({
     function getBaseUrl2() {
       return Deno.env.get("INSFORGE_INTERNAL_URL") || "http://insforge:7130";
     }
-    function getServiceRoleKey2() {
+    function getServiceRoleKey() {
       return Deno.env.get("INSFORGE_SERVICE_ROLE_KEY") || Deno.env.get("SERVICE_ROLE_KEY") || Deno.env.get("INSFORGE_API_KEY") || Deno.env.get("API_KEY") || null;
     }
-    function getAnonKey2() {
+    function getAnonKey() {
       return Deno.env.get("ANON_KEY") || Deno.env.get("INSFORGE_ANON_KEY") || null;
     }
     function getJwtSecret() {
@@ -208,8 +74,8 @@ var require_env = __commonJS({
     }
     module2.exports = {
       getBaseUrl: getBaseUrl2,
-      getServiceRoleKey: getServiceRoleKey2,
-      getAnonKey: getAnonKey2,
+      getServiceRoleKey,
+      getAnonKey,
       getJwtSecret
     };
   }
@@ -219,16 +85,16 @@ var require_env = __commonJS({
 var require_public_view = __commonJS({
   "insforge-src/shared/public-view.js"(exports2, module2) {
     "use strict";
-    var { getAnonKey: getAnonKey2, getServiceRoleKey: getServiceRoleKey2 } = require_env();
+    var { getAnonKey, getServiceRoleKey } = require_env();
     var PUBLIC_USER_TOKEN_RE = /^pv1-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/;
     async function resolvePublicView({ baseUrl, shareToken }) {
       const token = normalizeShareToken(shareToken);
       if (!token) {
         return { ok: false, edgeClient: null, userId: null };
       }
-      const serviceRoleKey = getServiceRoleKey2();
+      const serviceRoleKey = getServiceRoleKey();
       if (!serviceRoleKey) return { ok: false, edgeClient: null, userId: null };
-      const anonKey = getAnonKey2();
+      const anonKey = getAnonKey();
       const dbClient = createClient({
         baseUrl,
         anonKey: anonKey || serviceRoleKey,
@@ -278,7 +144,7 @@ var require_public_view = __commonJS({
 var require_auth = __commonJS({
   "insforge-src/shared/auth.js"(exports2, module2) {
     "use strict";
-    var { getAnonKey: getAnonKey2, getJwtSecret } = require_env();
+    var { getAnonKey, getJwtSecret } = require_env();
     var { resolvePublicView, isPublicShareToken } = require_public_view();
     function getBearerToken2(headerValue) {
       if (!headerValue) return null;
@@ -434,7 +300,7 @@ var require_auth = __commonJS({
       return { ok: true, edgeClient: auth.edgeClient, userId: auth.userId };
     }
     async function getEdgeClientAndUserIdFast({ baseUrl, bearer }) {
-      const anonKey = getAnonKey2();
+      const anonKey = getAnonKey();
       const edgeClient = createClient({ baseUrl, anonKey: anonKey || void 0, edgeFunctionToken: bearer });
       const local = await verifyUserJwtHs256({ token: bearer });
       const allowRemoteOnly = !local.ok && local?.code === "missing_jwt_secret";
@@ -596,118 +462,288 @@ var require_auth = __commonJS({
   }
 });
 
+// insforge-src/shared/logging.js
+var require_logging = __commonJS({
+  "insforge-src/shared/logging.js"(exports2, module2) {
+    "use strict";
+    function createRequestId() {
+      if (globalThis?.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+      return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+    }
+    function errorCodeFromStatus(status) {
+      if (typeof status !== "number") return "UNKNOWN_ERROR";
+      if (status >= 500) return "SERVER_ERROR";
+      if (status >= 400) return "CLIENT_ERROR";
+      return null;
+    }
+    function createLogger({ functionName }) {
+      const requestId = createRequestId();
+      const startMs = Date.now();
+      let upstreamStatus = null;
+      let upstreamLatencyMs = null;
+      function recordUpstream(status, latencyMs) {
+        upstreamStatus = typeof status === "number" ? status : null;
+        upstreamLatencyMs = typeof latencyMs === "number" ? latencyMs : null;
+      }
+      async function fetchWithUpstream(url, init) {
+        const upstreamStart = Date.now();
+        try {
+          const res = await fetch(url, init);
+          recordUpstream(res.status, Date.now() - upstreamStart);
+          return res;
+        } catch (err) {
+          recordUpstream(null, Date.now() - upstreamStart);
+          throw err;
+        }
+      }
+      function log({ stage, status, errorCode, ...extra }) {
+        const payload = {
+          ...extra || {},
+          request_id: requestId,
+          function: functionName,
+          stage: stage || "response",
+          status: typeof status === "number" ? status : null,
+          latency_ms: Date.now() - startMs,
+          error_code: errorCode ?? errorCodeFromStatus(status),
+          upstream_status: upstreamStatus ?? null,
+          upstream_latency_ms: upstreamLatencyMs ?? null
+        };
+        console.log(JSON.stringify(payload));
+      }
+      return {
+        requestId,
+        log,
+        fetch: fetchWithUpstream
+      };
+    }
+    function getResponseStatus(response) {
+      if (response && typeof response.status === "number") return response.status;
+      return null;
+    }
+    function resolveFunctionName(functionName, request) {
+      if (request && typeof request.url === "string") {
+        try {
+          const url = new URL(request.url);
+          const match = url.pathname.match(/\/functions\/([^/?#]+)/);
+          if (match && match[1]) return match[1];
+        } catch (_e) {
+        }
+      }
+      return functionName;
+    }
+    function withRequestLogging2(functionName, handler) {
+      return async function(request) {
+        const resolvedName = resolveFunctionName(functionName, request);
+        const logger = createLogger({ functionName: resolvedName });
+        try {
+          const response = await handler(request, logger);
+          const status = getResponseStatus(response);
+          logger.log({ stage: "response", status });
+          return response;
+        } catch (err) {
+          logger.log({ stage: "exception", status: 500, errorCode: "UNHANDLED_EXCEPTION" });
+          throw err;
+        }
+      };
+    }
+    module2.exports = {
+      withRequestLogging: withRequestLogging2,
+      logSlowQuery,
+      getSlowQueryThresholdMs
+    };
+    function logSlowQuery(logger, fields) {
+      if (!logger || typeof logger.log !== "function") return;
+      const durationMs = Number(fields?.duration_ms ?? fields?.durationMs);
+      if (!Number.isFinite(durationMs)) return;
+      const thresholdMs = getSlowQueryThresholdMs();
+      if (durationMs < thresholdMs) return;
+      logger.log({
+        stage: "slow_query",
+        status: 200,
+        ...fields || {},
+        duration_ms: Math.round(durationMs)
+      });
+    }
+    function getSlowQueryThresholdMs() {
+      const raw = readEnvValue("VIBEUSAGE_SLOW_QUERY_MS");
+      if (raw == null || raw === "") return 2e3;
+      const n = Number(raw);
+      if (!Number.isFinite(n)) return 2e3;
+      if (n <= 0) return 0;
+      return clampInt(n, 1, 6e4);
+    }
+    function readEnvValue(key) {
+      try {
+        if (typeof Deno !== "undefined" && Deno?.env?.get) {
+          const value = Deno.env.get(key);
+          if (value !== void 0) return value;
+        }
+      } catch (_e) {
+      }
+      try {
+        if (typeof process !== "undefined" && process?.env) {
+          return process.env[key];
+        }
+      } catch (_e) {
+      }
+      return null;
+    }
+    function clampInt(value, min, max) {
+      const n = Number(value);
+      if (!Number.isFinite(n)) return min;
+      return Math.min(max, Math.max(min, Math.floor(n)));
+    }
+  }
+});
+
 // insforge-src/shared/crypto.js
 var require_crypto = __commonJS({
   "insforge-src/shared/crypto.js"(exports2, module2) {
     "use strict";
-    async function sha256Hex2(input) {
+    async function sha256Hex(input) {
       const data = new TextEncoder().encode(input);
       const hash = await crypto.subtle.digest("SHA-256", data);
       return Array.from(new Uint8Array(hash)).map((b) => b.toString(16).padStart(2, "0")).join("");
     }
     module2.exports = {
-      sha256Hex: sha256Hex2
+      sha256Hex
     };
   }
 });
 
-// insforge-src/functions/vibeusage-device-token-issue.js
-var { handleOptions, json, requireMethod, readJson } = require_http();
-var { withRequestLogging } = require_logging();
+// insforge-src/shared/public-visibility.js
+var require_public_visibility = __commonJS({
+  "insforge-src/shared/public-visibility.js"(exports2, module2) {
+    "use strict";
+    var { sha256Hex } = require_crypto();
+    function buildPublicShareToken(userId) {
+      if (typeof userId !== "string") return "";
+      const normalized = userId.trim().toLowerCase();
+      if (!normalized) return "";
+      return `pv1-${normalized}`;
+    }
+    function disabledState() {
+      return {
+        enabled: false,
+        updated_at: null,
+        share_token: null
+      };
+    }
+    function normalizeUpdatedAt(value) {
+      return typeof value === "string" ? value : null;
+    }
+    async function getPublicVisibilityState2({ edgeClient, userId }) {
+      if (!edgeClient || typeof userId !== "string" || userId.trim().length === 0) {
+        return disabledState();
+      }
+      try {
+        const { data, error } = await edgeClient.database.from("vibeusage_public_views").select("user_id,revoked_at,updated_at").eq("user_id", userId).maybeSingle();
+        if (error) return disabledState();
+        const enabled = Boolean(data && !data.revoked_at);
+        return {
+          enabled,
+          updated_at: normalizeUpdatedAt(data?.updated_at),
+          share_token: enabled ? buildPublicShareToken(userId) : null
+        };
+      } catch (_err) {
+        return disabledState();
+      }
+    }
+    async function setPublicVisibilityState2({ edgeClient, userId, enabled, nowIso }) {
+      if (!edgeClient) throw new TypeError("edgeClient is required");
+      if (typeof userId !== "string" || userId.trim().length === 0) {
+        throw new TypeError("userId is required");
+      }
+      if (typeof enabled !== "boolean") {
+        throw new TypeError("enabled must be boolean");
+      }
+      if (enabled) {
+        await enablePublicVisibility({ edgeClient, userId, nowIso });
+      } else {
+        await disablePublicVisibility({ edgeClient, userId, nowIso });
+      }
+      return getPublicVisibilityState2({ edgeClient, userId });
+    }
+    async function enablePublicVisibility({ edgeClient, userId, nowIso }) {
+      const table = edgeClient.database.from("vibeusage_public_views");
+      const shareToken = buildPublicShareToken(userId);
+      const tokenHash = await sha256Hex(shareToken);
+      const updatedAt = typeof nowIso === "string" && nowIso ? nowIso : (/* @__PURE__ */ new Date()).toISOString();
+      const nextRow = {
+        user_id: userId,
+        token_hash: tokenHash,
+        revoked_at: null,
+        updated_at: updatedAt
+      };
+      if (typeof table.upsert === "function") {
+        try {
+          const { error: upsertErr } = await table.upsert([nextRow], { onConflict: "user_id" });
+          if (!upsertErr) return;
+        } catch (_err) {
+        }
+      }
+      const { data: existing, error: selectErr } = await table.select("user_id").eq("user_id", userId).maybeSingle();
+      if (selectErr) throw new Error(selectErr.message || "Failed to select public visibility row");
+      if (existing?.user_id) {
+        const { error: updateErr } = await table.update({ token_hash: tokenHash, revoked_at: null, updated_at: updatedAt }).eq("user_id", userId);
+        if (updateErr) throw new Error(updateErr.message || "Failed to update public visibility row");
+        return;
+      }
+      const { error: insertErr } = await table.insert([nextRow]);
+      if (insertErr) throw new Error(insertErr.message || "Failed to insert public visibility row");
+    }
+    async function disablePublicVisibility({ edgeClient, userId, nowIso }) {
+      const updatedAt = typeof nowIso === "string" && nowIso ? nowIso : (/* @__PURE__ */ new Date()).toISOString();
+      const { error } = await edgeClient.database.from("vibeusage_public_views").update({ revoked_at: updatedAt, updated_at: updatedAt }).eq("user_id", userId);
+      if (error) throw new Error(error.message || "Failed to revoke public visibility row");
+    }
+    module2.exports = {
+      buildPublicShareToken,
+      getPublicVisibilityState: getPublicVisibilityState2,
+      setPublicVisibilityState: setPublicVisibilityState2
+    };
+  }
+});
+
+// insforge-src/functions/vibeusage-public-visibility.js
+var { handleOptions, json, readJson } = require_http();
 var { getBearerToken, getEdgeClientAndUserId } = require_auth();
-var { getBaseUrl, getAnonKey, getServiceRoleKey } = require_env();
-var { sha256Hex } = require_crypto();
-var ISSUE_ERROR_MESSAGE = "Failed to issue device token";
-module.exports = withRequestLogging("vibeusage-device-token-issue", async function(request) {
+var { getBaseUrl } = require_env();
+var { withRequestLogging } = require_logging();
+var {
+  getPublicVisibilityState,
+  setPublicVisibilityState
+} = require_public_visibility();
+module.exports = withRequestLogging("vibeusage-public-visibility", async function(request) {
   const opt = handleOptions(request);
   if (opt) return opt;
-  const methodErr = requireMethod(request, "POST");
-  if (methodErr) return methodErr;
+  if (request.method !== "GET" && request.method !== "POST") {
+    return json({ error: "Method not allowed" }, 405);
+  }
   const bearer = getBearerToken(request.headers.get("Authorization"));
   if (!bearer) return json({ error: "Missing bearer token" }, 401);
+  const baseUrl = getBaseUrl();
+  const auth = await getEdgeClientAndUserId({ baseUrl, bearer });
+  if (!auth.ok) return json({ error: auth.error || "Unauthorized" }, auth.status || 401);
+  if (request.method === "GET") {
+    const state = await getPublicVisibilityState({ edgeClient: auth.edgeClient, userId: auth.userId });
+    return json(state, 200);
+  }
   const body = await readJson(request);
   if (body.error) return json({ error: body.error }, body.status);
-  const baseUrl = getBaseUrl();
-  const serviceRoleKey = getServiceRoleKey();
-  const adminMode = Boolean(serviceRoleKey && bearer === serviceRoleKey);
-  let userId = null;
-  let dbClient = null;
-  if (adminMode) {
-    userId = typeof body.data?.user_id === "string" ? body.data.user_id : null;
-    if (!userId) return json({ error: "user_id is required (admin mode)" }, 400);
-    const anonKey = getAnonKey();
-    dbClient = createClient({
-      baseUrl,
-      anonKey: anonKey || serviceRoleKey,
-      edgeFunctionToken: serviceRoleKey
-    });
-  } else {
-    const auth = await getEdgeClientAndUserId({ baseUrl, bearer });
-    if (!auth.ok) return json({ error: auth.error || "Unauthorized" }, auth.status || 401);
-    userId = auth.userId;
-    dbClient = auth.edgeClient;
+  const enabled = body.data?.enabled;
+  if (typeof enabled !== "boolean") {
+    return json({ error: "enabled must be boolean" }, 400);
   }
-  const deviceName = sanitizeText(body.data?.device_name, 128) || (Deno.env.get("HOSTNAME") ? `macOS (${Deno.env.get("HOSTNAME")})` : "macOS");
-  const platform = sanitizeText(body.data?.platform, 32) || "macos";
-  const deviceId = crypto.randomUUID();
-  const tokenId = crypto.randomUUID();
-  const token = generateToken();
-  const tokenHash = await sha256Hex(token);
-  const { error: deviceErr } = await dbClient.database.from("vibeusage_tracker_devices").insert([
-    {
-      id: deviceId,
-      user_id: userId,
-      device_name: deviceName,
-      platform
-    }
-  ]);
-  if (deviceErr) {
-    logIssueError("device insert failed", ISSUE_ERROR_MESSAGE);
-    return json({ error: ISSUE_ERROR_MESSAGE }, 500);
-  }
-  const { error: tokenErr } = await dbClient.database.from("vibeusage_tracker_device_tokens").insert([
-    {
-      id: tokenId,
-      user_id: userId,
-      device_id: deviceId,
-      token_hash: tokenHash
-    }
-  ]);
-  if (tokenErr) {
-    logIssueError("token insert failed", ISSUE_ERROR_MESSAGE);
-    await bestEffortDeleteDevice({ dbClient, deviceId, userId });
-    return json({ error: ISSUE_ERROR_MESSAGE }, 500);
-  }
-  return json(
-    {
-      device_id: deviceId,
-      token,
-      created_at: (/* @__PURE__ */ new Date()).toISOString()
-    },
-    200
-  );
-});
-function sanitizeText(value, maxLen) {
-  if (typeof value !== "string") return null;
-  const s = value.trim();
-  if (s.length === 0) return null;
-  return s.length > maxLen ? s.slice(0, maxLen) : s;
-}
-function generateToken() {
-  return crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
-}
-async function bestEffortDeleteDevice({ dbClient, deviceId, userId }) {
   try {
-    let query = dbClient.database.from("vibeusage_tracker_devices").delete().eq("id", deviceId);
-    if (userId) query = query.eq("user_id", userId);
-    const { error } = await query;
-    if (error) {
-      logIssueError("compensation delete failed", ISSUE_ERROR_MESSAGE);
-    }
-  } catch (_err) {
-    logIssueError("compensation delete threw", ISSUE_ERROR_MESSAGE);
+    const state = await setPublicVisibilityState({
+      edgeClient: auth.edgeClient,
+      userId: auth.userId,
+      enabled,
+      nowIso: (/* @__PURE__ */ new Date()).toISOString()
+    });
+    return json(state, 200);
+  } catch (err) {
+    return json({ error: err?.message || "Failed to update public visibility" }, 500);
   }
-}
-function logIssueError(stage, message) {
-  console.error(`device token issue ${stage}: ${message}`);
-}
+});

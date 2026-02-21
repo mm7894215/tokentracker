@@ -15,11 +15,10 @@ import {
   toFiniteNumber,
 } from "../lib/format";
 import {
-  getLeaderboardSettings,
-  setLeaderboardSettings,
+  getPublicVisibility,
+  setPublicVisibility,
   getUserStatus,
   getPublicViewProfile,
-  issuePublicViewToken,
   requestInstallLinkCode,
 } from "../lib/vibeusage-api";
 import { buildFleetData, buildTopModels } from "../lib/model-breakdown";
@@ -266,14 +265,14 @@ export function DashboardPage({
         return;
       }
       try {
-        const data = await getLeaderboardSettings({
+        const data = await getPublicVisibility({
           baseUrl,
           accessToken: resolvedToken,
         });
         if (!active) return;
-        const enabled = Boolean(data?.leaderboard_public);
+        const enabled = Boolean(data?.enabled);
         setPublicViewEnabled(enabled);
-        setPublicViewToken(null);
+        setPublicViewToken(data?.share_token || null);
       } catch (_err) {
         if (!active) return;
         setPublicViewEnabled(false);
@@ -1210,7 +1209,7 @@ export function DashboardPage({
           setPublicViewActionLoading(false);
           return;
         }
-        const data = await issuePublicViewToken({
+        const data = await getPublicVisibility({
           baseUrl,
           accessToken: resolvedToken,
         });
@@ -1251,14 +1250,14 @@ export function DashboardPage({
         return;
       }
       const nextValue = !publicViewEnabled;
-      const data = await setLeaderboardSettings({
+      const data = await setPublicVisibility({
         baseUrl,
         accessToken: resolvedToken,
-        leaderboardPublic: nextValue,
+        enabled: nextValue,
       });
-      const enabled = Boolean(data?.leaderboard_public);
+      const enabled = Boolean(data?.enabled);
       setPublicViewEnabled(enabled);
-      if (!enabled) setPublicViewToken(null);
+      setPublicViewToken(data?.share_token || null);
     } catch (_err) {
       // ignore toggle errors
     } finally {
