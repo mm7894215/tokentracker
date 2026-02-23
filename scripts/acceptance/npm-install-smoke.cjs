@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 
-const { spawnSync } = require('child_process');
+const { spawnSync } = require("child_process");
 
 function run(cmd, args, options = {}) {
   return spawnSync(cmd, args, {
-    stdio: 'pipe',
-    encoding: 'utf8',
-    ...options
+    stdio: "pipe",
+    encoding: "utf8",
+    ...options,
   });
 }
 
@@ -15,14 +15,14 @@ function fail(message) {
   process.exit(1);
 }
 
-const pack = run('npm', ['pack', '--dry-run', '--json']);
+const pack = run("npm", ["pack", "--dry-run", "--json"]);
 if (pack.status !== 0) {
   fail(`npm pack --dry-run failed:\n${pack.stderr || pack.stdout}`);
 }
 
 let payload = pack.stdout.trim();
 if (!payload) {
-  fail('npm pack --dry-run returned empty output.');
+  fail("npm pack --dry-run returned empty output.");
 }
 
 let data;
@@ -33,20 +33,22 @@ try {
 }
 
 const files = new Set((data[0]?.files || []).map((file) => file.path));
-const required = ['package.json', 'bin/tracker.js', 'src/cli.js'];
+const required = ["package.json", "bin/tracker.js", "src/cli.js"];
 const missing = required.filter((file) => !files.has(file));
 
 if (missing.length > 0) {
-  fail(`Missing required files in npm pack output: ${missing.join(', ')}`);
+  fail(`Missing required files in npm pack output: ${missing.join(", ")}`);
 }
 
-process.stdout.write('npm pack --dry-run ok: required files present.\n');
+process.stdout.write("npm pack --dry-run ok: required files present.\n");
 
-if (process.env.VIBEUSAGE_RUN_NPX === '1') {
-  const npx = run('npx', ['--yes', 'vibeusage', '--help'], { stdio: 'inherit' });
+if (process.env.VIBEUSAGE_RUN_NPX === "1") {
+  const npx = run("npx", ["--yes", "vibeusage", "--help"], { stdio: "inherit" });
   if (npx.status !== 0) {
-    fail('npx vibeusage --help failed. Ensure the package is published publicly.');
+    fail("npx vibeusage --help failed. Ensure the package is published publicly.");
   }
 } else {
-  process.stdout.write('To verify after publish: VIBEUSAGE_RUN_NPX=1 node scripts/acceptance/npm-install-smoke.cjs\n');
+  process.stdout.write(
+    "To verify after publish: VIBEUSAGE_RUN_NPX=1 node scripts/acceptance/npm-install-smoke.cjs\n",
+  );
 }

@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-
 import { copy } from "../../../lib/copy";
 import { AsciiBox } from "../../foundation/AsciiBox.jsx";
 
@@ -42,9 +41,7 @@ export function TrendMonitor({
       }));
   const statsValues = seriesValues.filter((val) => Number.isFinite(val));
   const max = Math.max(...(statsValues.length ? statsValues : [0]), 100);
-  const avg = statsValues.length
-    ? statsValues.reduce((a, b) => a + b, 0) / statsValues.length
-    : 0;
+  const avg = statsValues.length ? statsValues.reduce((a, b) => a + b, 0) / statsValues.length : 0;
 
   const width = 100;
   const height = 100;
@@ -53,13 +50,11 @@ export function TrendMonitor({
   const plotWidth = width - axisWidthView;
   const pointCount = Math.max(seriesValues.length, 1);
   const DAY_AXIS_POINT_COUNT = 48;
-  const dayStep =
-    DAY_AXIS_POINT_COUNT > 1 ? plotWidth / (DAY_AXIS_POINT_COUNT - 1) : 0;
+  const dayStep = DAY_AXIS_POINT_COUNT > 1 ? plotWidth / (DAY_AXIS_POINT_COUNT - 1) : 0;
   const dayPadding = Math.min(dayStep / 2, plotWidth * 0.12);
   const xPadding = pointCount > 1 ? dayPadding : plotWidth / 2;
   const plotSpan = Math.max(plotWidth - xPadding * 2, 0);
-  const stepWithPadding =
-    pointCount > 1 ? plotSpan / (pointCount - 1) : 0;
+  const stepWithPadding = pointCount > 1 ? plotSpan / (pointCount - 1) : 0;
   const pointRadius = 2.4;
   const plotTop = Math.max(6, pointRadius + 3);
   const plotBottom = Math.max(8, pointRadius + 4);
@@ -161,13 +156,9 @@ export function TrendMonitor({
     const totalMs = end.getTime() - start.getTime();
     const steps = [0, 0.25, 0.5, 0.75, 1];
     if (period === "total") {
-      return steps.map((ratio) =>
-        formatMonth(new Date(start.getTime() + totalMs * ratio))
-      );
+      return steps.map((ratio) => formatMonth(new Date(start.getTime() + totalMs * ratio)));
     }
-    return steps.map((ratio) =>
-      formatAxisDate(new Date(start.getTime() + totalMs * ratio))
-    );
+    return steps.map((ratio) => formatAxisDate(new Date(start.getTime() + totalMs * ratio)));
   }
 
   function formatCompact(value) {
@@ -230,34 +221,21 @@ export function TrendMonitor({
         }
         return;
       }
-      const x =
-        pointCount > 1 ? xPadding + i * stepWithPadding : plotWidth / 2;
+      const x = pointCount > 1 ? xPadding + i * stepWithPadding : plotWidth / 2;
       const normalizedVal = max > 0 ? val / max : 0;
       const y = plotTop + (1 - normalizedVal) * plotHeight;
       current.push({ x, y, index: i, value: val });
     });
     if (current.length) segments.push(current);
     return segments;
-  }, [
-    max,
-    plotHeight,
-    plotTop,
-    plotWidth,
-    pointCount,
-    seriesValues,
-    stepWithPadding,
-    xPadding,
-  ]);
+  }, [max, plotHeight, plotTop, plotWidth, pointCount, seriesValues, stepWithPadding, xPadding]);
   const singlePoints = useMemo(() => {
     if (!lineSegments.length) return [];
     return lineSegments
       .filter((segment) => segment.length === 1)
       .map((segment, idx) => {
         const pt = segment[0];
-        const clampedY = Math.min(
-          Math.max(pt.y, plotTop + pointRadius),
-          plotTop + plotHeight
-        );
+        const clampedY = Math.min(Math.max(pt.y, plotTop + pointRadius), plotTop + plotHeight);
         return { key: `single-${idx}`, x: pt.x, y: clampedY };
       });
   }, [lineSegments, plotHeight, plotTop, pointRadius]);
@@ -325,8 +303,7 @@ export function TrendMonitor({
     if (!el || seriesValues.length === 0) return;
     const rect = el.getBoundingClientRect();
     const axisWidthPx =
-      axisRef.current?.getBoundingClientRect().width ??
-      (axisWidthView / width) * rect.width;
+      axisRef.current?.getBoundingClientRect().width ?? (axisWidthView / width) * rect.width;
     const plotWidthPx = rect.width - axisWidthPx;
     const rawX = Math.min(Math.max(e.clientX - rect.left, 0), plotWidthPx);
     const xPaddingPx = plotWidth > 0 ? (xPadding / plotWidth) * plotWidthPx : 0;
@@ -342,13 +319,10 @@ export function TrendMonitor({
     }
     const rawValue = seriesValues[index];
     const value = Number.isFinite(rawValue) ? rawValue : 0;
-    const snappedX =
-      denom > 0 ? xPaddingPx + (index / denom) * plotSpanPx : plotWidthPx / 2;
+    const snappedX = denom > 0 ? xPaddingPx + (index / denom) * plotSpanPx : plotWidthPx / 2;
     const labelText = seriesLabels[index] || "";
     const yRatio = max > 0 ? 1 - value / max : 1;
-    const yPx =
-      (plotTop / height) * rect.height +
-      yRatio * (plotHeight / height) * rect.height;
+    const yPx = (plotTop / height) * rect.height + yRatio * (plotHeight / height) * rect.height;
     setHover({
       index,
       value,
@@ -367,11 +341,7 @@ export function TrendMonitor({
   }
 
   return (
-    <AsciiBox
-      title={label}
-      className={`w-full ${className}`}
-      bodyClassName="flex flex-col gap-3"
-    >
+    <AsciiBox title={label} className={`w-full ${className}`} bodyClassName="flex flex-col gap-3">
       <div className="flex items-center justify-between text-caption text-matrix-muted px-1">
         <div className="flex gap-3">
           <span>{copy("trend.monitor.max_label", { value: Math.round(max) })}</span>
@@ -477,16 +447,11 @@ export function TrendMonitor({
             <div
               className="absolute z-30 px-3 py-2 text-caption bg-matrix-panelStrong border border-matrix-ghost text-matrix-bright pointer-events-none"
               style={{
-                left: Math.min(
-                  hover.x + 10,
-                  hover.rectWidth - hover.axisWidthPx - 120
-                ),
+                left: Math.min(hover.x + 10, hover.rectWidth - hover.axisWidthPx - 120),
                 top: Math.max(hover.y - 24, 6),
               }}
             >
-              <div className="text-matrix-muted">
-                {formatTooltipLabel(hover.label)}
-              </div>
+              <div className="text-matrix-muted">{formatTooltipLabel(hover.label)}</div>
               {hover.missing ? (
                 <div className="font-bold">{copy("shared.status.unsynced")}</div>
               ) : (

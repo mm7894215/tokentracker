@@ -1,21 +1,21 @@
-const os = require('node:os');
-const path = require('node:path');
-const fs = require('node:fs/promises');
+const os = require("node:os");
+const path = require("node:path");
+const fs = require("node:fs/promises");
 
-const { ensureDir, readJson, writeJson } = require('./fs');
+const { ensureDir, readJson, writeJson } = require("./fs");
 
-const DEFAULT_EVENT = 'SessionEnd';
-const DEFAULT_HOOK_NAME = 'vibeusage-tracker';
-const DEFAULT_MATCHER = 'exit|clear|logout|prompt_input_exit|other';
+const DEFAULT_EVENT = "SessionEnd";
+const DEFAULT_HOOK_NAME = "vibeusage-tracker";
+const DEFAULT_MATCHER = "exit|clear|logout|prompt_input_exit|other";
 
 function resolveGeminiConfigDir({ home = os.homedir(), env = process.env } = {}) {
-  const explicit = typeof env.GEMINI_HOME === 'string' ? env.GEMINI_HOME.trim() : '';
+  const explicit = typeof env.GEMINI_HOME === "string" ? env.GEMINI_HOME.trim() : "";
   if (explicit) return path.resolve(explicit);
-  return path.join(home, '.gemini');
+  return path.join(home, ".gemini");
 }
 
 function resolveGeminiSettingsPath({ configDir }) {
-  return path.join(configDir, 'settings.json');
+  return path.join(configDir, "settings.json");
 }
 
 async function upsertGeminiHook({
@@ -23,7 +23,7 @@ async function upsertGeminiHook({
   hookCommand,
   hookName = DEFAULT_HOOK_NAME,
   matcher = DEFAULT_MATCHER,
-  event = DEFAULT_EVENT
+  event = DEFAULT_EVENT,
 }) {
   const existing = await readJson(settingsPath);
   const settings = normalizeSettings(existing);
@@ -53,15 +53,15 @@ async function removeGeminiHook({
   settingsPath,
   hookCommand,
   hookName = DEFAULT_HOOK_NAME,
-  event = DEFAULT_EVENT
+  event = DEFAULT_EVENT,
 }) {
   const existing = await readJson(settingsPath);
-  if (!existing) return { removed: false, skippedReason: 'settings-missing' };
+  if (!existing) return { removed: false, skippedReason: "settings-missing" };
 
   const settings = normalizeSettings(existing);
   const hooks = normalizeHooks(settings.hooks);
   const entries = normalizeEntries(hooks[event]);
-  if (entries.length === 0) return { removed: false, skippedReason: 'hook-missing' };
+  if (entries.length === 0) return { removed: false, skippedReason: "hook-missing" };
 
   let removed = false;
   const nextEntries = [];
@@ -71,7 +71,7 @@ async function removeGeminiHook({
     if (res.entry) nextEntries.push(res.entry);
   }
 
-  if (!removed) return { removed: false, skippedReason: 'hook-missing' };
+  if (!removed) return { removed: false, skippedReason: "hook-missing" };
 
   const nextHooks = { ...hooks };
   if (nextEntries.length > 0) nextHooks[event] = nextEntries;
@@ -89,42 +89,42 @@ async function isGeminiHookConfigured({
   settingsPath,
   hookCommand,
   hookName = DEFAULT_HOOK_NAME,
-  event = DEFAULT_EVENT
+  event = DEFAULT_EVENT,
 }) {
   const settings = await readJson(settingsPath);
-  if (!settings || typeof settings !== 'object') return false;
+  if (!settings || typeof settings !== "object") return false;
   const hooks = settings.hooks;
-  if (!hooks || typeof hooks !== 'object') return false;
+  if (!hooks || typeof hooks !== "object") return false;
   const entries = normalizeEntries(hooks[event]);
   return hasHook(entries, { hookCommand, hookName });
 }
 
 function buildGeminiHookCommand(notifyPath) {
-  const cmd = typeof notifyPath === 'string' ? notifyPath : '';
+  const cmd = typeof notifyPath === "string" ? notifyPath : "";
   return `/usr/bin/env node ${quoteArg(cmd)} --source=gemini`;
 }
 
 function buildHookEntry({ hookCommand, hookName, matcher }) {
   const hook = {
     name: hookName,
-    type: 'command',
-    command: hookCommand
+    type: "command",
+    command: hookCommand,
   };
   const entry = { hooks: [hook] };
-  if (typeof matcher === 'string' && matcher.length > 0) entry.matcher = matcher;
+  if (typeof matcher === "string" && matcher.length > 0) entry.matcher = matcher;
   return entry;
 }
 
 function normalizeSettings(raw) {
-  return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+  return raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
 }
 
 function normalizeHooks(raw) {
-  return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+  return raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
 }
 
 function normalizeTools(raw) {
-  return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+  return raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
 }
 
 function normalizeEntries(raw) {
@@ -132,13 +132,13 @@ function normalizeEntries(raw) {
 }
 
 function normalizeCommand(cmd) {
-  if (Array.isArray(cmd)) return cmd.map((v) => String(v)).join('\u0000');
-  if (typeof cmd === 'string') return cmd.trim();
+  if (Array.isArray(cmd)) return cmd.map((v) => String(v)).join("\u0000");
+  if (typeof cmd === "string") return cmd.trim();
   return null;
 }
 
 function normalizeName(name) {
-  if (typeof name !== 'string') return null;
+  if (typeof name !== "string") return null;
   const trimmed = name.trim();
   return trimmed.length > 0 ? trimmed : null;
 }
@@ -151,7 +151,7 @@ function ensureHooksEnabled(settings) {
 }
 
 function hookMatches(hook, { hookCommand, hookName, requireCommand = false }) {
-  if (!hook || typeof hook !== 'object') return false;
+  if (!hook || typeof hook !== "object") return false;
   const name = normalizeName(hook.name);
   const targetName = normalizeName(hookName);
   const cmd = normalizeCommand(hook.command);
@@ -163,8 +163,9 @@ function hookMatches(hook, { hookCommand, hookName, requireCommand = false }) {
 }
 
 function entryMatches(entry, { hookCommand, hookName, requireCommand = false }) {
-  if (!entry || typeof entry !== 'object') return false;
-  if (entry.command || entry.name) return hookMatches(entry, { hookCommand, hookName, requireCommand });
+  if (!entry || typeof entry !== "object") return false;
+  if (entry.command || entry.name)
+    return hookMatches(entry, { hookCommand, hookName, requireCommand });
   if (!Array.isArray(entry.hooks)) return false;
   return entry.hooks.some((hook) => hookMatches(hook, { hookCommand, hookName, requireCommand }));
 }
@@ -176,7 +177,7 @@ function hasHook(entries, { hookCommand, hookName }) {
 function normalizeEntriesForHook(entries, { hookCommand, hookName }) {
   let changed = false;
   const nextEntries = entries.map((entry) => {
-    if (!entry || typeof entry !== 'object') return entry;
+    if (!entry || typeof entry !== "object") return entry;
 
     if (entry.command || entry.name) {
       if (hookMatches(entry, { hookCommand, hookName })) {
@@ -212,8 +213,8 @@ function normalizeHookObject(hook, { hookCommand, hookName }) {
   const next = { ...hook };
   let changed = false;
 
-  if (next.type !== 'command') {
-    next.type = 'command';
+  if (next.type !== "command") {
+    next.type = "command";
     changed = true;
   }
 
@@ -231,17 +232,20 @@ function normalizeHookObject(hook, { hookCommand, hookName }) {
 }
 
 function stripHookFromEntry(entry, { hookCommand, hookName }) {
-  if (!entry || typeof entry !== 'object') return { entry, removed: false };
+  if (!entry || typeof entry !== "object") return { entry, removed: false };
 
   if (entry.command || entry.name) {
-    if (hookMatches(entry, { hookCommand, hookName, requireCommand: true })) return { entry: null, removed: true };
+    if (hookMatches(entry, { hookCommand, hookName, requireCommand: true }))
+      return { entry: null, removed: true };
     return { entry, removed: false };
   }
 
   const hooks = Array.isArray(entry.hooks) ? entry.hooks : null;
   if (!hooks) return { entry, removed: false };
 
-  const nextHooks = hooks.filter((hook) => !hookMatches(hook, { hookCommand, hookName, requireCommand: true }));
+  const nextHooks = hooks.filter(
+    (hook) => !hookMatches(hook, { hookCommand, hookName, requireCommand: true }),
+  );
   if (nextHooks.length === hooks.length) return { entry, removed: false };
   if (nextHooks.length === 0) return { entry: null, removed: true };
 
@@ -249,7 +253,7 @@ function stripHookFromEntry(entry, { hookCommand, hookName }) {
 }
 
 function quoteArg(value) {
-  const v = typeof value === 'string' ? value : '';
+  const v = typeof value === "string" ? value : "";
   if (!v) return '""';
   if (/^[A-Za-z0-9_\-./:@]+$/.test(v)) return v;
   return `"${v.replace(/"/g, '\\"')}"`;
@@ -261,7 +265,7 @@ async function writeGeminiSettings({ settingsPath, settings }) {
   try {
     const st = await fs.stat(settingsPath);
     if (st && st.isFile()) {
-      backupPath = `${settingsPath}.bak.${new Date().toISOString().replace(/[:.]/g, '-')}`;
+      backupPath = `${settingsPath}.bak.${new Date().toISOString().replace(/[:.]/g, "-")}`;
       await fs.copyFile(settingsPath, backupPath);
     }
   } catch (_e) {
@@ -280,5 +284,5 @@ module.exports = {
   buildGeminiHookCommand,
   upsertGeminiHook,
   removeGeminiHook,
-  isGeminiHookConfigured
+  isGeminiHookConfigured,
 };

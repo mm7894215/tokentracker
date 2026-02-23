@@ -1,7 +1,5 @@
-import React from "react";
-
 import { Dialog } from "@base-ui/react/dialog";
-
+import React from "react";
 import { copy } from "../../../lib/copy";
 import { formatUsdCurrency, toFiniteNumber } from "../../../lib/format";
 import { AsciiBox } from "../../foundation/AsciiBox.jsx";
@@ -23,39 +21,33 @@ export const CostAnalysisModal = React.memo(function CostAnalysisModal({
   const calcPrefix = copy("dashboard.cost_breakdown.calc_prefix");
   const calcFallback = copy("dashboard.cost_breakdown.calc_dynamic");
 
-  const normalizedFleet = (Array.isArray(fleetData) ? fleetData : []).map(
-    (fleet) => {
-      const usdValue = toFiniteNumber(fleet?.usd);
-      const normalizedUsd = Number.isFinite(usdValue) ? usdValue : 0;
-      const models = Array.isArray(fleet?.models) ? fleet.models : [];
-      return {
-        label: fleet?.label ? String(fleet.label) : "",
-        usdValue: normalizedUsd,
-        usdLabel: formatUsdValue(normalizedUsd),
-        models: models.map((model) => {
-          const shareValue = toFiniteNumber(model?.share);
-          const shareLabel = Number.isFinite(shareValue)
-            ? `${shareValue}${percentSymbol}`
-            : copy("shared.placeholder.short");
-          const calcRaw =
-            typeof model?.calc === "string" ? model.calc.trim() : "";
-          const calcValue = calcRaw ? calcRaw.toUpperCase() : calcFallback;
-          return {
-            id: model?.id ? String(model.id) : "",
-            name: model?.name ? String(model.name) : "",
-            shareLabel,
-            calcValue,
-            calcRaw,
-          };
-        }),
-      };
-    }
-  );
+  const normalizedFleet = (Array.isArray(fleetData) ? fleetData : []).map((fleet) => {
+    const usdValue = toFiniteNumber(fleet?.usd);
+    const normalizedUsd = Number.isFinite(usdValue) ? usdValue : 0;
+    const models = Array.isArray(fleet?.models) ? fleet.models : [];
+    return {
+      label: fleet?.label ? String(fleet.label) : "",
+      usdValue: normalizedUsd,
+      usdLabel: formatUsdValue(normalizedUsd),
+      models: models.map((model) => {
+        const shareValue = toFiniteNumber(model?.share);
+        const shareLabel = Number.isFinite(shareValue)
+          ? `${shareValue}${percentSymbol}`
+          : copy("shared.placeholder.short");
+        const calcRaw = typeof model?.calc === "string" ? model.calc.trim() : "";
+        const calcValue = calcRaw ? calcRaw.toUpperCase() : calcFallback;
+        return {
+          id: model?.id ? String(model.id) : "",
+          name: model?.name ? String(model.name) : "",
+          shareLabel,
+          calcValue,
+          calcRaw,
+        };
+      }),
+    };
+  });
 
-  const totalUsd = normalizedFleet.reduce(
-    (acc, fleet) => acc + fleet.usdValue,
-    0
-  );
+  const totalUsd = normalizedFleet.reduce((acc, fleet) => acc + fleet.usdValue, 0);
   const totalUsdLabel = formatUsdValue(totalUsd);
 
   return (
@@ -93,14 +85,11 @@ export const CostAnalysisModal = React.memo(function CostAnalysisModal({
                         <span className="text-body font-black text-matrix-bright uppercase tracking-widest">
                           {fleet.label}
                         </span>
-                        <span className="text-body font-bold text-gold">
-                          {fleet.usdLabel}
-                        </span>
+                        <span className="text-body font-bold text-gold">{fleet.usdLabel}</span>
                       </div>
                       <div className="grid grid-cols-1 gap-1.5">
                         {fleet.models.map((model, modelIndex) => {
-                          const modelKey =
-                            model?.id || `${model.name}-${modelIndex}`;
+                          const modelKey = model?.id || `${model.name}-${modelIndex}`;
                           return (
                             <div
                               key={modelKey}

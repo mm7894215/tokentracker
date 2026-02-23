@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it } from "vitest";
-
 import {
   AUTH_CALLBACK_RETRY_KEY,
   getSafeSessionStorage,

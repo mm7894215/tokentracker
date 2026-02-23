@@ -1,4 +1,5 @@
 ## 1. Implementation
+
 - [ ] 1.1 DB: extend `vibeusage_leaderboard_snapshots` with `gpt_tokens` + `claude_tokens` + per-metric ranks (`rank_gpt`/`rank_claude`) and backfill existing rows.
 - [ ] 1.2 DB: add index `vibeusage_tracker_hourly(hour_start)` to support weekly refresh.
 - [ ] 1.3 DB: replace `vibeusage_leaderboard_source_week` to compute weekly totals + `rank_gpt`/`rank_claude` from `vibeusage_tracker_hourly` with GPT/Claude rules (Code sources only: `codex|every-code|claude|opencode`).
@@ -11,6 +12,7 @@
 - [ ] 1.10 Tests: update contract tests, acceptance scripts, and dashboard tests/mocks for the new leaderboard contract.
 
 ## 2. Verification
+
 - [ ] 2.1 Run `openspec validate 2026-02-08-add-weekly-leaderboard-mvp --strict`.
 - [ ] 2.2 Run unit tests: `npm test` (or the repo's canonical test command) and ensure green.
 - [ ] 2.3 Run UI copy checks: `npm run validate:copy` and `npm run validate:ui-hardcode`.

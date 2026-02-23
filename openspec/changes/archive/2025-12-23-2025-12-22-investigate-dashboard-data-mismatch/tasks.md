@@ -1,28 +1,34 @@
 # 2025-12-22-investigate-dashboard-data-mismatch 任务清单
 
 ## 0. 代码核查
+
 - [x] 0.1 核对时区参数链路（前端 `tz`/`tz_offset_minutes` → 后端 `getUsageTimeZoneContext` 实际忽略）。
 
 ## 1. 复现与取证
+
 - [x] 1.1 复现“前端拿不到数据”的页面与时间（记录浏览器与账号）。
 - [x] 1.2 记录 Network 请求：`vibescore-usage-summary`/`daily`/`hourly`/`heatmap`/`leaderboard` 的 URL、参数、状态码、响应体。
 - [x] 1.3 记录前端控制台错误与重试行为（含时间戳）。
 
 ## 2. 后端对照验证
+
 - [x] 2.1 用同一用户 JWT 直连调用 usage endpoints（包含/不包含 `tz` 参数），对比响应字段（`days`、`data`、`totals`）。
 - [x] 2.2 对照数据库视图/表的可用性（`vibescore_tracker_daily`、`events`）与是否返回空集。
 - [x] 2.3 若返回 401/403/500，记录 `status` 与 `error`/`code`。
 
 ## 3. 时区一致性排查
+
 - [x] 3.1 确认 Dashboard 是否发送 `tz` 或 `tz_offset_minutes`（IANA/offset）。
 - [x] 3.2 确认后端是否按时区聚合（UTC vs 本地日/月/小时路径）。
 - [x] 3.3 核对 UI 文案与标签是否标示时区基准（UTC 或 local）。
 
 ## 4. 结论与修复建议
+
 - [x] 4.1 明确根因（前端参数、后端响应、权限、时区错位）。
 - [x] 4.2 输出修复方案与验收标准（含需要的 spec 更新/测试）。
 
 ## 证据记录
+
 - 复现时间：2025-12-22T18:07:00Z（Chrome DevTools MCP；账号=REDACTED）
 - 认证方式：`/auth/callback?access_token=REDACTED`
 - 请求与响应概览（本次未触发 `hourly`/`leaderboard`）：
@@ -48,12 +54,14 @@
   - `vibescore_tracker_events`：`event_rows=7838`，`distinct_days=6`，`min_ts=2025-12-17T03:16:35Z`，`max_ts=2025-12-22T17:15:57Z`
 
 ## 结论
+
 - 根因：历史上前端以本地日历范围请求，但后端在 Phase 1 忽略 `tz`/`tz_offset_minutes`，实际按 UTC 聚合；在跨日边界出现“少一天/错一天/连续天数归零”等错位。
 - 现状：后端已能按 `tz` 聚合（证据显示同一区间有/无 `tz` 返回显著差异），前端当前仍显示 `Local time (UTC±HH:MM)` 的范围标签；趋势图已去掉时区后缀。
 - 数据对照：数据库 `daily/events` 最近一日停留在 `2025-12-22`（UTC），与“带 `tz` 时可展示 `2025-12-23`”形成边界错位证据。
 - 附带问题：前端黑屏报错已由用户侧修复，未在本次复核中重现。
 
 ## 修复建议与验收标准
+
 - 建议：保持“前端按本地日历算 `from/to` + 后端按 `tz` 聚合”这一一致口径；UI 明确“Local time (UTC±HH:MM)”为基准（趋势图可继续不显示时区标签以避免重复）。
 - 验收（同一账号）：
   - `summary/daily/hourly/heatmap` 在带 `tz` 时，`days`/`count` 与区间长度一致，`hourly` 首日与本地“今天”一致。
@@ -61,5 +69,6 @@
   - 前端页面不再出现“当日未同步/天数为 0”的错位（在已有数据前提下）。
 
 ## 5. 实施记录
+
 - [x] 5.1 采用方案 B（时区聚合 + 本地日历口径），已由变更 `2025-12-22-update-dashboard-timezone` 实施并部署。
 - [x] 5.2 UI 时区标识与请求参数一致：UsagePanel/Heatmap/页脚显示 `Local time (UTC±HH:MM)`；Trend 组件保持去标注以避免重复。

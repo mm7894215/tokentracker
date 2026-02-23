@@ -3,9 +3,7 @@ const assert = require("node:assert/strict");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 
-const modulePath = pathToFileURL(
-  path.resolve("dashboard/scripts/visual-baseline-config.js")
-).href;
+const modulePath = pathToFileURL(path.resolve("dashboard/scripts/visual-baseline-config.js")).href;
 
 test("baseline jobs use screenshot for landing and mock for dashboard", async () => {
   const { createBaselineJobs } = await import(modulePath);

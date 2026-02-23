@@ -13,9 +13,11 @@
 ### Task 1: Establish worktree and architecture baseline
 
 **Files:**
+
 - Modify: `architecture.canvas`
 
 **Step 1: Create a dedicated worktree**
+
 - Use `@using-git-worktrees` to create an isolated worktree.
 
 **Step 2: Generate the latest architecture canvas**
@@ -32,12 +34,14 @@ Expected: `architecture.focus.canvas` generated.
 ### Task 2: Extract reusable modules and constraints
 
 **Files:**
+
 - Read: `/Users/victor/.codex/skills/frontend-design/SKILL.md`
 - Read: `/Users/victor/.codex/skills/react-best-practices/SKILL.md`
 - Read: `/Users/victor/.codex/skills/.system/skill-creator/SKILL.md`
 - Read: `AGENTS.md`
 
 **Step 1: Compile reusable module list**
+
 - Atomic Design
 - Styling tokens/patterns
 - A11y checks (ARIA/axe-core)
@@ -45,6 +49,7 @@ Expected: `architecture.focus.canvas` generated.
 - Tooling (Storybook/ESLint/Prettier)
 
 **Step 2: Record project-specific constraints**
+
 - Copy Registry: all UI text must come from `dashboard/src/content/copy.csv`.
 
 ---
@@ -52,11 +57,13 @@ Expected: `architecture.focus.canvas` generated.
 ### Task 3: Create `skills.canvas` (single source of truth)
 
 **Files:**
+
 - Create: `skills.canvas`
 - Modify: `architecture.canvas`
 
 **Step 1: Create `skills.canvas` (JSON Canvas)**
 Use `@json-canvas` to create a valid `.canvas` file with:
+
 - Nodes: Core Flow, Atomic, Styling, A11y, Performance, Tooling, Templates
 - Edges: structure -> style -> a11y -> performance; atomic -> templates; core flow -> atomic
 
@@ -69,16 +76,19 @@ Expected: `skills.canvas` reflected in `architecture.canvas`.
 ### Task 4: Initialize skill directory
 
 **Files:**
+
 - Create: `skills/public/frontend-ui-functional/`
 
 **Step 1: Initialize**
 Run:
+
 ```bash
 python /Users/victor/.codex/skills/.system/skill-creator/scripts/init_skill.py \
   frontend-ui-functional \
   --path skills/public \
   --resources references,assets
 ```
+
 Expected: `SKILL.md`, `references/`, `assets/` generated.
 
 ---
@@ -86,6 +96,7 @@ Expected: `SKILL.md`, `references/`, `assets/` generated.
 ### Task 5: Create workflows and snippet assets
 
 **Files:**
+
 - Create: `skills/public/frontend-ui-functional/references/atomic-design.md`
 - Create: `skills/public/frontend-ui-functional/references/styling-tokens.md`
 - Create: `skills/public/frontend-ui-functional/references/a11y-checklist.md`
@@ -99,10 +110,12 @@ Expected: `SKILL.md`, `references/`, `assets/` generated.
 - Create: `skills/public/frontend-ui-functional/assets/snippets/zustand-store.ts`
 
 **Step 1: Write references**
+
 - Each file includes: goal, rules, do/don't, minimal example.
 - Keep each file < 200 lines.
 
 **Step 2: Write snippets**
+
 - TypeScript + React function components.
 - Tailwind tokenized classes.
 - Text placeholders only, do not hardcode real copy (use Copy Registry).
@@ -112,13 +125,16 @@ Expected: `SKILL.md`, `references/`, `assets/` generated.
 ### Task 6: Author SKILL.md
 
 **Files:**
+
 - Modify: `skills/public/frontend-ui-functional/SKILL.md`
 
 **Step 1: Update frontmatter**
+
 - name: `frontend-ui-functional`
 - description: Trigger contexts for building/standardizing UI, a11y/perf review, and snippet reuse.
 
 **Step 2: Write body**
+
 - Overview
 - Workflow Decision Tree (Structure -> Style -> A11y -> Performance -> QA)
 - Core Modules (links to references)
@@ -130,24 +146,29 @@ Expected: `SKILL.md`, `references/`, `assets/` generated.
 ### Task 7: Validate and package
 
 **Files:**
+
 - Modify: `skills/public/frontend-ui-functional/SKILL.md` (fix validation errors if any)
 - Create: `dist/frontend-ui-functional.skill` (optional)
 
 **Step 1: Quick validate**
 Run:
+
 ```bash
 python /Users/victor/.codex/skills/.system/skill-creator/scripts/quick_validate.py \
   skills/public/frontend-ui-functional
 ```
+
 Expected: `Skill is valid!`
 
 **Step 2: Package**
 Run:
+
 ```bash
 python /Users/victor/.codex/skills/.system/skill-creator/scripts/package_skill.py \
   skills/public/frontend-ui-functional \
   dist
 ```
+
 Expected: `dist/frontend-ui-functional.skill`
 
 ---
@@ -155,10 +176,12 @@ Expected: `dist/frontend-ui-functional.skill`
 ### Task 8: Document and final sync
 
 **Files:**
+
 - Create: `docs/plans/2026-01-24-frontend-ui-functional-design.md`
 - Modify: `architecture.canvas`
 
 **Step 1: Write design summary**
+
 - Document module boundaries, dependencies, reuse rules, and why deliverable B.
 
 **Step 2: Refresh architecture canvas**

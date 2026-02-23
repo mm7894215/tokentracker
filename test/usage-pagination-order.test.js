@@ -1,10 +1,10 @@
-const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
-const { test } = require('node:test');
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
+const { test } = require("node:test");
 
 function readFile(relPath) {
-  return fs.readFileSync(path.join(process.cwd(), relPath), 'utf8');
+  return fs.readFileSync(path.join(process.cwd(), relPath), "utf8");
 }
 
 function countOccurrences(haystack, needle) {
@@ -13,10 +13,10 @@ function countOccurrences(haystack, needle) {
 }
 
 function normalize(content) {
-  return content.replace(/\s+/g, '');
+  return content.replace(/\s+/g, "");
 }
 
-test('usage pagination uses deterministic ordering', () => {
+test("usage pagination uses deterministic ordering", () => {
   const hourlyOrder =
     "order('hour_start',{ascending:true}).order('device_id',{ascending:true}).order('source',{ascending:true}).order('model',{ascending:true})";
   const rollupOrder =
@@ -24,51 +24,49 @@ test('usage pagination uses deterministic ordering', () => {
   const adminOrder =
     "order('hour_start',{ascending:true}).order('user_id',{ascending:true}).order('device_id',{ascending:true}).order('source',{ascending:true}).order('model',{ascending:true})";
 
-  assert.ok(normalize(readFile('insforge-src/shared/usage-rollup.js')).includes(rollupOrder));
+  assert.ok(normalize(readFile("insforge-src/shared/usage-rollup.js")).includes(rollupOrder));
   assert.equal(
     countOccurrences(
-      normalize(readFile('insforge-src/functions/vibeusage-usage-summary.js')),
-      hourlyOrder
+      normalize(readFile("insforge-src/functions/vibeusage-usage-summary.js")),
+      hourlyOrder,
     ),
-    1
+    1,
   );
   assert.equal(
     countOccurrences(
-      normalize(readFile('insforge-src/functions/vibeusage-usage-daily.js')),
-      hourlyOrder
+      normalize(readFile("insforge-src/functions/vibeusage-usage-daily.js")),
+      hourlyOrder,
     ),
-    1
+    1,
   );
   assert.equal(
     countOccurrences(
-      normalize(readFile('insforge-src/functions/vibeusage-usage-model-breakdown.js')),
-      hourlyOrder
+      normalize(readFile("insforge-src/functions/vibeusage-usage-model-breakdown.js")),
+      hourlyOrder,
     ),
-    1
+    1,
+  );
+  assert.ok(normalize(readFile("insforge-src/shared/db/usage-hourly.js")).includes(hourlyOrder));
+  assert.ok(
+    normalize(readFile("insforge-src/functions/vibeusage-usage-monthly.js")).includes(
+      "buildHourlyUsageQuery",
+    ),
+  );
+  assert.equal(
+    countOccurrences(
+      normalize(readFile("insforge-src/functions/vibeusage-usage-heatmap.js")),
+      hourlyOrder,
+    ),
+    2,
+  );
+  assert.equal(
+    countOccurrences(
+      normalize(readFile("insforge-src/functions/vibeusage-usage-hourly.js")),
+      hourlyOrder,
+    ),
+    2,
   );
   assert.ok(
-    normalize(readFile('insforge-src/shared/db/usage-hourly.js')).includes(hourlyOrder)
-  );
-  assert.ok(
-    normalize(readFile('insforge-src/functions/vibeusage-usage-monthly.js')).includes(
-      'buildHourlyUsageQuery'
-    )
-  );
-  assert.equal(
-    countOccurrences(
-      normalize(readFile('insforge-src/functions/vibeusage-usage-heatmap.js')),
-      hourlyOrder
-    ),
-    2
-  );
-  assert.equal(
-    countOccurrences(
-      normalize(readFile('insforge-src/functions/vibeusage-usage-hourly.js')),
-      hourlyOrder
-    ),
-    2
-  );
-  assert.ok(
-    normalize(readFile('insforge-src/functions/vibeusage-pricing-sync.js')).includes(adminOrder)
+    normalize(readFile("insforge-src/functions/vibeusage-pricing-sync.js")).includes(adminOrder),
   );
 });

@@ -6,20 +6,20 @@ const DEFAULTS = {
   maxBatchesSmall: 2,
   maxBatchesLarge: 4,
   backoffInitialMs: 60_000,
-  backoffMaxMs: 30 * 60_000
+  backoffMaxMs: 30 * 60_000,
 };
 
 function normalizeState(raw) {
-  const s = raw && typeof raw === 'object' ? raw : {};
+  const s = raw && typeof raw === "object" ? raw : {};
   return {
     version: 1,
     lastSuccessMs: toSafeInt(s.lastSuccessMs),
     nextAllowedAtMs: toSafeInt(s.nextAllowedAtMs),
     backoffUntilMs: toSafeInt(s.backoffUntilMs),
     backoffStep: toSafeInt(s.backoffStep),
-    lastErrorAt: typeof s.lastErrorAt === 'string' ? s.lastErrorAt : null,
-    lastError: typeof s.lastError === 'string' ? s.lastError : null,
-    updatedAt: typeof s.updatedAt === 'string' ? s.updatedAt : null
+    lastErrorAt: typeof s.lastErrorAt === "string" ? s.lastErrorAt : null,
+    lastError: typeof s.lastError === "string" ? s.lastError : null,
+    updatedAt: typeof s.updatedAt === "string" ? s.updatedAt : null,
   };
 }
 
@@ -29,22 +29,41 @@ function decideAutoUpload({ nowMs, pendingBytes, state, config }) {
   const pending = Number(pendingBytes || 0);
 
   if (pending <= 0) {
-    return { allowed: false, reason: 'no-pending', maxBatches: 0, batchSize: cfg.batchSize, blockedUntilMs: 0 };
+    return {
+      allowed: false,
+      reason: "no-pending",
+      maxBatches: 0,
+      batchSize: cfg.batchSize,
+      blockedUntilMs: 0,
+    };
   }
 
   const blockedUntilMs = Math.max(s.nextAllowedAtMs || 0, s.backoffUntilMs || 0);
   if (blockedUntilMs > 0 && nowMs < blockedUntilMs) {
-    return { allowed: false, reason: 'throttled', maxBatches: 0, batchSize: cfg.batchSize, blockedUntilMs };
+    return {
+      allowed: false,
+      reason: "throttled",
+      maxBatches: 0,
+      batchSize: cfg.batchSize,
+      blockedUntilMs,
+    };
   }
 
   const maxBatches = pending >= cfg.backlogBytes ? cfg.maxBatchesLarge : cfg.maxBatchesSmall;
-  return { allowed: true, reason: 'allowed', maxBatches, batchSize: cfg.batchSize, blockedUntilMs: 0 };
+  return {
+    allowed: true,
+    reason: "allowed",
+    maxBatches,
+    batchSize: cfg.batchSize,
+    blockedUntilMs: 0,
+  };
 }
 
 function recordUploadSuccess({ nowMs, state, config, randInt }) {
   const cfg = { ...DEFAULTS, ...(config || {}) };
   const s = normalizeState(state);
-  const jitter = typeof randInt === 'function' ? randInt(0, cfg.jitterMsMax) : randomInt(0, cfg.jitterMsMax);
+  const jitter =
+    typeof randInt === "function" ? randInt(0, cfg.jitterMsMax) : randomInt(0, cfg.jitterMsMax);
   const nextAllowedAtMs = nowMs + cfg.intervalMs + jitter;
 
   return {
@@ -55,7 +74,7 @@ function recordUploadSuccess({ nowMs, state, config, randInt }) {
     backoffStep: 0,
     lastErrorAt: null,
     lastError: null,
-    updatedAt: new Date(nowMs).toISOString()
+    updatedAt: new Date(nowMs).toISOString(),
   };
 }
 
@@ -83,13 +102,13 @@ function recordUploadFailure({ nowMs, state, error, config }) {
     backoffUntilMs,
     backoffStep: Math.min(20, (s.backoffStep || 0) + 1),
     lastErrorAt: new Date(nowMs).toISOString(),
-    lastError: truncate(String(error?.message || 'upload failed'), 200),
-    updatedAt: new Date(nowMs).toISOString()
+    lastError: truncate(String(error?.message || "upload failed"), 200),
+    updatedAt: new Date(nowMs).toISOString(),
   };
 }
 
 function parseRetryAfterMs(headerValue, nowMs = Date.now()) {
-  if (typeof headerValue !== 'string' || headerValue.trim().length === 0) return null;
+  if (typeof headerValue !== "string" || headerValue.trim().length === 0) return null;
   const v = headerValue.trim();
   const seconds = Number(v);
   if (Number.isFinite(seconds) && seconds >= 0) return Math.floor(seconds * 1000);
@@ -114,9 +133,9 @@ function toSafeInt(v) {
 }
 
 function truncate(s, maxLen) {
-  if (typeof s !== 'string') return '';
+  if (typeof s !== "string") return "";
   if (s.length <= maxLen) return s;
-  return s.slice(0, maxLen - 1) + '…';
+  return s.slice(0, maxLen - 1) + "…";
 }
 
 module.exports = {
@@ -125,5 +144,5 @@ module.exports = {
   decideAutoUpload,
   recordUploadSuccess,
   recordUploadFailure,
-  parseRetryAfterMs
+  parseRetryAfterMs,
 };

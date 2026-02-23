@@ -1,52 +1,52 @@
-const os = require('node:os');
-const path = require('node:path');
-const fs = require('node:fs/promises');
+const os = require("node:os");
+const path = require("node:path");
+const fs = require("node:fs/promises");
 
-const { readJson } = require('../lib/fs');
-const { readCodexNotify, readEveryCodeNotify } = require('../lib/codex-config');
-const { isClaudeHookConfigured, buildClaudeHookCommand } = require('../lib/claude-config');
+const { readJson } = require("../lib/fs");
+const { readCodexNotify, readEveryCodeNotify } = require("../lib/codex-config");
+const { isClaudeHookConfigured, buildClaudeHookCommand } = require("../lib/claude-config");
 const {
   resolveGeminiConfigDir,
   resolveGeminiSettingsPath,
   isGeminiHookConfigured,
-  buildGeminiHookCommand
-} = require('../lib/gemini-config');
-const { resolveOpencodeConfigDir, isOpencodePluginInstalled } = require('../lib/opencode-config');
-const { collectLocalSubscriptions } = require('../lib/subscriptions');
-const { normalizeState: normalizeUploadState } = require('../lib/upload-throttle');
-const { collectTrackerDiagnostics } = require('../lib/diagnostics');
-const { probeOpenclawHookState } = require('../lib/openclaw-hook');
-const { probeOpenclawSessionPluginState } = require('../lib/openclaw-session-plugin');
-const { resolveTrackerPaths } = require('../lib/tracker-paths');
+  buildGeminiHookCommand,
+} = require("../lib/gemini-config");
+const { resolveOpencodeConfigDir, isOpencodePluginInstalled } = require("../lib/opencode-config");
+const { collectLocalSubscriptions } = require("../lib/subscriptions");
+const { normalizeState: normalizeUploadState } = require("../lib/upload-throttle");
+const { collectTrackerDiagnostics } = require("../lib/diagnostics");
+const { probeOpenclawHookState } = require("../lib/openclaw-hook");
+const { probeOpenclawSessionPluginState } = require("../lib/openclaw-session-plugin");
+const { resolveTrackerPaths } = require("../lib/tracker-paths");
 
 async function cmdStatus(argv = []) {
   const opts = parseArgs(argv);
   if (opts.diagnostics) {
     const diagnostics = await collectTrackerDiagnostics();
-    process.stdout.write(JSON.stringify(diagnostics, null, 2) + '\n');
+    process.stdout.write(JSON.stringify(diagnostics, null, 2) + "\n");
     return;
   }
 
   const home = os.homedir();
   const { trackerDir, binDir } = await resolveTrackerPaths({ home });
-  const configPath = path.join(trackerDir, 'config.json');
-  const queuePath = path.join(trackerDir, 'queue.jsonl');
-  const queueStatePath = path.join(trackerDir, 'queue.state.json');
-  const cursorsPath = path.join(trackerDir, 'cursors.json');
-  const notifySignalPath = path.join(trackerDir, 'notify.signal');
-  const openclawSignalPath = path.join(trackerDir, 'openclaw.signal');
-  const throttlePath = path.join(trackerDir, 'sync.throttle');
-  const uploadThrottlePath = path.join(trackerDir, 'upload.throttle.json');
-  const autoRetryPath = path.join(trackerDir, 'auto.retry.json');
-  const codexHome = process.env.CODEX_HOME || path.join(home, '.codex');
-  const codexConfigPath = path.join(codexHome, 'config.toml');
-  const codeHome = process.env.CODE_HOME || path.join(home, '.code');
-  const codeConfigPath = path.join(codeHome, 'config.toml');
-  const claudeSettingsPath = path.join(home, '.claude', 'settings.json');
+  const configPath = path.join(trackerDir, "config.json");
+  const queuePath = path.join(trackerDir, "queue.jsonl");
+  const queueStatePath = path.join(trackerDir, "queue.state.json");
+  const cursorsPath = path.join(trackerDir, "cursors.json");
+  const notifySignalPath = path.join(trackerDir, "notify.signal");
+  const openclawSignalPath = path.join(trackerDir, "openclaw.signal");
+  const throttlePath = path.join(trackerDir, "sync.throttle");
+  const uploadThrottlePath = path.join(trackerDir, "upload.throttle.json");
+  const autoRetryPath = path.join(trackerDir, "auto.retry.json");
+  const codexHome = process.env.CODEX_HOME || path.join(home, ".codex");
+  const codexConfigPath = path.join(codexHome, "config.toml");
+  const codeHome = process.env.CODE_HOME || path.join(home, ".code");
+  const codeConfigPath = path.join(codeHome, "config.toml");
+  const claudeSettingsPath = path.join(home, ".claude", "settings.json");
   const geminiConfigDir = resolveGeminiConfigDir({ home, env: process.env });
   const geminiSettingsPath = resolveGeminiSettingsPath({ configDir: geminiConfigDir });
   const opencodeConfigDir = resolveOpencodeConfigDir({ home, env: process.env });
-  const notifyPath = path.join(binDir, 'notify.cjs');
+  const notifyPath = path.join(binDir, "notify.cjs");
   const claudeHookCommand = buildClaudeHookCommand(notifyPath);
   const geminiHookCommand = buildGeminiHookCommand(notifyPath);
 
@@ -69,30 +69,36 @@ async function cmdStatus(argv = []) {
   const everyCodeConfigured = Array.isArray(everyCodeNotify) && everyCodeNotify.length > 0;
   const claudeHookConfigured = await isClaudeHookConfigured({
     settingsPath: claudeSettingsPath,
-    hookCommand: claudeHookCommand
+    hookCommand: claudeHookCommand,
   });
   const geminiHookConfigured = await isGeminiHookConfigured({
     settingsPath: geminiSettingsPath,
-    hookCommand: geminiHookCommand
+    hookCommand: geminiHookCommand,
   });
-  const opencodePluginConfigured = await isOpencodePluginInstalled({ configDir: opencodeConfigDir });
-  const openclawSessionPluginState = await probeOpenclawSessionPluginState({ home, trackerDir, env: process.env });
+  const opencodePluginConfigured = await isOpencodePluginInstalled({
+    configDir: opencodeConfigDir,
+  });
+  const openclawSessionPluginState = await probeOpenclawSessionPluginState({
+    home,
+    trackerDir,
+    env: process.env,
+  });
   const openclawHookState = await probeOpenclawHookState({ home, trackerDir, env: process.env });
 
   const lastUpload = uploadThrottle.lastSuccessMs
     ? parseEpochMsToIso(uploadThrottle.lastSuccessMs)
-    : typeof queueState.updatedAt === 'string'
+    : typeof queueState.updatedAt === "string"
       ? queueState.updatedAt
       : null;
   const nextUpload = parseEpochMsToIso(uploadThrottle.nextAllowedAtMs || null);
   const backoffUntil = parseEpochMsToIso(uploadThrottle.backoffUntilMs || null);
   const lastUploadError = uploadThrottle.lastError
-    ? `${uploadThrottle.lastErrorAt || 'unknown'} ${uploadThrottle.lastError}`
+    ? `${uploadThrottle.lastErrorAt || "unknown"} ${uploadThrottle.lastError}`
     : null;
   const autoRetryAt = parseEpochMsToIso(autoRetry?.retryAtMs || null);
   const autoRetryLine = autoRetryAt
-    ? `- Auto retry after: ${autoRetryAt} (${autoRetry?.reason || 'scheduled'}, pending ${Number(
-        autoRetry?.pendingBytes || 0
+    ? `- Auto retry after: ${autoRetryAt} (${autoRetry?.reason || "scheduled"}, pending ${Number(
+        autoRetry?.pendingBytes || 0,
       )} bytes)`
     : null;
 
@@ -100,70 +106,68 @@ async function cmdStatus(argv = []) {
     home,
     env: process.env,
     probeKeychain: opts.probeKeychain,
-    probeKeychainDetails: opts.probeKeychainDetails
+    probeKeychainDetails: opts.probeKeychainDetails,
   });
   const subscriptionLines =
-    subscriptions.length > 0
-      ? subscriptions.map(formatSubscriptionLine)
-      : [];
+    subscriptions.length > 0 ? subscriptions.map(formatSubscriptionLine) : [];
 
   process.stdout.write(
     [
-      'Status:',
-      `- Base URL: ${config?.baseUrl || 'unset'}`,
-      `- Device token: ${config?.deviceToken ? 'set' : 'unset'}`,
+      "Status:",
+      `- Base URL: ${config?.baseUrl || "unset"}`,
+      `- Device token: ${config?.deviceToken ? "set" : "unset"}`,
       `- Queue: ${pendingBytes} bytes pending`,
-      `- Last parse: ${cursors?.updatedAt || 'never'}`,
-      `- Last notify: ${lastNotify || 'never'}`,
-      `- Last OpenClaw-triggered sync: ${lastOpenclawSync || 'never'}`,
-      `- Last notify-triggered sync: ${lastNotifySpawn || 'never'}`,
-      `- Last upload: ${lastUpload || 'never'}`,
-      `- Next upload after: ${nextUpload || 'never'}`,
-      `- Backoff until: ${backoffUntil || 'never'}`,
+      `- Last parse: ${cursors?.updatedAt || "never"}`,
+      `- Last notify: ${lastNotify || "never"}`,
+      `- Last OpenClaw-triggered sync: ${lastOpenclawSync || "never"}`,
+      `- Last notify-triggered sync: ${lastNotifySpawn || "never"}`,
+      `- Last upload: ${lastUpload || "never"}`,
+      `- Next upload after: ${nextUpload || "never"}`,
+      `- Backoff until: ${backoffUntil || "never"}`,
       lastUploadError ? `- Last upload error: ${lastUploadError}` : null,
       autoRetryLine,
-      `- Codex notify: ${notifyConfigured ? JSON.stringify(codexNotify) : 'unset'}`,
-      `- Every Code notify: ${everyCodeConfigured ? JSON.stringify(everyCodeNotify) : 'unset'}`,
-      `- Claude hooks: ${claudeHookConfigured ? 'set' : 'unset'}`,
-      `- Gemini hooks: ${geminiHookConfigured ? 'set' : 'unset'}`,
-      `- Opencode plugin: ${opencodePluginConfigured ? 'set' : 'unset'}`,
-      `- OpenClaw session plugin: ${openclawSessionPluginState?.configured ? 'set' : 'unset'}`,
-      `- OpenClaw hook (legacy): ${openclawHookState?.configured ? 'set' : 'unset'}`,
+      `- Codex notify: ${notifyConfigured ? JSON.stringify(codexNotify) : "unset"}`,
+      `- Every Code notify: ${everyCodeConfigured ? JSON.stringify(everyCodeNotify) : "unset"}`,
+      `- Claude hooks: ${claudeHookConfigured ? "set" : "unset"}`,
+      `- Gemini hooks: ${geminiHookConfigured ? "set" : "unset"}`,
+      `- Opencode plugin: ${opencodePluginConfigured ? "set" : "unset"}`,
+      `- OpenClaw session plugin: ${openclawSessionPluginState?.configured ? "set" : "unset"}`,
+      `- OpenClaw hook (legacy): ${openclawHookState?.configured ? "set" : "unset"}`,
       ...subscriptionLines,
-      ''
+      "",
     ]
       .filter(Boolean)
-      .join('\n')
+      .join("\n"),
   );
 }
 
 function formatSubscriptionLine(entry = {}) {
-  const tool = String(entry.tool || '');
-  const provider = String(entry.provider || '');
-  const product = String(entry.product || '');
-  const planType = String(entry.planType || '');
-  const rateLimitTier = String(entry.rateLimitTier || '');
+  const tool = String(entry.tool || "");
+  const provider = String(entry.provider || "");
+  const product = String(entry.product || "");
+  const planType = String(entry.planType || "");
+  const rateLimitTier = String(entry.rateLimitTier || "");
   const toolLabel =
-    tool === 'codex'
-      ? 'Codex'
-      : tool === 'opencode'
-        ? 'OpenCode'
-        : tool === 'claude'
-          ? 'Claude Code'
+    tool === "codex"
+      ? "Codex"
+      : tool === "opencode"
+        ? "OpenCode"
+        : tool === "claude"
+          ? "Claude Code"
           : tool;
 
   if (!planType) return null;
 
-  if (tool === 'claude' && provider === 'anthropic' && product === 'subscription') {
-    const suffix = rateLimitTier ? ` (rate limit tier: ${rateLimitTier})` : '';
+  if (tool === "claude" && provider === "anthropic" && product === "subscription") {
+    const suffix = rateLimitTier ? ` (rate limit tier: ${rateLimitTier})` : "";
     return `- ${toolLabel} subscription: ${planType}${suffix}`;
   }
 
-  if (provider === 'openai' && product === 'chatgpt') {
+  if (provider === "openai" && product === "chatgpt") {
     return `- ${toolLabel} ChatGPT plan: ${planType}`;
   }
 
-  const productLabel = product ? product.replace(/_/g, ' ') : 'subscription';
+  const productLabel = product ? product.replace(/_/g, " ") : "subscription";
   return `- ${toolLabel} ${productLabel}: ${planType}`;
 }
 
@@ -172,13 +176,12 @@ function parseArgs(argv) {
 
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === '--diagnostics' || a === '--json') out.diagnostics = true;
-    else if (a === '--probe-keychain') out.probeKeychain = true;
-    else if (a === '--probe-keychain-details') {
+    if (a === "--diagnostics" || a === "--json") out.diagnostics = true;
+    else if (a === "--probe-keychain") out.probeKeychain = true;
+    else if (a === "--probe-keychain-details") {
       out.probeKeychainDetails = true;
       out.probeKeychain = true;
-    }
-    else throw new Error(`Unknown option: ${a}`);
+    } else throw new Error(`Unknown option: ${a}`);
   }
 
   return out;
@@ -195,7 +198,7 @@ async function safeStatSize(p) {
 
 async function safeReadText(p) {
   try {
-    return await fs.readFile(p, 'utf8');
+    return await fs.readFile(p, "utf8");
   } catch (_e) {
     return null;
   }

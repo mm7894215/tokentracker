@@ -1,5 +1,4 @@
 import React from "react";
-
 import { copy } from "../../../lib/copy";
 
 export function VersionBadge({ version }) {
@@ -10,9 +9,7 @@ export function VersionBadge({ version }) {
       <div className="text-caption text-matrix-muted uppercase font-bold">
         {copy("dashboard.version.label")}
       </div>
-      <div className="text-body text-matrix-bright font-black tracking-tight">
-        {value}
-      </div>
+      <div className="text-body text-matrix-bright font-black tracking-tight">{value}</div>
     </div>
   );
 }

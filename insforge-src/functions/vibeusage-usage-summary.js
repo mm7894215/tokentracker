@@ -2,20 +2,20 @@
 // Returns token usage totals for the authenticated user over a timezone-aware date range.
 // Rollup day boundaries are UTC-aligned (vibeusage_tracker_daily_rollup.day).
 
-'use strict';
+"use strict";
 
-const { handleOptions, json } = require('../shared/http');
-const { getBearerToken, getAccessContext } = require('../shared/auth');
-const { getBaseUrl } = require('../shared/env');
-const { getSourceParam, normalizeSource } = require('../shared/source');
-const { getModelParam, normalizeUsageModel, applyUsageModelFilter } = require('../shared/model');
+const { handleOptions, json } = require("../shared/http");
+const { getBearerToken, getAccessContext } = require("../shared/auth");
+const { getBaseUrl } = require("../shared/env");
+const { getSourceParam, normalizeSource } = require("../shared/source");
+const { getModelParam, normalizeUsageModel, applyUsageModelFilter } = require("../shared/model");
 const {
   applyModelIdentity,
   resolveModelIdentity,
   resolveUsageModelsForCanonical,
-  normalizeUsageModelKey
-} = require('../shared/model-identity');
-const { applyCanaryFilter } = require('../shared/canary');
+  normalizeUsageModelKey,
+} = require("../shared/model-identity");
+const { applyCanaryFilter } = require("../shared/canary");
 const {
   addDatePartsDays,
   addUtcDays,
@@ -30,63 +30,64 @@ const {
   listDateStrings,
   localDatePartsToUtc,
   normalizeDateRangeLocal,
-  parseDateParts
-} = require('../shared/date');
-const { forEachPage } = require('../shared/pagination');
+  parseDateParts,
+} = require("../shared/date");
+const { forEachPage } = require("../shared/pagination");
 const {
   addRowTotals,
   createTotals,
   fetchRollupRows,
-  isRollupEnabled
-} = require('../shared/usage-rollup');
-const { applyTotalsAndBillable, resolveBillableTotals } = require('../shared/usage-aggregate');
+  isRollupEnabled,
+} = require("../shared/usage-rollup");
+const { applyTotalsAndBillable, resolveBillableTotals } = require("../shared/usage-aggregate");
 const {
   buildPricingMetadata,
   computeUsageCost,
   formatUsdFromMicros,
-  resolvePricingProfile
-} = require('../shared/pricing');
+  resolvePricingProfile,
+} = require("../shared/pricing");
 const {
   buildPricingBucketKey,
   getSourceEntry,
   parsePricingBucketKey,
-  resolveDisplayName
-} = require('../shared/core/usage-summary');
-const { logSlowQuery, withRequestLogging } = require('../shared/logging');
-const { toBigInt } = require('../shared/numbers');
-const { isDebugEnabled, withSlowQueryDebugPayload } = require('../shared/debug');
+  resolveDisplayName,
+} = require("../shared/core/usage-summary");
+const { logSlowQuery, withRequestLogging } = require("../shared/logging");
+const { toBigInt } = require("../shared/numbers");
+const { isDebugEnabled, withSlowQueryDebugPayload } = require("../shared/debug");
 const {
   buildAliasTimeline,
   extractDateKey,
   fetchAliasRows,
-  resolveIdentityAtDate
-} = require('../shared/model-alias-timeline');
+  resolveIdentityAtDate,
+} = require("../shared/model-alias-timeline");
 
-const DEFAULT_SOURCE = 'codex';
-const DEFAULT_MODEL = 'unknown';
+const DEFAULT_SOURCE = "codex";
+const DEFAULT_MODEL = "unknown";
 
-module.exports = withRequestLogging('vibeusage-usage-summary', async function(request, logger) {
+module.exports = withRequestLogging("vibeusage-usage-summary", async function (request, logger) {
   const opt = handleOptions(request);
   if (opt) return opt;
 
   const url = new URL(request.url);
   const debugEnabled = isDebugEnabled(url);
-  const respond = (body, status, durationMs) => json(
-    debugEnabled ? withSlowQueryDebugPayload(body, { logger, durationMs, status }) : body,
-    status
-  );
+  const respond = (body, status, durationMs) =>
+    json(
+      debugEnabled ? withSlowQueryDebugPayload(body, { logger, durationMs, status }) : body,
+      status,
+    );
 
-  if (request.method !== 'GET') return respond({ error: 'Method not allowed' }, 405, 0);
+  if (request.method !== "GET") return respond({ error: "Method not allowed" }, 405, 0);
 
-  const bearer = getBearerToken(request.headers.get('Authorization'));
-  if (!bearer) return respond({ error: 'Missing bearer token' }, 401, 0);
+  const bearer = getBearerToken(request.headers.get("Authorization"));
+  if (!bearer) return respond({ error: "Missing bearer token" }, 401, 0);
 
   const baseUrl = getBaseUrl();
   const auth = await getAccessContext({ baseUrl, bearer, allowPublic: true });
-  if (!auth.ok) return respond({ error: auth.error || 'Unauthorized' }, auth.status || 401, 0);
+  if (!auth.ok) return respond({ error: auth.error || "Unauthorized" }, auth.status || 401, 0);
 
   const tzContext = getUsageTimeZoneContext(url);
-  const rollingEnabled = url.searchParams.get('rolling') === '1';
+  const rollingEnabled = url.searchParams.get("rolling") === "1";
   const sourceResult = getSourceParam(url);
   if (!sourceResult.ok) return respond({ error: sourceResult.error }, 400, 0);
   const source = sourceResult.source;
@@ -95,9 +96,9 @@ module.exports = withRequestLogging('vibeusage-usage-summary', async function(re
   const model = modelResult.model;
   const hasModelParam = model != null;
   const { from, to } = normalizeDateRangeLocal(
-    url.searchParams.get('from'),
-    url.searchParams.get('to'),
-    tzContext
+    url.searchParams.get("from"),
+    url.searchParams.get("to"),
+    tzContext,
   );
 
   const dayKeys = listDateStrings(from, to);
@@ -108,7 +109,7 @@ module.exports = withRequestLogging('vibeusage-usage-summary', async function(re
 
   const startParts = parseDateParts(from);
   const endParts = parseDateParts(to);
-  if (!startParts || !endParts) return respond({ error: 'Invalid date range' }, 400, 0);
+  if (!startParts || !endParts) return respond({ error: "Invalid date range" }, 400, 0);
 
   const startUtc = localDatePartsToUtc(startParts, tzContext);
   const endUtc = localDatePartsToUtc(addDatePartsDays(endParts, 1), tzContext);
@@ -117,7 +118,7 @@ module.exports = withRequestLogging('vibeusage-usage-summary', async function(re
   const modelFilter = await resolveUsageModelsForCanonical({
     edgeClient: auth.edgeClient,
     canonicalModel: model,
-    effectiveDate: to
+    effectiveDate: to,
   });
   const canonicalModel = modelFilter.canonical;
   const usageModels = modelFilter.usageModels;
@@ -127,7 +128,7 @@ module.exports = withRequestLogging('vibeusage-usage-summary', async function(re
     const aliasRows = await fetchAliasRows({
       edgeClient: auth.edgeClient,
       usageModels,
-      effectiveDate: to
+      effectiveDate: to,
     });
     aliasTimeline = buildAliasTimeline({ usageModels, aliasRows });
   }
@@ -160,13 +161,13 @@ module.exports = withRequestLogging('vibeusage-usage-summary', async function(re
       rawModel,
       usageKey,
       dateKey,
-      timeline: aliasTimeline
+      timeline: aliasTimeline,
     });
     const filterIdentity = resolveIdentityAtDate({
       rawModel: canonicalModel,
       usageKey: canonicalModel,
       dateKey,
-      timeline: aliasTimeline
+      timeline: aliasTimeline,
     });
     return identity.model_id === filterIdentity.model_id;
   };
@@ -179,7 +180,7 @@ module.exports = withRequestLogging('vibeusage-usage-summary', async function(re
     const sourceEntry = getSourceEntry(sourcesMap, sourceKey);
     applyTotalsAndBillable({ totals: sourceEntry.totals, row, billable, hasStoredBillable });
     const normalizedModel = normalizeUsageModel(row?.model);
-    if (normalizedModel && normalizedModel !== 'unknown') {
+    if (normalizedModel && normalizedModel !== "unknown") {
       distinctModels.add(normalizedModel);
     }
     if (!hasModelParam && pricingBuckets) {
@@ -195,32 +196,32 @@ module.exports = withRequestLogging('vibeusage-usage-summary', async function(re
 
   const applyHourlyOrdering = (query) => {
     return query
-      .order('hour_start', { ascending: true })
-      .order('device_id', { ascending: true })
-      .order('source', { ascending: true })
-      .order('model', { ascending: true });
+      .order("hour_start", { ascending: true })
+      .order("device_id", { ascending: true })
+      .order("source", { ascending: true })
+      .order("model", { ascending: true });
   };
 
   const sumHourlyRange = async (rangeStartIso, rangeEndIso) => {
     const { error } = await forEachPage({
       createQuery: () => {
         let query = auth.edgeClient.database
-          .from('vibeusage_tracker_hourly')
+          .from("vibeusage_tracker_hourly")
           .select(
-            'hour_start,source,model,billable_total_tokens,total_tokens,input_tokens,cached_input_tokens,output_tokens,reasoning_output_tokens'
+            "hour_start,source,model,billable_total_tokens,total_tokens,input_tokens,cached_input_tokens,output_tokens,reasoning_output_tokens",
           )
-          .eq('user_id', auth.userId);
-        if (source) query = query.eq('source', source);
+          .eq("user_id", auth.userId);
+        if (source) query = query.eq("source", source);
         if (hasModelFilter) query = applyUsageModelFilter(query, usageModels);
         query = applyCanaryFilter(query, { source, model: canonicalModel });
-        query = query.gte('hour_start', rangeStartIso).lt('hour_start', rangeEndIso);
+        query = query.gte("hour_start", rangeStartIso).lt("hour_start", rangeEndIso);
         return applyHourlyOrdering(query);
       },
       onPage: (rows) => {
         const pageRows = Array.isArray(rows) ? rows : [];
         rowCount += pageRows.length;
         for (const row of pageRows) ingestRow(row);
-      }
+      },
     });
     if (error) return { ok: false, error };
     return { ok: true };
@@ -228,16 +229,16 @@ module.exports = withRequestLogging('vibeusage-usage-summary', async function(re
 
   const hasHourlyData = async (rangeStartIso, rangeEndIso) => {
     let query = auth.edgeClient.database
-      .from('vibeusage_tracker_hourly')
-      .select('hour_start')
-      .eq('user_id', auth.userId);
-    if (source) query = query.eq('source', source);
+      .from("vibeusage_tracker_hourly")
+      .select("hour_start")
+      .eq("user_id", auth.userId);
+    if (source) query = query.eq("source", source);
     if (hasModelFilter) query = applyUsageModelFilter(query, usageModels);
     query = applyCanaryFilter(query, { source, model: canonicalModel });
     const { data, error } = await query
-      .gte('hour_start', rangeStartIso)
-      .lt('hour_start', rangeEndIso)
-      .order('hour_start', { ascending: true })
+      .gte("hour_start", rangeStartIso)
+      .lt("hour_start", rangeEndIso)
+      .order("hour_start", { ascending: true })
       .limit(1);
     if (error) return { ok: false, error };
     return { ok: true, hasRows: Array.isArray(data) && data.length > 0 };
@@ -253,7 +254,7 @@ module.exports = withRequestLogging('vibeusage-usage-summary', async function(re
           fromDay,
           toDay,
           source,
-          model: usageModel
+          model: usageModel,
         });
         if (!rollupRes.ok) return { ok: false, error: rollupRes.error };
         rows = rows.concat(Array.isArray(rollupRes.rows) ? rollupRes.rows : []);
@@ -265,7 +266,7 @@ module.exports = withRequestLogging('vibeusage-usage-summary', async function(re
         fromDay,
         toDay,
         source,
-        model: canonicalModel || null
+        model: canonicalModel || null,
       });
       if (!rollupRes.ok) return { ok: false, error: rollupRes.error };
       rows = Array.isArray(rollupRes.rows) ? rollupRes.rows : [];
@@ -280,21 +281,21 @@ module.exports = withRequestLogging('vibeusage-usage-summary', async function(re
     const { error } = await forEachPage({
       createQuery: () => {
         let query = auth.edgeClient.database
-          .from('vibeusage_tracker_hourly')
+          .from("vibeusage_tracker_hourly")
           .select(
-            'hour_start,source,model,billable_total_tokens,total_tokens,input_tokens,cached_input_tokens,output_tokens,reasoning_output_tokens'
+            "hour_start,source,model,billable_total_tokens,total_tokens,input_tokens,cached_input_tokens,output_tokens,reasoning_output_tokens",
           )
-          .eq('user_id', auth.userId);
-        if (source) query = query.eq('source', source);
+          .eq("user_id", auth.userId);
+        if (source) query = query.eq("source", source);
         if (hasModelFilter) query = applyUsageModelFilter(query, usageModels);
         query = applyCanaryFilter(query, { source, model: canonicalModel });
-        query = query.gte('hour_start', rangeStartIso).lt('hour_start', rangeEndIso);
+        query = query.gte("hour_start", rangeStartIso).lt("hour_start", rangeEndIso);
         return applyHourlyOrdering(query);
       },
       onPage: (rows) => {
         const pageRows = Array.isArray(rows) ? rows : [];
         for (const row of pageRows) onRow(row);
-      }
+      },
     });
     if (error) return { ok: false, error };
     return { ok: true };
@@ -310,7 +311,7 @@ module.exports = withRequestLogging('vibeusage-usage-summary', async function(re
           fromDay,
           toDay,
           source,
-          model: usageModel
+          model: usageModel,
         });
         if (!rollupRes.ok) return { ok: false, error: rollupRes.error };
         rows = rows.concat(Array.isArray(rollupRes.rows) ? rollupRes.rows : []);
@@ -322,7 +323,7 @@ module.exports = withRequestLogging('vibeusage-usage-summary', async function(re
         fromDay,
         toDay,
         source,
-        model: canonicalModel || null
+        model: canonicalModel || null,
       });
       if (!rollupRes.ok) return { ok: false, error: rollupRes.error };
       rows = Array.isArray(rollupRes.rows) ? rollupRes.rows : [];
@@ -337,18 +338,18 @@ module.exports = withRequestLogging('vibeusage-usage-summary', async function(re
     rangeStartUtc,
     rangeEndUtc,
     onRow,
-    onReset
+    onReset,
   }) => {
-    const rangeStartDayUtc = new Date(Date.UTC(
-      rangeStartUtc.getUTCFullYear(),
-      rangeStartUtc.getUTCMonth(),
-      rangeStartUtc.getUTCDate()
-    ));
-    const rangeEndDayUtc = new Date(Date.UTC(
-      rangeEndUtc.getUTCFullYear(),
-      rangeEndUtc.getUTCMonth(),
-      rangeEndUtc.getUTCDate()
-    ));
+    const rangeStartDayUtc = new Date(
+      Date.UTC(
+        rangeStartUtc.getUTCFullYear(),
+        rangeStartUtc.getUTCMonth(),
+        rangeStartUtc.getUTCDate(),
+      ),
+    );
+    const rangeEndDayUtc = new Date(
+      Date.UTC(rangeEndUtc.getUTCFullYear(), rangeEndUtc.getUTCMonth(), rangeEndUtc.getUTCDate()),
+    );
 
     const sameUtcDay = rangeStartDayUtc.getTime() === rangeEndDayUtc.getTime();
     const startIsBoundary = rangeStartUtc.getTime() === rangeStartDayUtc.getTime();
@@ -364,18 +365,24 @@ module.exports = withRequestLogging('vibeusage-usage-summary', async function(re
       const hourlyRes = await sumHourlyRangeInto(rangeStartIso, rangeEndIso, onRow);
       if (!hourlyRes.ok) hourlyError = hourlyRes.error;
     } else {
-      const rollupStartDate = startIsBoundary
-        ? rangeStartDayUtc
-        : addUtcDays(rangeStartDayUtc, 1);
+      const rollupStartDate = startIsBoundary ? rangeStartDayUtc : addUtcDays(rangeStartDayUtc, 1);
       const rollupEndDate = addUtcDays(rangeEndDayUtc, -1);
 
       if (!startIsBoundary) {
-        const hourlyRes = await sumHourlyRangeInto(rangeStartIso, rollupStartDate.toISOString(), onRow);
+        const hourlyRes = await sumHourlyRangeInto(
+          rangeStartIso,
+          rollupStartDate.toISOString(),
+          onRow,
+        );
         if (!hourlyRes.ok) hourlyError = hourlyRes.error;
       }
 
       if (!endIsBoundary && !hourlyError) {
-        const hourlyRes = await sumHourlyRangeInto(rangeEndDayUtc.toISOString(), rangeEndIso, onRow);
+        const hourlyRes = await sumHourlyRangeInto(
+          rangeEndDayUtc.toISOString(),
+          rangeEndIso,
+          onRow,
+        );
         if (!hourlyRes.ok) hourlyError = hourlyRes.error;
       }
 
@@ -384,7 +391,7 @@ module.exports = withRequestLogging('vibeusage-usage-summary', async function(re
           const rollupRes = await sumRollupRangeInto(
             formatDateUTC(rollupStartDate),
             formatDateUTC(rollupEndDate),
-            onRow
+            onRow,
           );
           if (!rollupRes.ok) {
             hourlyError = rollupRes.error;
@@ -401,7 +408,7 @@ module.exports = withRequestLogging('vibeusage-usage-summary', async function(re
     }
 
     if (hourlyError || rollupEmptyWithHourly) {
-      if (typeof onReset === 'function') onReset();
+      if (typeof onReset === "function") onReset();
       return sumHourlyRangeInto(rangeStartIso, rangeEndIso, onRow);
     }
 
@@ -412,13 +419,13 @@ module.exports = withRequestLogging('vibeusage-usage-summary', async function(re
     const rangeStartParts = parseDateParts(fromDay);
     const rangeEndParts = parseDateParts(toDay);
     if (!rangeStartParts || !rangeEndParts) {
-      return { ok: false, error: new Error('Invalid rolling range') };
+      return { ok: false, error: new Error("Invalid rolling range") };
     }
 
     const rangeStartUtc = localDatePartsToUtc(rangeStartParts, tzContext);
     const rangeEndUtc = localDatePartsToUtc(addDatePartsDays(rangeEndParts, 1), tzContext);
     if (!Number.isFinite(rangeStartUtc.getTime()) || !Number.isFinite(rangeEndUtc.getTime())) {
-      return { ok: false, error: new Error('Invalid rolling range') };
+      return { ok: false, error: new Error("Invalid rolling range") };
     }
 
     const rangeStartIso = rangeStartUtc.toISOString();
@@ -465,7 +472,7 @@ module.exports = withRequestLogging('vibeusage-usage-summary', async function(re
       rangeStartUtc,
       rangeEndUtc,
       onRow: ingestRollingRow,
-      onReset: resetRollingAggregation
+      onReset: resetRollingAggregation,
     });
     if (!sumRes.ok) return sumRes;
     if (shouldUseHourlyForActiveDays) {
@@ -493,21 +500,17 @@ module.exports = withRequestLogging('vibeusage-usage-summary', async function(re
         totals: { billable_total_tokens: totals.billable_total_tokens.toString() },
         active_days: activeDays,
         avg_per_active_day: avg.toString(),
-        avg_per_day: avgPerDay.toString()
-      }
+        avg_per_day: avgPerDay.toString(),
+      },
     };
   };
 
-  const startDayUtc = new Date(Date.UTC(
-    startUtc.getUTCFullYear(),
-    startUtc.getUTCMonth(),
-    startUtc.getUTCDate()
-  ));
-  const endDayUtc = new Date(Date.UTC(
-    endUtc.getUTCFullYear(),
-    endUtc.getUTCMonth(),
-    endUtc.getUTCDate()
-  ));
+  const startDayUtc = new Date(
+    Date.UTC(startUtc.getUTCFullYear(), startUtc.getUTCMonth(), startUtc.getUTCDate()),
+  );
+  const endDayUtc = new Date(
+    Date.UTC(endUtc.getUTCFullYear(), endUtc.getUTCMonth(), endUtc.getUTCDate()),
+  );
 
   const sameUtcDay = startDayUtc.getTime() === endDayUtc.getTime();
   const startIsBoundary = startUtc.getTime() === startDayUtc.getTime();
@@ -526,9 +529,7 @@ module.exports = withRequestLogging('vibeusage-usage-summary', async function(re
       const hourlyRes = await sumHourlyRange(startIso, endIso);
       if (!hourlyRes.ok) hourlyError = hourlyRes.error;
     } else {
-      const rollupStartDate = startIsBoundary
-        ? startDayUtc
-        : addUtcDays(startDayUtc, 1);
+      const rollupStartDate = startIsBoundary ? startDayUtc : addUtcDays(startDayUtc, 1);
       const rollupEndDate = addUtcDays(endDayUtc, -1);
 
       if (!startIsBoundary) {
@@ -545,7 +546,7 @@ module.exports = withRequestLogging('vibeusage-usage-summary', async function(re
         if (rollupStartDate.getTime() <= rollupEndDate.getTime()) {
           const rollupRes = await sumRollupRange(
             formatDateUTC(rollupStartDate),
-            formatDateUTC(rollupEndDate)
+            formatDateUTC(rollupEndDate),
           );
           if (!rollupRes.ok) {
             hourlyError = rollupRes.error;
@@ -577,11 +578,11 @@ module.exports = withRequestLogging('vibeusage-usage-summary', async function(re
     const localYesterday = formatDateParts(addDatePartsDays(localTodayParts, -1));
     const rollingToDay = to < localYesterday ? to : localYesterday;
     const rollingEndParts = parseDateParts(rollingToDay);
-    if (!rollingEndParts) return respond({ error: 'Invalid rolling range' }, 400, 0);
+    if (!rollingEndParts) return respond({ error: "Invalid rolling range" }, 400, 0);
     const last7From = formatDateParts(addDatePartsDays(rollingEndParts, -6));
     const last30From = formatDateParts(addDatePartsDays(rollingEndParts, -29));
     if (!last7From || !last30From) {
-      return respond({ error: 'Invalid rolling range' }, 400, 0);
+      return respond({ error: "Invalid rolling range" }, 400, 0);
     }
     const last7Res = await buildRollingWindow({ fromDay: last7From, toDay: rollingToDay });
     if (!last7Res.ok) {
@@ -595,13 +596,13 @@ module.exports = withRequestLogging('vibeusage-usage-summary', async function(re
     }
     rollingPayload = {
       last_7d: last7Res.payload,
-      last_30d: last30Res.payload
+      last_30d: last30Res.payload,
     };
   }
 
   const queryDurationMs = Date.now() - queryStartMs;
   logSlowQuery(logger, {
-    query_label: 'usage_summary',
+    query_label: "usage_summary",
     duration_ms: queryDurationMs,
     row_count: rowCount,
     range_days: dayKeys.length,
@@ -609,13 +610,13 @@ module.exports = withRequestLogging('vibeusage-usage-summary', async function(re
     model: canonicalModel || null,
     tz: tzContext?.timeZone || null,
     tz_offset_minutes: Number.isFinite(tzContext?.offsetMinutes) ? tzContext.offsetMinutes : null,
-    rollup_hit: rollupHit
+    rollup_hit: rollupHit,
   });
 
   const identityMap = await resolveModelIdentity({
     edgeClient: auth.edgeClient,
     usageModels: Array.from(distinctModels.values()),
-    effectiveDate: to
+    effectiveDate: to,
   });
   let canonicalModels = new Set();
   for (const modelValue of distinctModels.values()) {
@@ -635,19 +636,19 @@ module.exports = withRequestLogging('vibeusage-usage-summary', async function(re
       const aliasRows = await fetchAliasRows({
         edgeClient: auth.edgeClient,
         usageModels: usageModelList,
-        effectiveDate: to
+        effectiveDate: to,
       });
       const timeline = buildAliasTimeline({ usageModels: usageModelList, aliasRows });
       const rangeCanonicalModels = new Set();
       const profileCache = new Map();
 
       const getProfile = async (modelId, dateKey) => {
-        const key = buildPricingBucketKey('profile', modelId || '', dateKey || '');
+        const key = buildPricingBucketKey("profile", modelId || "", dateKey || "");
         if (profileCache.has(key)) return profileCache.get(key);
         const profile = await resolvePricingProfile({
           edgeClient: auth.edgeClient,
           model: modelId,
-          effectiveDate: dateKey
+          effectiveDate: dateKey,
         });
         profileCache.set(key, profile);
         return profile;
@@ -658,7 +659,7 @@ module.exports = withRequestLogging('vibeusage-usage-summary', async function(re
         const identity = resolveIdentityAtDate({
           usageKey,
           dateKey,
-          timeline
+          timeline,
         });
         if (identity.model_id && identity.model_id !== DEFAULT_MODEL) {
           rangeCanonicalModels.add(identity.model_id);
@@ -681,7 +682,7 @@ module.exports = withRequestLogging('vibeusage-usage-summary', async function(re
     pricingProfile = await resolvePricingProfile({
       edgeClient: auth.edgeClient,
       model: impliedModelId,
-      effectiveDate: to
+      effectiveDate: to,
     });
   }
 
@@ -699,16 +700,16 @@ module.exports = withRequestLogging('vibeusage-usage-summary', async function(re
       input_tokens: totals.input_tokens,
       cached_input_tokens: totals.cached_input_tokens,
       output_tokens: totals.output_tokens,
-      reasoning_output_tokens: totals.reasoning_output_tokens
+      reasoning_output_tokens: totals.reasoning_output_tokens,
     },
-    pricingProfile
+    pricingProfile,
   );
 
   let summaryPricingMode = overallCost.pricing_mode;
   if (pricingModes.size === 1) {
     summaryPricingMode = Array.from(pricingModes)[0];
   } else if (pricingModes.size > 1) {
-    summaryPricingMode = 'mixed';
+    summaryPricingMode = "mixed";
   }
 
   const totalsPayload = {
@@ -718,7 +719,7 @@ module.exports = withRequestLogging('vibeusage-usage-summary', async function(re
     cached_input_tokens: totals.cached_input_tokens.toString(),
     output_tokens: totals.output_tokens.toString(),
     reasoning_output_tokens: totals.reasoning_output_tokens.toString(),
-    total_cost_usd: formatUsdFromMicros(totalCostMicros)
+    total_cost_usd: formatUsdFromMicros(totalCostMicros),
   };
 
   const responsePayload = {
@@ -730,8 +731,8 @@ module.exports = withRequestLogging('vibeusage-usage-summary', async function(re
     totals: totalsPayload,
     pricing: buildPricingMetadata({
       profile: overallCost.profile,
-      pricingMode: summaryPricingMode
-    })
+      pricingMode: summaryPricingMode,
+    }),
   };
   if (rollingPayload) responsePayload.rolling = rollingPayload;
 

@@ -1,12 +1,12 @@
-'use strict';
+"use strict";
 
 function toBigInt(v) {
-  if (typeof v === 'bigint') return v >= 0n ? v : 0n;
-  if (typeof v === 'number') {
+  if (typeof v === "bigint") return v >= 0n ? v : 0n;
+  if (typeof v === "number") {
     if (!Number.isFinite(v) || v <= 0) return 0n;
     return BigInt(Math.floor(v));
   }
-  if (typeof v === 'string') {
+  if (typeof v === "string") {
     const s = v.trim();
     if (!/^[0-9]+$/.test(s)) return 0n;
     try {
@@ -19,14 +19,14 @@ function toBigInt(v) {
 }
 
 function toPositiveIntOrNull(v) {
-  if (typeof v === 'number' && Number.isInteger(v) && v > 0) return v;
-  if (typeof v === 'string') {
+  if (typeof v === "number" && Number.isInteger(v) && v > 0) return v;
+  if (typeof v === "string") {
     const s = v.trim();
     if (!/^[0-9]+$/.test(s)) return null;
     const n = Number.parseInt(s, 10);
     return Number.isFinite(n) && n > 0 ? n : null;
   }
-  if (typeof v === 'bigint') {
+  if (typeof v === "bigint") {
     if (v <= 0n) return null;
     const n = Number(v);
     return Number.isFinite(n) && n > 0 ? n : null;
@@ -42,6 +42,5 @@ function toPositiveInt(v) {
 module.exports = {
   toBigInt,
   toPositiveInt,
-  toPositiveIntOrNull
+  toPositiveIntOrNull,
 };
-

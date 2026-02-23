@@ -301,7 +301,11 @@ var require_auth = __commonJS({
     }
     async function getEdgeClientAndUserIdFast({ baseUrl, bearer }) {
       const anonKey = getAnonKey();
-      const edgeClient = createClient({ baseUrl, anonKey: anonKey || void 0, edgeFunctionToken: bearer });
+      const edgeClient = createClient({
+        baseUrl,
+        anonKey: anonKey || void 0,
+        edgeFunctionToken: bearer
+      });
       const local = await verifyUserJwtHs256({ token: bearer });
       const allowRemoteOnly = !local.ok && local?.code === "missing_jwt_secret";
       if (!local.ok && !allowRemoteOnly) {
@@ -410,7 +414,14 @@ var require_auth = __commonJS({
       }
       const publicView = await resolvePublicView({ baseUrl, shareToken: bearer });
       if (!publicView.ok) {
-        return { ok: false, edgeClient: null, userId: null, accessType: null, status: 401, error: "Unauthorized" };
+        return {
+          ok: false,
+          edgeClient: null,
+          userId: null,
+          accessType: null,
+          status: 401,
+          error: "Unauthorized"
+        };
       }
       return {
         ok: true,
@@ -759,84 +770,90 @@ var { isDebugEnabled, withSlowQueryDebugPayload } = require_debug();
 var { toBigInt } = require_numbers();
 var DEFAULT_LIMIT = 3;
 var MAX_LIMIT = 10;
-module.exports = withRequestLogging("vibeusage-project-usage-summary", async function(request, logger) {
-  const opt = handleOptions(request);
-  if (opt) return opt;
-  const url = new URL(request.url);
-  const debugEnabled = isDebugEnabled(url);
-  const respond = (body, status, durationMs) => json(
-    debugEnabled ? withSlowQueryDebugPayload(body, { logger, durationMs, status }) : body,
-    status
-  );
-  if (request.method !== "GET") return respond({ error: "Method not allowed" }, 405, 0);
-  const bearer = getBearerToken(request.headers.get("Authorization"));
-  if (!bearer) return respond({ error: "Missing bearer token" }, 401, 0);
-  const baseUrl = getBaseUrl();
-  const auth = await getAccessContext({ baseUrl, bearer, allowPublic: true });
-  if (!auth.ok) return respond({ error: auth.error || "Unauthorized" }, auth.status || 401, 0);
-  const sourceResult = getSourceParam(url);
-  if (!sourceResult.ok) return respond({ error: sourceResult.error }, 400, 0);
-  const source = sourceResult.source;
-  const from = null;
-  const to = null;
-  const limit = normalizeLimit(url.searchParams.get("limit"));
-  const queryStartMs = Date.now();
-  let query = auth.edgeClient.database.from("vibeusage_project_usage_hourly").select(
-    "project_key,project_ref,sum_total_tokens:sum(total_tokens),sum_billable_total_tokens:sum(billable_total_tokens)"
-  ).eq("user_id", auth.userId);
-  if (source) query = query.eq("source", source);
-  if (!isCanaryTag(source)) query = query.neq("source", "canary");
-  query = query.order("sum_billable_total_tokens", { ascending: false }).order("sum_total_tokens", { ascending: false }).limit(limit);
-  const { data, error } = await query;
-  let entries = null;
-  if (error && shouldFallbackAggregate(error?.message)) {
-    const fallback = await fetchProjectUsageFallback({
-      edgeClient: auth.edgeClient,
-      userId: auth.userId,
-      source,
-      limit
-    });
-    if (!fallback.ok) {
+module.exports = withRequestLogging(
+  "vibeusage-project-usage-summary",
+  async function(request, logger) {
+    const opt = handleOptions(request);
+    if (opt) return opt;
+    const url = new URL(request.url);
+    const debugEnabled = isDebugEnabled(url);
+    const respond = (body, status, durationMs) => json(
+      debugEnabled ? withSlowQueryDebugPayload(body, { logger, durationMs, status }) : body,
+      status
+    );
+    if (request.method !== "GET") return respond({ error: "Method not allowed" }, 405, 0);
+    const bearer = getBearerToken(request.headers.get("Authorization"));
+    if (!bearer) return respond({ error: "Missing bearer token" }, 401, 0);
+    const baseUrl = getBaseUrl();
+    const auth = await getAccessContext({ baseUrl, bearer, allowPublic: true });
+    if (!auth.ok) return respond({ error: auth.error || "Unauthorized" }, auth.status || 401, 0);
+    const sourceResult = getSourceParam(url);
+    if (!sourceResult.ok) return respond({ error: sourceResult.error }, 400, 0);
+    const source = sourceResult.source;
+    const from = null;
+    const to = null;
+    const limit = normalizeLimit(url.searchParams.get("limit"));
+    const queryStartMs = Date.now();
+    let query = auth.edgeClient.database.from("vibeusage_project_usage_hourly").select(
+      "project_key,project_ref,sum_total_tokens:sum(total_tokens),sum_billable_total_tokens:sum(billable_total_tokens)"
+    ).eq("user_id", auth.userId);
+    if (source) query = query.eq("source", source);
+    if (!isCanaryTag(source)) query = query.neq("source", "canary");
+    query = query.order("sum_billable_total_tokens", { ascending: false }).order("sum_total_tokens", { ascending: false }).limit(limit);
+    const { data, error } = await query;
+    let entries = null;
+    if (error && shouldFallbackAggregate(error?.message)) {
+      const fallback = await fetchProjectUsageFallback({
+        edgeClient: auth.edgeClient,
+        userId: auth.userId,
+        source,
+        limit
+      });
+      if (!fallback.ok) {
+        const queryDurationMs2 = Date.now() - queryStartMs;
+        return respond({ error: fallback.error }, 500, queryDurationMs2);
+      }
+      entries = fallback.entries;
+    } else if (error) {
       const queryDurationMs2 = Date.now() - queryStartMs;
-      return respond({ error: fallback.error }, 500, queryDurationMs2);
+      return respond({ error: error.message }, 500, queryDurationMs2);
+    } else {
+      entries = (Array.isArray(data) ? data : []).map((row) => {
+        const totalTokens = normalizeAggregateValue(row?.sum_total_tokens);
+        return {
+          project_key: row?.project_key || null,
+          project_ref: row?.project_ref || null,
+          total_tokens: totalTokens,
+          billable_total_tokens: resolveBillableTotal(
+            totalTokens,
+            row?.sum_billable_total_tokens
+          )
+        };
+      }).filter((row) => row.project_key && row.project_ref);
     }
-    entries = fallback.entries;
-  } else if (error) {
-    const queryDurationMs2 = Date.now() - queryStartMs;
-    return respond({ error: error.message }, 500, queryDurationMs2);
-  } else {
-    entries = (Array.isArray(data) ? data : []).map((row) => {
-      const totalTokens = normalizeAggregateValue(row?.sum_total_tokens);
-      return {
-        project_key: row?.project_key || null,
-        project_ref: row?.project_ref || null,
-        total_tokens: totalTokens,
-        billable_total_tokens: resolveBillableTotal(totalTokens, row?.sum_billable_total_tokens)
-      };
-    }).filter((row) => row.project_key && row.project_ref);
+    const queryDurationMs = Date.now() - queryStartMs;
+    logSlowQuery(logger, {
+      query_label: "project_usage_summary",
+      duration_ms: queryDurationMs,
+      row_count: entries.length,
+      range_days: null,
+      source: source || null,
+      tz: null,
+      tz_offset_minutes: null
+    });
+    return respond(
+      {
+        from,
+        to,
+        all_time: true,
+        generated_at: (/* @__PURE__ */ new Date()).toISOString(),
+        entries: entries || []
+      },
+      200,
+      queryDurationMs
+    );
   }
-  const queryDurationMs = Date.now() - queryStartMs;
-  logSlowQuery(logger, {
-    query_label: "project_usage_summary",
-    duration_ms: queryDurationMs,
-    row_count: entries.length,
-    range_days: null,
-    source: source || null,
-    tz: null,
-    tz_offset_minutes: null
-  });
-  return respond(
-    {
-      from,
-      to,
-      all_time: true,
-      generated_at: (/* @__PURE__ */ new Date()).toISOString(),
-      entries: entries || []
-    },
-    200,
-    queryDurationMs
-  );
-});
+);
 function normalizeLimit(raw) {
   if (typeof raw !== "string" || raw.trim().length === 0) return DEFAULT_LIMIT;
   const n = Number(raw);

@@ -21,7 +21,7 @@ test("safe browser helpers do not throw when unavailable", async () => {
         },
       },
     }),
-    null
+    null,
   );
   assert.equal(
     safeSetItem("key", "value", {
@@ -31,7 +31,7 @@ test("safe browser helpers do not throw when unavailable", async () => {
         },
       },
     }),
-    false
+    false,
   );
 
   assert.equal(
@@ -42,7 +42,7 @@ test("safe browser helpers do not throw when unavailable", async () => {
         },
       },
     }),
-    "value"
+    "value",
   );
 
   const ok = await safeWriteClipboard("value", {

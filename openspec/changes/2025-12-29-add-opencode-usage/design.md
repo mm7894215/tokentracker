@@ -1,7 +1,9 @@
 ## Context
+
 We need Opencode token usage ingestion that is automatic and non-invasive, aligned with existing notify-driven ingestion. Opencode provides a plugin event system and local storage on macOS; there is no documented notify config for external commands.
 
 ## Goals / Non-Goals
+
 - Goals:
   - Install a global Opencode plugin without manual user steps.
   - Trigger the tracker notify handler on session idle events.
@@ -13,6 +15,7 @@ We need Opencode token usage ingestion that is automatic and non-invasive, align
   - No ingestion of message content or tool outputs.
 
 ## Module Brief
+
 - Scope (IN):
   - Global Opencode plugin installation/removal.
   - Local message storage parsing into half-hour buckets (`source = "opencode"`).
@@ -39,17 +42,19 @@ We need Opencode token usage ingestion that is automatic and non-invasive, align
   - Init/uninstall tests ensure plugin installation/removal is safe.
   - Manual smoke: end Opencode session and verify queue growth + upload.
 - Milestones:
-  1) Spec delta merged (requirements + scenarios).
-  2) Plugin install/remove + status/diagnostics updates.
-  3) Parser integrated into sync and tests passing.
-  4) Smoke verification captured.
+  1. Spec delta merged (requirements + scenarios).
+  2. Plugin install/remove + status/diagnostics updates.
+  3. Parser integrated into sync and tests passing.
+  4. Smoke verification captured.
 - Plan B triggers:
 - If `session.updated` is not emitted in real use, switch to a plugin event with higher frequency (e.g., message update) plus short in-plugin debounce.
 
 ## Decisions
+
 - Use Opencode global plugin install to trigger notify on `session.updated` events.
 - Parse Opencode local storage message JSON for usage and model; derive timestamps from `time.completed` or `time.created` (ms).
 
 ## Risks / Trade-offs
+
 - Plugin API or event names may change; mitigate by keeping plugin logic isolated and minimal.
 - Some messages may lack token data; parser must skip safely without blocking ingestion.

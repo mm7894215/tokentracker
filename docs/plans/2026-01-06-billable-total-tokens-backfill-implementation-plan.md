@@ -15,22 +15,24 @@
 ### Task 1: Add DB migration script for billable columns
 
 **Files:**
+
 - Create: `scripts/ops/billable-total-tokens-migration.sql`
 - Test: `test/billable-total-tokens-migration.test.js`
 
 **Step 1: Write the failing test**
 
 `test/billable-total-tokens-migration.test.js`
+
 ```js
-'use strict';
+"use strict";
 
-const fs = require('node:fs');
-const assert = require('node:assert/strict');
+const fs = require("node:fs");
+const assert = require("node:assert/strict");
 
-const sql = fs.readFileSync('scripts/ops/billable-total-tokens-migration.sql', 'utf8');
+const sql = fs.readFileSync("scripts/ops/billable-total-tokens-migration.sql", "utf8");
 
-assert.ok(sql.includes('billable_total_tokens'));
-assert.ok(sql.includes('billable_rule_version'));
+assert.ok(sql.includes("billable_total_tokens"));
+assert.ok(sql.includes("billable_rule_version"));
 ```
 
 **Step 2: Run test to verify it fails**
@@ -41,6 +43,7 @@ Expected: FAIL (ENOENT until SQL file exists).
 **Step 3: Write minimal implementation**
 
 `scripts/ops/billable-total-tokens-migration.sql`
+
 ```sql
 alter table public.vibescore_tracker_hourly
   add column if not exists billable_total_tokens bigint,
@@ -69,27 +72,32 @@ git commit -m "ops: add billable totals migration"
 ### Task 2: Write billable totals at ingest
 
 **Files:**
+
 - Modify: `insforge-src/functions/vibescore-ingest.js`
 - Test: `test/edge-functions.test.js`
 
 **Step 1: Write the failing test**
 
 In `test/edge-functions.test.js` (inside the existing "vibeusage-ingest uses serviceRoleKey" test), add assertions:
+
 ```js
-assert.equal(postBody[0]?.billable_total_tokens, '3');
+assert.equal(postBody[0]?.billable_total_tokens, "3");
 assert.equal(postBody[0]?.billable_rule_version, 1);
 ```
+
 Adjust the bucket to make billable differ from total:
+
 ```js
 const bucket = {
-  hour_start: new Date('2025-12-17T00:00:00.000Z').toISOString(),
+  hour_start: new Date("2025-12-17T00:00:00.000Z").toISOString(),
   input_tokens: 1,
   cached_input_tokens: 1,
   output_tokens: 2,
   reasoning_output_tokens: 0,
-  total_tokens: 4
+  total_tokens: 4,
 };
 ```
+
 For `codex`, billable = input + output + reasoning = 3.
 
 **Step 2: Run test to verify it fails**
@@ -100,11 +108,14 @@ Expected: FAIL (billable fields missing).
 **Step 3: Write minimal implementation**
 
 In `insforge-src/functions/vibescore-ingest.js`:
+
 ```js
-const { computeBillableTotalTokens } = require('../shared/usage-billable');
+const { computeBillableTotalTokens } = require("../shared/usage-billable");
 const BILLABLE_RULE_VERSION = 1;
 ```
+
 Inside `buildRows`, compute and add:
+
 ```js
 const billable = computeBillableTotalTokens({ source, totals: bucket });
 ...
@@ -129,39 +140,44 @@ git commit -m "feat: write billable totals during ingest"
 ### Task 3: Add offline hourly backfill script
 
 **Files:**
+
 - Create: `scripts/ops/billable-total-tokens-backfill.cjs`
 - Test: `test/billable-total-tokens-backfill.test.js`
 
 **Step 1: Write the failing test**
 
 `test/billable-total-tokens-backfill.test.js`
-```js
-'use strict';
 
-const assert = require('node:assert/strict');
-const { buildUpdates, BILLABLE_RULE_VERSION } = require('../scripts/ops/billable-total-tokens-backfill.cjs');
+```js
+"use strict";
+
+const assert = require("node:assert/strict");
+const {
+  buildUpdates,
+  BILLABLE_RULE_VERSION,
+} = require("../scripts/ops/billable-total-tokens-backfill.cjs");
 
 const rows = [
   {
-    user_id: 'u1',
-    device_id: 'd1',
-    source: 'codex',
-    model: 'm1',
-    hour_start: '2025-12-17T00:00:00.000Z',
+    user_id: "u1",
+    device_id: "d1",
+    source: "codex",
+    model: "m1",
+    hour_start: "2025-12-17T00:00:00.000Z",
     input_tokens: 1,
     cached_input_tokens: 2,
     output_tokens: 3,
     reasoning_output_tokens: 0,
-    total_tokens: 6
-  }
+    total_tokens: 6,
+  },
 ];
 
 const updates = buildUpdates(rows);
 assert.equal(updates.length, 1);
-assert.equal(updates[0].billable_total_tokens, '4');
+assert.equal(updates[0].billable_total_tokens, "4");
 assert.equal(updates[0].billable_rule_version, BILLABLE_RULE_VERSION);
 
-const skipped = buildUpdates([{ ...rows[0], billable_total_tokens: '4' }]);
+const skipped = buildUpdates([{ ...rows[0], billable_total_tokens: "4" }]);
 assert.equal(skipped.length, 0);
 ```
 
@@ -173,6 +189,7 @@ Expected: FAIL (module missing).
 **Step 3: Write minimal implementation**
 
 `scripts/ops/billable-total-tokens-backfill.cjs`:
+
 - Export `buildUpdates(rows)` and `BILLABLE_RULE_VERSION` for tests.
 - Use `computeBillableTotalTokens` to compute billable when missing.
 - CLI args: `--from`, `--to`, `--batch-size`, `--sleep-ms`, `--dry-run`.
@@ -198,6 +215,7 @@ git commit -m "ops: add billable totals backfill script"
 ### Task 4: Prefer stored billable totals in read paths (no double-count)
 
 **Files:**
+
 - Modify: `insforge-src/functions/vibescore-usage-summary.js`
 - Modify: `insforge-src/functions/vibescore-usage-daily.js`
 - Modify: `insforge-src/functions/vibescore-usage-hourly.js`
@@ -209,14 +227,16 @@ git commit -m "ops: add billable totals backfill script"
 **Step 1: Write/extend the failing tests**
 
 Extend `test/edge-functions.test.js` to cover:
+
 - Hourly aggregate uses `source` from rows and returns `billable_total_tokens`.
 - Monthly uses stored billable totals when present.
 - Summary/Daily avoid double-count when `billable_total_tokens` exists.
 - Heatmap uses billable totals when present.
 
 Example (summary double-count guard):
+
 ```js
-assert.equal(body.totals.billable_total_tokens, '7');
+assert.equal(body.totals.billable_total_tokens, "7");
 ```
 
 **Step 2: Run test to verify it fails**
@@ -227,6 +247,7 @@ Expected: FAIL (current behavior double-counts or ignores stored billable).
 **Step 3: Write minimal implementation**
 
 Guidelines per endpoint:
+
 - Include `billable_total_tokens` in SELECT lists.
 - If `row.billable_total_tokens` is present, use it directly; otherwise compute via `computeBillableTotalTokens`.
 - Do **not** add computed billable on top of stored billable.
@@ -249,6 +270,7 @@ git commit -m "fix: prefer stored billable totals in usage endpoints"
 ### Task 5: Rebuild Insforge bundle + update canvas + regression record
 
 **Files:**
+
 - Modify: `insforge-functions/*` (generated)
 - Modify: `architecture.canvas`
 - Modify: `docs/plans/2026-01-06-billable-total-tokens-design.md`
@@ -266,6 +288,7 @@ Mark backfill node as `Status: Implemented` if applicable.
 **Step 3: Record regression commands**
 
 Append to `docs/plans/2026-01-06-billable-total-tokens-design.md`:
+
 - `node --test test/edge-functions.test.js` (PASS)
 
 **Step 4: Commit**
@@ -276,6 +299,7 @@ git commit -m "chore: sync insforge bundle and canvas"
 ```
 
 ## Regression Notes
+
 - `node --test test/architecture-canvas.test.js` (PASS, 2026-01-06)
 - `node --test test/billable-total-tokens-migration.test.js` (PASS, 2026-01-06)
 - `node --test test/edge-functions.test.js` (FAIL, 2026-01-06) — expected until insforge-functions rebuild + hourly/monthly billable fixes.

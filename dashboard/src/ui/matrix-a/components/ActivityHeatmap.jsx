@@ -1,11 +1,4 @@
-import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { buildActivityHeatmap } from "../../../lib/activity-heatmap";
 import { copy } from "../../../lib/copy";
 
@@ -59,13 +52,7 @@ function parseUtcDate(value) {
 }
 
 function addUtcDays(date, days) {
-  return new Date(
-    Date.UTC(
-      date.getUTCFullYear(),
-      date.getUTCMonth(),
-      date.getUTCDate() + days
-    )
-  );
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() + days));
 }
 
 function diffUtcDays(a, b) {
@@ -85,16 +72,10 @@ function getWeekStart(date, weekStartsOn) {
 function buildFullYearMonthMarkers({ weeksCount, to, weekStartsOn }) {
   if (!weeksCount) return [];
   const end = parseUtcDate(to) || new Date();
-  const endMonth = new Date(
-    Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), 1)
-  );
+  const endMonth = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), 1));
   const months = [];
   for (let i = 11; i >= 0; i -= 1) {
-    months.push(
-      new Date(
-        Date.UTC(endMonth.getUTCFullYear(), endMonth.getUTCMonth() - i, 1)
-      )
-    );
+    months.push(new Date(Date.UTC(endMonth.getUTCFullYear(), endMonth.getUTCMonth() - i, 1)));
   }
 
   const endWeekStart = getWeekStart(end, weekStartsOn);
@@ -133,8 +114,7 @@ export function ActivityHeatmap({
         rows.push({
           day: cell.day,
           total_tokens: cell.total_tokens ?? cell.value ?? 0,
-          billable_total_tokens:
-            cell.billable_total_tokens ?? cell.value ?? cell.total_tokens ?? 0,
+          billable_total_tokens: cell.billable_total_tokens ?? cell.value ?? cell.total_tokens ?? 0,
         });
       }
     }
@@ -177,7 +157,7 @@ export function ActivityHeatmap({
         to: normalizedHeatmap?.to,
         weekStartsOn,
       }),
-    [normalizedHeatmap?.to, weekStartsOn, weeks.length]
+    [normalizedHeatmap?.to, weekStartsOn, weeks.length],
   );
   const latestMonthIndex = useMemo(() => {
     if (!monthMarkers.length) return null;
@@ -273,10 +253,7 @@ export function ActivityHeatmap({
         Number.isFinite(latestMonthIndex)
       ) {
         const columnWidth = CELL_SIZE + CELL_GAP;
-        targetScroll = Math.min(
-          maxScroll,
-          Math.max(0, latestMonthIndex * columnWidth)
-        );
+        targetScroll = Math.min(maxScroll, Math.max(0, latestMonthIndex * columnWidth));
       }
       el.scrollLeft = targetScroll;
       updateScrollState();
@@ -308,7 +285,7 @@ export function ActivityHeatmap({
       window.removeEventListener("pointermove", handleContentPointerMoveGlobal);
       window.removeEventListener("pointerup", handleContentPointerUp);
     },
-    [handleContentPointerMoveGlobal]
+    [handleContentPointerMoveGlobal],
   );
 
   const onContentPointerDown = useCallback(
@@ -330,7 +307,7 @@ export function ActivityHeatmap({
       // We don't use setPointerCapture here to allow window listeners to work more naturally
       // but touch-action: none on the element is crucial (already added)
     },
-    [handleContentPointerMoveGlobal, handleContentPointerUp]
+    [handleContentPointerMoveGlobal, handleContentPointerUp],
   );
 
   // --- SCROLLBAR DRAG HANDLERS ---
@@ -341,9 +318,7 @@ export function ActivityHeatmap({
 
     const dx = e.clientX - dragScrollbarRef.current.startX;
     // dx is pixels moved by mouse. Multiply by ratio to get scroll pixels.
-    el.scrollLeft =
-      dragScrollbarRef.current.startScroll +
-      dx * dragScrollbarRef.current.ratio;
+    el.scrollLeft = dragScrollbarRef.current.startScroll + dx * dragScrollbarRef.current.ratio;
     e.preventDefault();
   }, []);
 
@@ -361,7 +336,7 @@ export function ActivityHeatmap({
       window.removeEventListener("pointermove", handleThumbPointerMoveGlobal);
       window.removeEventListener("pointerup", handleThumbPointerUp);
     },
-    [handleThumbPointerMoveGlobal]
+    [handleThumbPointerMoveGlobal],
   );
 
   const onThumbPointerDown = useCallback(
@@ -394,7 +369,7 @@ export function ActivityHeatmap({
       window.addEventListener("pointerup", handleThumbPointerUp);
       e.preventDefault();
     },
-    [handleThumbPointerMoveGlobal, handleThumbPointerUp]
+    [handleThumbPointerMoveGlobal, handleThumbPointerUp],
   );
 
   // --- WHEEL HANDLER ---
@@ -409,11 +384,7 @@ export function ActivityHeatmap({
   }, []);
 
   if (!weeks.length) {
-    return (
-      <div className="text-caption text-matrix-muted">
-        {copy("heatmap.empty")}
-      </div>
-    );
+    return <div className="text-caption text-matrix-muted">{copy("heatmap.empty")}</div>;
   }
 
   const gridColumns = {
@@ -436,12 +407,9 @@ export function ActivityHeatmap({
   };
 
   const contentWidth =
-    LABEL_WIDTH +
-    weeks.length * CELL_SIZE +
-    Math.max(0, weeks.length - 1) * CELL_GAP;
+    LABEL_WIDTH + weeks.length * CELL_SIZE + Math.max(0, weeks.length - 1) * CELL_GAP;
 
-  const showScrollbar =
-    scrollState.overflow && (isHoveringHeatmap || isDraggingScrollbar);
+  const showScrollbar = scrollState.overflow && (isHoveringHeatmap || isDraggingScrollbar);
 
   return (
     <div
@@ -471,10 +439,7 @@ export function ActivityHeatmap({
             onPointerDown={onContentPointerDown}
             // Move and Up are handled by window listeners now
           >
-            <div
-              style={gridColumns}
-              className="text-caption uppercase text-matrix-muted mb-2"
-            >
+            <div style={gridColumns} className="text-caption uppercase text-matrix-muted mb-2">
               <span></span>
               {monthMarkers.map((label) => (
                 <span
@@ -515,10 +480,7 @@ export function ActivityHeatmap({
 
                     const level = Number(cell.level) || 0;
                     const opacity = OPACITY_BY_LEVEL[level] ?? 0.3;
-                    const color =
-                      level === 0
-                        ? "rgba(0,255,65,0.08)"
-                        : `rgba(0,255,65,${opacity})`;
+                    const color = level === 0 ? "rgba(0,255,65,0.08)" : `rgba(0,255,65,${opacity})`;
 
                     const tzDetail =
                       timeZoneLabel || timeZoneShortLabel || copy("heatmap.legend.utc");
@@ -539,7 +501,7 @@ export function ActivityHeatmap({
                         }}
                       ></span>
                     );
-                  })
+                  }),
                 )}
               </div>
             </div>

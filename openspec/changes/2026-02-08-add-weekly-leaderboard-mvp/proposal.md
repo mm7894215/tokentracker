@@ -1,14 +1,17 @@
 # Change: Add weekly leaderboard MVP
 
 ## Ownership
+
 - Owner: Victor
 - Status: Proposal (not approved)
 
 ## Why
+
 - Provide a lightweight weekly leaderboard experience to increase engagement without exposing PII.
 - Align leaderboard token accounting with the existing GPT vs Claude standards and make the contract end-to-end verifiable.
 
 ## What Changes
+
 - Database:
   - Extend `vibeusage_leaderboard_snapshots` to store `gpt_tokens` and `claude_tokens`.
   - Extend `vibeusage_leaderboard_snapshots` to store per-metric ranks for categories: `rank_gpt` and `rank_claude`.
@@ -32,23 +35,28 @@
   - Register all new leaderboard UI strings in `dashboard/src/content/copy.csv`.
 
 ## Scope
+
 IN:
+
 - Signed-in weekly leaderboard (UTC calendar week, Sunday start) in the dashboard.
 - Metric categories: `ALL / GPT / CLAUDE` ranking by `total_tokens / gpt_tokens / claude_tokens`.
 - Pagination (`limit` + `offset`) and `Top9 + Me` injection UX.
 - GPT/Claude breakdown columns and total ordering by `total_tokens`.
 
 OUT:
+
 - Unauthenticated/public leaderboard pages.
 - Social sharing / deep-linking to a specific rank.
 - Multi-period selector beyond `week`.
 - Leaderboard privacy toggle UI (backend setting endpoint remains supported).
 
 ## Open Questions
+
 - Should the UI label the week basis explicitly as `UTC (Sunday start)` to avoid confusion with dashboard usage periods?
 - Should we later add a “previous week” picker, or keep MVP strictly “current week only”?
 
 ## Impact
+
 - Affected specs: `vibeusage-tracker`
 - Affected code: `insforge-src/functions/vibeusage-leaderboard.js`, `insforge-src/functions/vibeusage-leaderboard-refresh.js`, `dashboard/src/**`, `dashboard/src/content/copy.csv`
 - Risks:

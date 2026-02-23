@@ -59,6 +59,6 @@ test("trimLeadingZeroMonths keeps all rows when no non-zero months", async () =>
   const trimmed = trimLeadingZeroMonths(rows);
   assert.deepEqual(
     trimmed.map((row) => row.month),
-    rows.map((row) => row.month)
+    rows.map((row) => row.month),
   );
 });

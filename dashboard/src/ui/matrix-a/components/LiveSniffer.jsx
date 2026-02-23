@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useState } from "react";
-
 import { copy } from "../../../lib/copy";
 import { isScreenshotModeEnabled } from "../../../lib/screenshot-mode";
 import { shouldRunLiveSniffer } from "../util/should-run-live-sniffer.js";
@@ -51,10 +50,7 @@ export const LiveSniffer = () => {
   return (
     <div className="font-matrix text-caption text-matrix-muted space-y-2 h-full flex flex-col justify-end">
       {logs.map((log, idx) => (
-        <div
-          key={idx}
-          className="animate-pulse border-l-2 border-matrix-ghost pl-2 truncate"
-        >
+        <div key={idx} className="animate-pulse border-l-2 border-matrix-ghost pl-2 truncate">
           {log}
         </div>
       ))}

@@ -1,5 +1,4 @@
 import { createClient } from "@insforge/sdk";
-
 import { getInsforgeAnonKey, getInsforgeBaseUrl } from "./config";
 import { createTimeoutFetch } from "./http-timeout";
 
@@ -50,10 +49,7 @@ function getTokenManager(client: unknown): InsforgeTokenManagerLike | null {
 function decodeBase64Url(input: string): string | null {
   if (typeof input !== "string" || input.length === 0) return null;
   const normalized = input.replace(/-/g, "+").replace(/_/g, "/");
-  const padded = normalized.padEnd(
-    normalized.length + ((4 - (normalized.length % 4)) % 4),
-    "="
-  );
+  const padded = normalized.padEnd(normalized.length + ((4 - (normalized.length % 4)) % 4), "=");
   try {
     if (typeof globalThis.atob === "function") {
       return globalThis.atob(padded);
@@ -100,9 +96,10 @@ function wrapTokenForStorage(token: string): string {
   return JSON.stringify(envelope);
 }
 
-function unwrapTokenFromStorage(
-  raw: string | null
-): { token: string | null; shouldMigrate: boolean } {
+function unwrapTokenFromStorage(raw: string | null): {
+  token: string | null;
+  shouldMigrate: boolean;
+} {
   if (typeof raw !== "string" || raw.length === 0) {
     return { token: null, shouldMigrate: false };
   }
@@ -127,11 +124,7 @@ function getNamespacedStorageKey(key: string): string {
   return `${INSFORGE_STORAGE_KEY}.${key}`;
 }
 
-function setStorageValue(
-  storage: Storage | null,
-  key: string,
-  value: string
-): boolean {
+function setStorageValue(storage: Storage | null, key: string, value: string): boolean {
   if (!storage) return false;
   try {
     storage.setItem(getNamespacedStorageKey(key), value);
@@ -240,10 +233,7 @@ export function createPersistentStorage() {
         memoryStore.set(key, wrapped);
       };
 
-      const readStoredValue = (
-        storage: Storage | null,
-        rawKey: string
-      ): string | null => {
+      const readStoredValue = (storage: Storage | null, rawKey: string): string | null => {
         if (!storage) return null;
         try {
           return storage.getItem(rawKey);
@@ -289,8 +279,7 @@ export function createPersistentStorage() {
     },
 
     setItem(key: string, value: string): void {
-      const persistedValue =
-        key === INSFORGE_TOKEN_KEY ? wrapTokenForStorage(value) : value;
+      const persistedValue = key === INSFORGE_TOKEN_KEY ? wrapTokenForStorage(value) : value;
 
       // Always update memory
       memoryStore.set(key, persistedValue);
@@ -360,10 +349,7 @@ export function createInsforgeAuthClient() {
   return client;
 }
 
-function persistSessionToStorage(
-  client: InsforgeClientBridgeLike,
-  session: InsforgeSessionLike
-) {
+function persistSessionToStorage(client: InsforgeClientBridgeLike, session: InsforgeSessionLike) {
   if (!session?.accessToken) return;
   const tokenManager = getTokenManager(client);
   if (!tokenManager || typeof tokenManager.saveSession !== "function") return;

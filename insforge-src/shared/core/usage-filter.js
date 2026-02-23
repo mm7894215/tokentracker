@@ -1,7 +1,7 @@
-'use strict';
+"use strict";
 
-const { normalizeUsageModel } = require('../model');
-const { extractDateKey, resolveIdentityAtDate } = require('../model-alias-timeline');
+const { normalizeUsageModel } = require("../model");
+const { extractDateKey, resolveIdentityAtDate } = require("../model-alias-timeline");
 
 function shouldIncludeUsageRow({ row, canonicalModel, hasModelFilter, aliasTimeline, to }) {
   if (!hasModelFilter) return true;
@@ -12,11 +12,11 @@ function shouldIncludeUsageRow({ row, canonicalModel, hasModelFilter, aliasTimel
     rawModel: canonicalModel,
     usageKey: canonicalModel,
     dateKey,
-    timeline: aliasTimeline
+    timeline: aliasTimeline,
   });
   return identity.model_id === filterIdentity.model_id;
 }
 
 module.exports = {
-  shouldIncludeUsageRow
+  shouldIncludeUsageRow,
 };

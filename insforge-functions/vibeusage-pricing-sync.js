@@ -301,7 +301,11 @@ var require_auth = __commonJS({
     }
     async function getEdgeClientAndUserIdFast({ baseUrl, bearer }) {
       const anonKey = getAnonKey2();
-      const edgeClient = createClient({ baseUrl, anonKey: anonKey || void 0, edgeFunctionToken: bearer });
+      const edgeClient = createClient({
+        baseUrl,
+        anonKey: anonKey || void 0,
+        edgeFunctionToken: bearer
+      });
       const local = await verifyUserJwtHs256({ token: bearer });
       const allowRemoteOnly = !local.ok && local?.code === "missing_jwt_secret";
       if (!local.ok && !allowRemoteOnly) {
@@ -410,7 +414,14 @@ var require_auth = __commonJS({
       }
       const publicView = await resolvePublicView({ baseUrl, shareToken: bearer });
       if (!publicView.ok) {
-        return { ok: false, edgeClient: null, userId: null, accessType: null, status: 401, error: "Unauthorized" };
+        return {
+          ok: false,
+          edgeClient: null,
+          userId: null,
+          accessType: null,
+          status: 401,
+          error: "Unauthorized"
+        };
       }
       return {
         ok: true,
@@ -635,7 +646,14 @@ var require_date = __commonJS({
     }
     function getTimeZoneOffsetMinutes(date, timeZone) {
       const parts = getTimeZoneParts(date, timeZone);
-      const asUtc = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second);
+      const asUtc = Date.UTC(
+        parts.year,
+        parts.month - 1,
+        parts.day,
+        parts.hour,
+        parts.minute,
+        parts.second
+      );
       return Math.round((asUtc - date.getTime()) / 6e4);
     }
     function getLocalParts(date, tzContext) {
@@ -1132,10 +1150,13 @@ module.exports = withRequestLogging("vibeusage-pricing-sync", async function(req
   if (title) headers["X-Title"] = title;
   const openrouterRes = await logger.fetch(OPENROUTER_MODELS_URL, { headers });
   if (!openrouterRes.ok) {
-    return json({
-      error: "OpenRouter fetch failed",
-      status: openrouterRes.status
-    }, 502);
+    return json(
+      {
+        error: "OpenRouter fetch failed",
+        status: openrouterRes.status
+      },
+      502
+    );
   }
   let openrouterJson = null;
   try {
@@ -1235,19 +1256,22 @@ module.exports = withRequestLogging("vibeusage-pricing-sync", async function(req
     if (aliasError) return json({ error: aliasError.message }, 500);
     retention = { retention_days: retentionDays, cutoff_date: cutoffDate };
   }
-  return json({
-    success: true,
-    source: pricingSource,
-    effective_from: effectiveFrom,
-    models_total: models.length,
-    models_processed: rows.length,
-    models_skipped: skipped,
-    rows_upserted: upserted,
-    usage_models_total: usageModels.length,
-    aliases_generated: aliasRows.length,
-    aliases_upserted: aliasesUpserted,
-    retention
-  }, 200);
+  return json(
+    {
+      success: true,
+      source: pricingSource,
+      effective_from: effectiveFrom,
+      models_total: models.length,
+      models_processed: rows.length,
+      models_skipped: skipped,
+      rows_upserted: upserted,
+      usage_models_total: usageModels.length,
+      aliases_generated: aliasRows.length,
+      aliases_upserted: aliasesUpserted,
+      retention
+    },
+    200
+  );
 });
 function getEnvValue(key) {
   try {
@@ -1303,7 +1327,13 @@ async function listUsageModels({ serviceClient, windowDays }) {
   if (error) throw new Error(error.message || "Failed to list usage models");
   return Array.from(models.values());
 }
-function buildAliasRows({ usageModels, pricingModelIds, pricingMeta, pricingSource, effectiveFrom }) {
+function buildAliasRows({
+  usageModels,
+  pricingModelIds,
+  pricingMeta,
+  pricingSource,
+  effectiveFrom
+}) {
   const rows = [];
   for (const usageModel of usageModels) {
     if (matchesPricingModel(usageModel, pricingModelIds)) continue;

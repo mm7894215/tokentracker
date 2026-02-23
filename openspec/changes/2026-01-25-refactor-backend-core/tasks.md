@@ -1,4 +1,5 @@
 ## 1. Implementation
+
 - [x] 1.1 Create shared core module boundaries (`insforge-src/shared/core/*`).
 - [x] 1.2 Create db access layer (`insforge-src/shared/db/*`) with query builders + records API wrappers (no RPC).
 - [x] 1.3 Migrate ingest + usage-summary to core/db.
@@ -18,18 +19,21 @@
 - [ ] 1.10 Regenerate InsForge functions (`npm run build:insforge`).
 
 ## 2. Tests
+
 - [x] 2.1 Add/adjust unit tests for core/db modules.
 - [ ] 2.2 Update integration tests for endpoints.
 - [x] 2.3 Run regression suite (`node --test test/*.test.js`).
 - [ ] 2.4 Add replay/idempotency checks for device token issue + ingest.
 
 ## 3. Docs
+
 - [ ] 3.1 Update `BACKEND_API.md` if contract changes.
 - [x] 3.2 Record verification commands/results.
   - Reported: `node --test test/insforge-src-core-db.test.js` (PASS)
   - Reported: `node --test test/*.test.js` (PASS)
 
 ## Verification
+
 - [x] `npm run build:insforge:check`
 - [x] `node --test test/*.test.js`
 - [ ] `VIBEUSAGE_INSFORGE_BASE_URL=... VIBEUSAGE_SERVICE_ROLE_KEY=... node scripts/ops/insforge2-db-validate.cjs`

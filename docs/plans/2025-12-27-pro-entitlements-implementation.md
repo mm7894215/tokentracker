@@ -11,6 +11,7 @@
 ### Task 1: Add entitlements schema + RLS
 
 **Files:**
+
 - Create: `openspec/changes/2025-12-27-add-pro-entitlements/sql/001_create_user_entitlements.sql`
 
 **Step 1: Write schema file**
@@ -51,33 +52,40 @@ git commit -m "docs(openspec): add pro entitlements schema"
 ### Task 2: Pro status helper (TDD)
 
 **Files:**
+
 - Create: `insforge-src/shared/pro-status.js`
 - Test: `test/pro-status.test.js`
 
 **Step 1: Write the failing tests**
 
 ```js
-const assert = require('node:assert/strict');
-const { test } = require('node:test');
-const { computeProStatus } = require('../insforge-src/shared/pro-status');
+const assert = require("node:assert/strict");
+const { test } = require("node:test");
+const { computeProStatus } = require("../insforge-src/shared/pro-status");
 
-test('registration cutoff grants pro with 99y expiry', () => {
-  const createdAt = '2025-01-01T00:00:00Z';
-  const now = '2026-01-01T00:00:00Z';
+test("registration cutoff grants pro with 99y expiry", () => {
+  const createdAt = "2025-01-01T00:00:00Z";
+  const now = "2026-01-01T00:00:00Z";
   const res = computeProStatus({ createdAt, entitlements: [], now });
   assert.equal(res.active, true);
-  assert.equal(res.sources.includes('registration_cutoff'), true);
+  assert.equal(res.sources.includes("registration_cutoff"), true);
 });
 
-test('active entitlement grants pro', () => {
-  const now = '2026-01-01T00:00:00Z';
+test("active entitlement grants pro", () => {
+  const now = "2026-01-01T00:00:00Z";
   const res = computeProStatus({
-    createdAt: '2026-02-01T00:00:00Z',
-    entitlements: [{ effective_from: '2025-01-01T00:00:00Z', effective_to: '2027-01-01T00:00:00Z', revoked_at: null }],
-    now
+    createdAt: "2026-02-01T00:00:00Z",
+    entitlements: [
+      {
+        effective_from: "2025-01-01T00:00:00Z",
+        effective_to: "2027-01-01T00:00:00Z",
+        revoked_at: null,
+      },
+    ],
+    now,
   });
   assert.equal(res.active, true);
-  assert.equal(res.sources.includes('entitlement'), true);
+  assert.equal(res.sources.includes("entitlement"), true);
 });
 ```
 
@@ -89,7 +97,7 @@ Expected: FAIL (module not found or function missing).
 **Step 3: Write minimal implementation**
 
 ```js
-const CUTOFF_UTC = '2025-12-31T15:59:59Z';
+const CUTOFF_UTC = "2025-12-31T15:59:59Z";
 const YEARS_99_MS = 99 * 365.25 * 24 * 60 * 60 * 1000;
 
 function computeProStatus({ createdAt, entitlements, now }) {
@@ -101,7 +109,7 @@ function computeProStatus({ createdAt, entitlements, now }) {
   let expiresAt = null;
 
   if (Number.isFinite(createdMs) && createdMs <= cutoffMs) {
-    sources.push('registration_cutoff');
+    sources.push("registration_cutoff");
     const regExpiry = new Date(createdMs + YEARS_99_MS).toISOString();
     expiresAt = regExpiry;
   }
@@ -115,14 +123,18 @@ function computeProStatus({ createdAt, entitlements, now }) {
   });
 
   if (activeEntitlements.length > 0) {
-    sources.push('entitlement');
+    sources.push("entitlement");
     const maxTo = activeEntitlements
       .map((row) => Date.parse(row.effective_to))
       .filter(Number.isFinite)
       .reduce((a, b) => Math.max(a, b), -Infinity);
     if (Number.isFinite(maxTo)) {
       const entExpiry = new Date(maxTo).toISOString();
-      expiresAt = expiresAt ? (Date.parse(entExpiry) > Date.parse(expiresAt) ? entExpiry : expiresAt) : entExpiry;
+      expiresAt = expiresAt
+        ? Date.parse(entExpiry) > Date.parse(expiresAt)
+          ? entExpiry
+          : expiresAt
+        : entExpiry;
     }
   }
 
@@ -147,6 +159,7 @@ git commit -m "feat(backend): add pro status helper"
 ### Task 3: User status endpoint (TDD)
 
 **Files:**
+
 - Create: `insforge-src/functions/vibescore-user-status.js`
 - Build: `insforge-functions/vibescore-user-status.js`
 - Test: `test/edge-functions.test.js`
@@ -154,19 +167,28 @@ git commit -m "feat(backend): add pro status helper"
 **Step 1: Write failing test**
 
 ```js
-test('vibescore-user-status returns pro.active for cutoff user', async () => {
-  const fn = require('../insforge-functions/vibescore-user-status');
-  const userId = '11111111-1111-1111-1111-111111111111';
-  const userJwt = 'user_jwt_test';
+test("vibescore-user-status returns pro.active for cutoff user", async () => {
+  const fn = require("../insforge-functions/vibescore-user-status");
+  const userId = "11111111-1111-1111-1111-111111111111";
+  const userJwt = "user_jwt_test";
 
   globalThis.createClient = (args) => ({
-    auth: { getCurrentUser: async () => ({ data: { user: { id: userId, created_at: '2025-01-01T00:00:00Z' } }, error: null }) },
-    database: { from: () => ({ select: () => ({ eq: () => ({ order: async () => ({ data: [], error: null }) }) }) }) }
+    auth: {
+      getCurrentUser: async () => ({
+        data: { user: { id: userId, created_at: "2025-01-01T00:00:00Z" } },
+        error: null,
+      }),
+    },
+    database: {
+      from: () => ({
+        select: () => ({ eq: () => ({ order: async () => ({ data: [], error: null }) }) }),
+      }),
+    },
   });
 
-  const req = new Request('http://localhost/functions/vibescore-user-status', {
-    method: 'GET',
-    headers: { Authorization: `Bearer ${userJwt}` }
+  const req = new Request("http://localhost/functions/vibescore-user-status", {
+    method: "GET",
+    headers: { Authorization: `Bearer ${userJwt}` },
   });
 
   const res = await fn(req);
@@ -182,6 +204,7 @@ Run: `node --test test/edge-functions.test.js`
 Expected: FAIL (module not found).
 
 **Step 3: Implement endpoint (minimal)**
+
 - Use `getEdgeClientAndUserId` to resolve user + `created_at`.
 - Query `vibescore_user_entitlements` with user_id.
 - Call `computeProStatus` with `now = new Date().toISOString()`.
@@ -206,12 +229,14 @@ git commit -m "feat(backend): add user pro status endpoint"
 ### Task 4: Admin entitlement endpoints (TDD)
 
 **Files:**
+
 - Create: `insforge-src/functions/vibescore-entitlements.js`
 - Create: `insforge-src/functions/vibescore-entitlements-revoke.js`
 - Build: `insforge-functions/*.js`
 - Test: `test/edge-functions.test.js`
 
 **Step 1: Write failing tests**
+
 - Test 401 when bearer is not service-role.
 - Test insert/revoke path uses `vibescore_user_entitlements`.
 
@@ -221,6 +246,7 @@ Run: `node --test test/edge-functions.test.js`
 Expected: FAIL (module not found / unauthorized logic missing).
 
 **Step 3: Implement endpoints**
+
 - Require `Authorization: Bearer <service_role_key>`.
 - Grant endpoint inserts entitlement row.
 - Revoke endpoint updates `revoked_at`.
@@ -245,14 +271,17 @@ git commit -m "feat(backend): add pro entitlement admin endpoints"
 ### Task 5: Docs + OpenSpec updates
 
 **Files:**
+
 - Modify: `BACKEND_API.md`
 - Modify: `openspec/changes/2025-12-27-add-pro-entitlements/tasks.md`
 - Modify: `openspec/changes/2025-12-27-add-pro-entitlements/verification-report.md`
 
 **Step 1: Update BACKEND_API.md**
+
 - Add `vibescore-user-status`, `vibescore-entitlements`, `vibescore-entitlements-revoke` sections.
 
 **Step 2: Mark tasks complete + record verification**
+
 - Check tasks 1.1–2.2.
 - Update verification report with test run evidence.
 

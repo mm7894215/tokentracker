@@ -1,11 +1,10 @@
-import React from "react";
 import { act, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-import { render } from "../../../../test/test-utils";
 import { copy } from "../../../../lib/copy";
 import { formatCompactNumber } from "../../../../lib/format";
+import { render } from "../../../../test/test-utils";
 import { ProjectUsagePanel } from "../ProjectUsagePanel.jsx";
 
 describe("ProjectUsagePanel", () => {

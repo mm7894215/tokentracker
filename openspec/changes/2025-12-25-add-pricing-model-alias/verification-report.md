@@ -1,9 +1,11 @@
 # Verification Report
 
 ## Scope
+
 - Pricing model alias mapping and sync behavior.
 
 ## Tests Run
+
 - `node scripts/acceptance/pricing-model-alias.cjs`
 - `node scripts/acceptance/openrouter-pricing-sync.cjs`
 - `node scripts/acceptance/usage-summary-aggregate.cjs`
@@ -14,6 +16,7 @@
 - SQL: unmatched usage models check
 
 ## Results
+
 - Alias resolution acceptance passed.
 - Pricing sync acceptance passed (alias generation + retention).
 - Summary and model breakdown acceptance passed.
@@ -22,6 +25,7 @@
 - No unmatched usage models after alias generation.
 
 ## Evidence
+
 - Acceptance outputs:
   - `pricing-model-alias.cjs` -> `ok: true`.
   - `openrouter-pricing-sync.cjs` -> `ok: true`, `alias_upserts: 1`.
@@ -35,5 +39,6 @@
 - SQL check: unmatched usage models returned 0 rows.
 
 ## Remaining Risks
+
 - Vendor rules cover only `claude-*` and `gpt-*` prefixes.
 - New vendor prefixes will require explicit rule additions.

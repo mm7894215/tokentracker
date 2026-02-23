@@ -1,4 +1,4 @@
-'use strict';
+"use strict";
 
 function createRequestId() {
   if (globalThis?.crypto?.randomUUID) return globalThis.crypto.randomUUID();
@@ -6,9 +6,9 @@ function createRequestId() {
 }
 
 function errorCodeFromStatus(status) {
-  if (typeof status !== 'number') return 'UNKNOWN_ERROR';
-  if (status >= 500) return 'SERVER_ERROR';
-  if (status >= 400) return 'CLIENT_ERROR';
+  if (typeof status !== "number") return "UNKNOWN_ERROR";
+  if (status >= 500) return "SERVER_ERROR";
+  if (status >= 400) return "CLIENT_ERROR";
   return null;
 }
 
@@ -19,8 +19,8 @@ function createLogger({ functionName }) {
   let upstreamLatencyMs = null;
 
   function recordUpstream(status, latencyMs) {
-    upstreamStatus = typeof status === 'number' ? status : null;
-    upstreamLatencyMs = typeof latencyMs === 'number' ? latencyMs : null;
+    upstreamStatus = typeof status === "number" ? status : null;
+    upstreamLatencyMs = typeof latencyMs === "number" ? latencyMs : null;
   }
 
   async function fetchWithUpstream(url, init) {
@@ -40,12 +40,12 @@ function createLogger({ functionName }) {
       ...(extra || {}),
       request_id: requestId,
       function: functionName,
-      stage: stage || 'response',
-      status: typeof status === 'number' ? status : null,
+      stage: stage || "response",
+      status: typeof status === "number" ? status : null,
       latency_ms: Date.now() - startMs,
       error_code: errorCode ?? errorCodeFromStatus(status),
       upstream_status: upstreamStatus ?? null,
-      upstream_latency_ms: upstreamLatencyMs ?? null
+      upstream_latency_ms: upstreamLatencyMs ?? null,
     };
     console.log(JSON.stringify(payload));
   }
@@ -53,17 +53,17 @@ function createLogger({ functionName }) {
   return {
     requestId,
     log,
-    fetch: fetchWithUpstream
+    fetch: fetchWithUpstream,
   };
 }
 
 function getResponseStatus(response) {
-  if (response && typeof response.status === 'number') return response.status;
+  if (response && typeof response.status === "number") return response.status;
   return null;
 }
 
 function resolveFunctionName(functionName, request) {
-  if (request && typeof request.url === 'string') {
+  if (request && typeof request.url === "string") {
     try {
       const url = new URL(request.url);
       const match = url.pathname.match(/\/functions\/([^/?#]+)/);
@@ -80,10 +80,10 @@ function withRequestLogging(functionName, handler) {
     try {
       const response = await handler(request, logger);
       const status = getResponseStatus(response);
-      logger.log({ stage: 'response', status });
+      logger.log({ stage: "response", status });
       return response;
     } catch (err) {
-      logger.log({ stage: 'exception', status: 500, errorCode: 'UNHANDLED_EXCEPTION' });
+      logger.log({ stage: "exception", status: 500, errorCode: "UNHANDLED_EXCEPTION" });
       throw err;
     }
   };
@@ -92,26 +92,26 @@ function withRequestLogging(functionName, handler) {
 module.exports = {
   withRequestLogging,
   logSlowQuery,
-  getSlowQueryThresholdMs
+  getSlowQueryThresholdMs,
 };
 
 function logSlowQuery(logger, fields) {
-  if (!logger || typeof logger.log !== 'function') return;
+  if (!logger || typeof logger.log !== "function") return;
   const durationMs = Number(fields?.duration_ms ?? fields?.durationMs);
   if (!Number.isFinite(durationMs)) return;
   const thresholdMs = getSlowQueryThresholdMs();
   if (durationMs < thresholdMs) return;
   logger.log({
-    stage: 'slow_query',
+    stage: "slow_query",
     status: 200,
     ...(fields || {}),
-    duration_ms: Math.round(durationMs)
+    duration_ms: Math.round(durationMs),
   });
 }
 
 function getSlowQueryThresholdMs() {
-  const raw = readEnvValue('VIBEUSAGE_SLOW_QUERY_MS');
-  if (raw == null || raw === '') return 2000;
+  const raw = readEnvValue("VIBEUSAGE_SLOW_QUERY_MS");
+  if (raw == null || raw === "") return 2000;
   const n = Number(raw);
   if (!Number.isFinite(n)) return 2000;
   if (n <= 0) return 0;
@@ -120,13 +120,13 @@ function getSlowQueryThresholdMs() {
 
 function readEnvValue(key) {
   try {
-    if (typeof Deno !== 'undefined' && Deno?.env?.get) {
+    if (typeof Deno !== "undefined" && Deno?.env?.get) {
       const value = Deno.env.get(key);
       if (value !== undefined) return value;
     }
   } catch (_e) {}
   try {
-    if (typeof process !== 'undefined' && process?.env) {
+    if (typeof process !== "undefined" && process?.env) {
       return process.env[key];
     }
   } catch (_e) {}

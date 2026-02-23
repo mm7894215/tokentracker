@@ -1,4 +1,5 @@
 ## 1. Implementation
+
 - [ ] 1.1 Add `vibeusage_projects` and `vibeusage_project_usage_hourly` schema + RLS
 - [x] 1.2 Add GitHub public verification (pending/blocked) and repo root hash storage
 - [x] 1.3 Extend CLI parser to resolve repo remote URL and emit project usage buckets only for public repos

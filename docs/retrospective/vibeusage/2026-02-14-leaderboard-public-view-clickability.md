@@ -19,6 +19,7 @@ incident_window: 2026-02-14..2026-02-14
 # Postmortem: Leaderboard Public View Clickability + Mobile Landing Fallback
 
 ## L2 Brief (2 min)
+
 - **What happened:** Leaderboard rows and mobile navigation had inconsistent behavior: non-public users could still be navigated, and on mobile returning to dashboard could drop into landing/auth flow.
 - **Why design mismatched reality:** Clickability was inferred from display text (`Anonymous`) instead of explicit access state, and some nav paths used full-page reload (`<a href>`), which re-entered auth gating.
 - **Why not detected early:** Validation covered desktop and backend correctness, but not mobile route transitions + exact tapped element distinction.
@@ -26,6 +27,7 @@ incident_window: 2026-02-14..2026-02-14
 - **When to read this next time:** Any changes touching leaderboard row linking, public share tokens, auth gating, or mobile navigation.
 
 ## 1. Scope
+
 - In scope:
   - Leaderboard row clickability rules.
   - Public share token contract and resolve path.
@@ -36,6 +38,7 @@ incident_window: 2026-02-14..2026-02-14
   - Non-leaderboard dashboard feature behavior.
 
 ## 2. Plan Before Incident
+
 - Intended outcomes:
   - Public users are linkable from leaderboard to `/share/...`.
   - Non-public users remain anonymous and non-linkable.
@@ -45,6 +48,7 @@ incident_window: 2026-02-14..2026-02-14
   - Hard navigation (`href`) would not materially affect auth state on mobile.
 
 ## 3. Outcome vs Plan
+
 - Actual outcome:
   - Linkability logic leaked through edge cases where state was not explicitly represented.
   - Mobile path re-entered landing/auth in specific transitions.
@@ -53,6 +57,7 @@ incident_window: 2026-02-14..2026-02-14
   - We fixed row navigation first, then discovered user was tapping the header “$ dashboard” button.
 
 ## 4. Impact
+
 - User/business impact:
   - Confusing UX: “can enter but empty fields” / unexpected landing redirect on mobile.
   - Temporary trust hit in leaderboard/public profile flow.
@@ -61,6 +66,7 @@ incident_window: 2026-02-14..2026-02-14
   - Additional refresh backfills required after snapshot contract change.
 
 ## 5. Timeline
+
 - Detection:
   - Public-view behavior discrepancy and mobile relogin/landing reports from production thread.
 - Mitigation:
@@ -73,6 +79,7 @@ incident_window: 2026-02-14..2026-02-14
   - Applied DB migration and refreshed snapshots (`week/month/total`).
 
 ## 6. Evidence
+
 - Key commits:
   - `f8712f4` fix leaderboard public name resolution from profile data
   - `d5b09df` leaderboard row opens public dashboard for public users
@@ -90,6 +97,7 @@ incident_window: 2026-02-14..2026-02-14
   - total inserted `104`
 
 ## 7. Root Causes
+
 - Primary:
   - Clickability authorization was derived from display-layer signal (`Anonymous`) instead of explicit access state.
 - Secondary:
@@ -102,12 +110,14 @@ incident_window: 2026-02-14..2026-02-14
   - QA: mobile user-journey coverage gap.
 
 ## 8. Action Items
+
 - [ ] Add e2e case: mobile `leaderboard -> row public share -> back/dashboard` does not hit landing unexpectedly. (Owner: Victor, Due: 2026-02-16)
 - [ ] Add contract test: leaderboard entries must expose explicit `is_public` and UI clickability must only depend on it. (Owner: Victor, Due: 2026-02-16)
 - [ ] Add lint/rule-of-thumb doc: avoid `<a href="/">` for in-app nav in authenticated SPA flows. (Owner: Victor, Due: 2026-02-17)
 - [ ] Add support runbook snippet: when changing snapshot authorization fields, always run `week/month/total` refresh and verify counts. (Owner: Victor, Due: 2026-02-16)
 
 ## 9. Prevention Rules
+
 - Rule 1: Authorization decisions must be based on explicit backend state fields, never display-name heuristics.
 - Rule 2: Public profile linkability requires both `leaderboard_public=true` and active non-revoked link.
 - Rule 3: Authenticated SPA navigation should use router navigation, not hard reload, unless intentionally leaving SPA context.
@@ -116,6 +126,7 @@ incident_window: 2026-02-14..2026-02-14
   - Mobile regression scenario in release checklist.
 
 ## 10. Follow-up
+
 - Checkpoint date: 2026-02-17
 - Success criteria:
   - No reproduction of mobile landing fallback in leaderboard path.

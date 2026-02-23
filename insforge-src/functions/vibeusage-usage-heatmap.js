@@ -1,15 +1,15 @@
 // Edge function: vibeusage-usage-heatmap
 // Returns a GitHub-inspired activity heatmap derived from timezone-aware daily token usage.
 
-'use strict';
+"use strict";
 
-const { handleOptions, json } = require('../shared/http');
-const { getBearerToken, getAccessContext } = require('../shared/auth');
-const { getBaseUrl } = require('../shared/env');
-const { getSourceParam } = require('../shared/source');
-const { getModelParam, applyUsageModelFilter, normalizeUsageModel } = require('../shared/model');
-const { resolveUsageModelsForCanonical } = require('../shared/model-identity');
-const { applyCanaryFilter } = require('../shared/canary');
+const { handleOptions, json } = require("../shared/http");
+const { getBearerToken, getAccessContext } = require("../shared/auth");
+const { getBaseUrl } = require("../shared/env");
+const { getSourceParam } = require("../shared/source");
+const { getModelParam, applyUsageModelFilter, normalizeUsageModel } = require("../shared/model");
+const { resolveUsageModelsForCanonical } = require("../shared/model-identity");
+const { applyCanaryFilter } = require("../shared/canary");
 const {
   addDatePartsDays,
   addUtcDays,
@@ -23,35 +23,36 @@ const {
   getUsageTimeZoneContext,
   localDatePartsToUtc,
   parseDateParts,
-  parseUtcDateString
-} = require('../shared/date');
-const { toBigInt } = require('../shared/numbers');
-const { forEachPage } = require('../shared/pagination');
-const { logSlowQuery, withRequestLogging } = require('../shared/logging');
-const { isDebugEnabled, withSlowQueryDebugPayload } = require('../shared/debug');
+  parseUtcDateString,
+} = require("../shared/date");
+const { toBigInt } = require("../shared/numbers");
+const { forEachPage } = require("../shared/pagination");
+const { logSlowQuery, withRequestLogging } = require("../shared/logging");
+const { isDebugEnabled, withSlowQueryDebugPayload } = require("../shared/debug");
 const {
   buildAliasTimeline,
   extractDateKey,
   fetchAliasRows,
-  resolveIdentityAtDate
-} = require('../shared/model-alias-timeline');
-const { resolveBillableTotals } = require('../shared/usage-aggregate');
+  resolveIdentityAtDate,
+} = require("../shared/model-alias-timeline");
+const { resolveBillableTotals } = require("../shared/usage-aggregate");
 
-module.exports = withRequestLogging('vibeusage-usage-heatmap', async function(request, logger) {
+module.exports = withRequestLogging("vibeusage-usage-heatmap", async function (request, logger) {
   const opt = handleOptions(request);
   if (opt) return opt;
 
   const url = new URL(request.url);
   const debugEnabled = isDebugEnabled(url);
-  const respond = (body, status, durationMs) => json(
-    debugEnabled ? withSlowQueryDebugPayload(body, { logger, durationMs, status }) : body,
-    status
-  );
+  const respond = (body, status, durationMs) =>
+    json(
+      debugEnabled ? withSlowQueryDebugPayload(body, { logger, durationMs, status }) : body,
+      status,
+    );
 
-  if (request.method !== 'GET') return respond({ error: 'Method not allowed' }, 405, 0);
+  if (request.method !== "GET") return respond({ error: "Method not allowed" }, 405, 0);
 
-  const bearer = getBearerToken(request.headers.get('Authorization'));
-  if (!bearer) return respond({ error: 'Missing bearer token' }, 401, 0);
+  const bearer = getBearerToken(request.headers.get("Authorization"));
+  if (!bearer) return respond({ error: "Missing bearer token" }, 401, 0);
 
   const tzContext = getUsageTimeZoneContext(url);
   const sourceResult = getSourceParam(url);
@@ -61,29 +62,29 @@ module.exports = withRequestLogging('vibeusage-usage-heatmap', async function(re
   if (!modelResult.ok) return respond({ error: modelResult.error }, 400, 0);
   const model = modelResult.model;
 
-  const weeksRaw = url.searchParams.get('weeks');
+  const weeksRaw = url.searchParams.get("weeks");
   const weeks = normalizeWeeks(weeksRaw);
-  if (!weeks) return respond({ error: 'Invalid weeks' }, 400, 0);
+  if (!weeks) return respond({ error: "Invalid weeks" }, 400, 0);
 
-  const weekStartsOnRaw = url.searchParams.get('week_starts_on');
+  const weekStartsOnRaw = url.searchParams.get("week_starts_on");
   const weekStartsOn = normalizeWeekStartsOn(weekStartsOnRaw);
-  if (!weekStartsOn) return respond({ error: 'Invalid week_starts_on' }, 400, 0);
+  if (!weekStartsOn) return respond({ error: "Invalid week_starts_on" }, 400, 0);
 
-  const toRaw = url.searchParams.get('to');
+  const toRaw = url.searchParams.get("to");
 
   if (isUtcTimeZone(tzContext)) {
     const to = normalizeToDate(toRaw);
-    if (!to) return respond({ error: 'Invalid to' }, 400, 0);
+    if (!to) return respond({ error: "Invalid to" }, 400, 0);
 
     const { from, gridStart, end } = computeHeatmapWindowUtc({
       weeks,
       weekStartsOn,
-      to
+      to,
     });
 
     const baseUrl = getBaseUrl();
     const auth = await getAccessContext({ baseUrl, bearer, allowPublic: true });
-    if (!auth.ok) return respond({ error: auth.error || 'Unauthorized' }, auth.status || 401, 0);
+    if (!auth.ok) return respond({ error: auth.error || "Unauthorized" }, auth.status || 401, 0);
 
     const startIso = gridStart.toISOString();
     const endUtc = addUtcDays(end, 1);
@@ -92,7 +93,7 @@ module.exports = withRequestLogging('vibeusage-usage-heatmap', async function(re
     const modelFilter = await resolveUsageModelsForCanonical({
       edgeClient: auth.edgeClient,
       canonicalModel: model,
-      effectiveDate: to
+      effectiveDate: to,
     });
     const canonicalModel = modelFilter.canonical;
     const usageModels = modelFilter.usageModels;
@@ -102,7 +103,7 @@ module.exports = withRequestLogging('vibeusage-usage-heatmap', async function(re
       const aliasRows = await fetchAliasRows({
         edgeClient: auth.edgeClient,
         usageModels,
-        effectiveDate: to
+        effectiveDate: to,
       });
       aliasTimeline = buildAliasTimeline({ usageModels, aliasRows });
     }
@@ -113,19 +114,21 @@ module.exports = withRequestLogging('vibeusage-usage-heatmap', async function(re
     const { error } = await forEachPage({
       createQuery: () => {
         let query = auth.edgeClient.database
-          .from('vibeusage_tracker_hourly')
-          .select('hour_start,source,billable_total_tokens,total_tokens,input_tokens,cached_input_tokens,output_tokens,reasoning_output_tokens')
-          .eq('user_id', auth.userId);
-        if (source) query = query.eq('source', source);
+          .from("vibeusage_tracker_hourly")
+          .select(
+            "hour_start,source,billable_total_tokens,total_tokens,input_tokens,cached_input_tokens,output_tokens,reasoning_output_tokens",
+          )
+          .eq("user_id", auth.userId);
+        if (source) query = query.eq("source", source);
         if (hasModelFilter) query = applyUsageModelFilter(query, usageModels);
         query = applyCanaryFilter(query, { source, model: canonicalModel });
         return query
-          .gte('hour_start', startIso)
-          .lt('hour_start', endIso)
-          .order('hour_start', { ascending: true })
-          .order('device_id', { ascending: true })
-          .order('source', { ascending: true })
-          .order('model', { ascending: true });
+          .gte("hour_start", startIso)
+          .lt("hour_start", endIso)
+          .order("hour_start", { ascending: true })
+          .order("device_id", { ascending: true })
+          .order("source", { ascending: true })
+          .order("model", { ascending: true });
       },
       onPage: (rows) => {
         const pageRows = Array.isArray(rows) ? rows : [];
@@ -143,7 +146,7 @@ module.exports = withRequestLogging('vibeusage-usage-heatmap', async function(re
               rawModel: canonicalModel,
               usageKey: canonicalModel,
               dateKey,
-              timeline: aliasTimeline
+              timeline: aliasTimeline,
             });
             if (identity.model_id !== filterIdentity.model_id) continue;
           }
@@ -151,15 +154,15 @@ module.exports = withRequestLogging('vibeusage-usage-heatmap', async function(re
           const prev = valuesByDay.get(day) || 0n;
           const { billable } = resolveBillableTotals({
             row,
-            source: row?.source || source
+            source: row?.source || source,
           });
           valuesByDay.set(day, prev + billable);
         }
-      }
+      },
     });
     const queryDurationMs = Date.now() - queryStartMs;
     logSlowQuery(logger, {
-      query_label: 'usage_heatmap',
+      query_label: "usage_heatmap",
       duration_ms: queryDurationMs,
       row_count: rowCount,
       range_weeks: weeks,
@@ -167,7 +170,7 @@ module.exports = withRequestLogging('vibeusage-usage-heatmap', async function(re
       source: source || null,
       model: canonicalModel || null,
       tz: tzContext?.timeZone || null,
-      tz_offset_minutes: Number.isFinite(tzContext?.offsetMinutes) ? tzContext.offsetMinutes : null
+      tz_offset_minutes: Number.isFinite(tzContext?.offsetMinutes) ? tzContext.offsetMinutes : null,
     });
 
     if (error) return respond({ error: error.message }, 500, queryDurationMs);
@@ -215,7 +218,7 @@ module.exports = withRequestLogging('vibeusage-usage-heatmap', async function(re
 
     const streakDays = computeActiveStreakDays({
       valuesByDay,
-      to: end
+      to: end,
     });
 
     return respond(
@@ -226,25 +229,27 @@ module.exports = withRequestLogging('vibeusage-usage-heatmap', async function(re
         thresholds: { t1: t1.toString(), t2: t2.toString(), t3: t3.toString() },
         active_days: activeDays,
         streak_days: streakDays,
-        weeks: weeksOut
+        weeks: weeksOut,
       },
       200,
-      queryDurationMs
+      queryDurationMs,
     );
   }
 
   const todayParts = getLocalParts(new Date(), tzContext);
-  const toParts = toRaw ? parseDateParts(toRaw) : {
-    year: todayParts.year,
-    month: todayParts.month,
-    day: todayParts.day
-  };
-  if (!toParts) return respond({ error: 'Invalid to' }, 400, 0);
+  const toParts = toRaw
+    ? parseDateParts(toRaw)
+    : {
+        year: todayParts.year,
+        month: todayParts.month,
+        day: todayParts.day,
+      };
+  if (!toParts) return respond({ error: "Invalid to" }, 400, 0);
 
   const end = dateFromPartsUTC(toParts);
-  if (!end) return respond({ error: 'Invalid to' }, 400, 0);
+  if (!end) return respond({ error: "Invalid to" }, 400, 0);
 
-  const desired = weekStartsOn === 'mon' ? 1 : 0;
+  const desired = weekStartsOn === "mon" ? 1 : 0;
   const endDow = end.getUTCDay();
   const endWeekStart = addUtcDays(end, -((endDow - desired + 7) % 7));
   const gridStart = addUtcDays(endWeekStart, -7 * (weeks - 1));
@@ -252,7 +257,7 @@ module.exports = withRequestLogging('vibeusage-usage-heatmap', async function(re
   const to = formatDateParts(toParts);
 
   const startParts = parseDateParts(from);
-  if (!startParts) return respond({ error: 'Invalid to' }, 400, 0);
+  if (!startParts) return respond({ error: "Invalid to" }, 400, 0);
 
   const startUtc = localDatePartsToUtc(startParts, tzContext);
   const endUtc = localDatePartsToUtc(addDatePartsDays(toParts, 1), tzContext);
@@ -261,12 +266,12 @@ module.exports = withRequestLogging('vibeusage-usage-heatmap', async function(re
 
   const baseUrl = getBaseUrl();
   const auth = await getAccessContext({ baseUrl, bearer, allowPublic: true });
-  if (!auth.ok) return respond({ error: auth.error || 'Unauthorized' }, auth.status || 401, 0);
+  if (!auth.ok) return respond({ error: auth.error || "Unauthorized" }, auth.status || 401, 0);
 
   const modelFilter = await resolveUsageModelsForCanonical({
     edgeClient: auth.edgeClient,
     canonicalModel: model,
-    effectiveDate: to
+    effectiveDate: to,
   });
   const canonicalModel = modelFilter.canonical;
   const usageModels = modelFilter.usageModels;
@@ -276,7 +281,7 @@ module.exports = withRequestLogging('vibeusage-usage-heatmap', async function(re
     const aliasRows = await fetchAliasRows({
       edgeClient: auth.edgeClient,
       usageModels,
-      effectiveDate: to
+      effectiveDate: to,
     });
     aliasTimeline = buildAliasTimeline({ usageModels, aliasRows });
   }
@@ -287,19 +292,21 @@ module.exports = withRequestLogging('vibeusage-usage-heatmap', async function(re
   const { error } = await forEachPage({
     createQuery: () => {
       let query = auth.edgeClient.database
-        .from('vibeusage_tracker_hourly')
-        .select('hour_start,source,billable_total_tokens,total_tokens,input_tokens,cached_input_tokens,output_tokens,reasoning_output_tokens')
-        .eq('user_id', auth.userId);
-      if (source) query = query.eq('source', source);
+        .from("vibeusage_tracker_hourly")
+        .select(
+          "hour_start,source,billable_total_tokens,total_tokens,input_tokens,cached_input_tokens,output_tokens,reasoning_output_tokens",
+        )
+        .eq("user_id", auth.userId);
+      if (source) query = query.eq("source", source);
       if (hasModelFilter) query = applyUsageModelFilter(query, usageModels);
       query = applyCanaryFilter(query, { source, model: canonicalModel });
       return query
-        .gte('hour_start', startIso)
-        .lt('hour_start', endIso)
-        .order('hour_start', { ascending: true })
-        .order('device_id', { ascending: true })
-        .order('source', { ascending: true })
-        .order('model', { ascending: true });
+        .gte("hour_start", startIso)
+        .lt("hour_start", endIso)
+        .order("hour_start", { ascending: true })
+        .order("device_id", { ascending: true })
+        .order("source", { ascending: true })
+        .order("model", { ascending: true });
     },
     onPage: (rows) => {
       const pageRows = Array.isArray(rows) ? rows : [];
@@ -317,7 +324,7 @@ module.exports = withRequestLogging('vibeusage-usage-heatmap', async function(re
             rawModel: canonicalModel,
             usageKey: canonicalModel,
             dateKey,
-            timeline: aliasTimeline
+            timeline: aliasTimeline,
           });
           if (identity.model_id !== filterIdentity.model_id) continue;
         }
@@ -325,15 +332,15 @@ module.exports = withRequestLogging('vibeusage-usage-heatmap', async function(re
         const prev = valuesByDay.get(key) || 0n;
         const { billable } = resolveBillableTotals({
           row,
-          source: row?.source || source
+          source: row?.source || source,
         });
         valuesByDay.set(key, prev + billable);
       }
-    }
+    },
   });
   const queryDurationMs = Date.now() - queryStartMs;
   logSlowQuery(logger, {
-    query_label: 'usage_heatmap',
+    query_label: "usage_heatmap",
     duration_ms: queryDurationMs,
     row_count: rowCount,
     range_weeks: weeks,
@@ -341,7 +348,7 @@ module.exports = withRequestLogging('vibeusage-usage-heatmap', async function(re
     source: source || null,
     model: canonicalModel || null,
     tz: tzContext?.timeZone || null,
-    tz_offset_minutes: Number.isFinite(tzContext?.offsetMinutes) ? tzContext.offsetMinutes : null
+    tz_offset_minutes: Number.isFinite(tzContext?.offsetMinutes) ? tzContext.offsetMinutes : null,
   });
 
   if (error) return respond({ error: error.message }, 500, queryDurationMs);
@@ -389,7 +396,7 @@ module.exports = withRequestLogging('vibeusage-usage-heatmap', async function(re
 
   const streakDays = computeActiveStreakDays({
     valuesByDay,
-    to: end
+    to: end,
   });
 
   return respond(
@@ -400,15 +407,15 @@ module.exports = withRequestLogging('vibeusage-usage-heatmap', async function(re
       thresholds: { t1: t1.toString(), t2: t2.toString(), t3: t3.toString() },
       active_days: activeDays,
       streak_days: streakDays,
-      weeks: weeksOut
+      weeks: weeksOut,
     },
     200,
-    queryDurationMs
+    queryDurationMs,
   );
 });
 
 function normalizeWeeks(raw) {
-  if (raw == null || raw === '') return 52;
+  if (raw == null || raw === "") return 52;
   const s = String(raw).trim();
   if (!/^[0-9]+$/.test(s)) return null;
   const v = Number(s);
@@ -418,13 +425,13 @@ function normalizeWeeks(raw) {
 }
 
 function normalizeWeekStartsOn(raw) {
-  const v = (raw == null || raw === '' ? 'sun' : String(raw)).trim().toLowerCase();
-  if (v === 'sun' || v === 'mon') return v;
+  const v = (raw == null || raw === "" ? "sun" : String(raw)).trim().toLowerCase();
+  if (v === "sun" || v === "mon") return v;
   return null;
 }
 
 function normalizeToDate(raw) {
-  if (raw == null || raw === '') return formatDateUTC(new Date());
+  if (raw == null || raw === "") return formatDateUTC(new Date());
   const s = String(raw).trim();
   const dt = parseUtcDateString(s);
   return dt ? formatDateUTC(dt) : null;

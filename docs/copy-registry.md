@@ -12,6 +12,7 @@
 ## 表结构（CSV 列）
 
 必填列：
+
 - `key`：稳定的引用 key（例如 `dashboard.footer.right`）
 - `module`：模块（例如 `landing` / `dashboard` / `connect` / `ui`）
 - `page`：页面或范围（例如 `LandingPage` / `DashboardPage` / `*`）
@@ -20,6 +21,7 @@
 - `text`：实际展示文案
 
 可选列：
+
 - `notes`：备注或使用约束
 - `status`：状态（建议 `active` / `deprecated`）
 
@@ -47,11 +49,11 @@ node scripts/validate-copy-registry.cjs
 
 1. 先拉取官方基线（`origin/main`）并核对差异  
    `node scripts/copy-sync.cjs pull --dry-run`（需要覆盖时用 `--apply`）
-2. 再修改 `copy.csv` 与本地代码（页面/组件）  
+2. 再修改 `copy.csv` 与本地代码（页面/组件）
 3. 运行校验  
    `node scripts/validate-copy-registry.cjs`
-4. 推送到远端  
-   - 仅 `copy.csv` 变更：`node scripts/copy-sync.cjs push --confirm --push-remote`  
+4. 推送到远端
+   - 仅 `copy.csv` 变更：`node scripts/copy-sync.cjs push --confirm --push-remote`
    - 含代码变更：`git add` → `git commit` → `git push`
 
 ## 同步流程（origin/main 作为官方基线）

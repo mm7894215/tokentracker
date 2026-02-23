@@ -52,9 +52,7 @@ test("share routes rewrite to share.html", () => {
   const raw = read("dashboard/vercel.json");
   const parsed = JSON.parse(raw);
   const rewrites = Array.isArray(parsed.rewrites) ? parsed.rewrites : [];
-  const hasShare = rewrites.some((rule) =>
-    String(rule.source || "").includes("/share")
-  );
+  const hasShare = rewrites.some((rule) => String(rule.source || "").includes("/share"));
   assert.ok(hasShare);
 });
 
@@ -71,48 +69,34 @@ test("legacy public view edge functions are retired", () => {
 });
 
 test("public view profile edge function is defined", () => {
-  const profileSrc = read(
-    "insforge-src/functions/vibeusage-public-view-profile.js"
-  );
+  const profileSrc = read("insforge-src/functions/vibeusage-public-view-profile.js");
   assert.match(profileSrc, /public[- ]view[- ]profile/i);
 });
 
 test("public view profile returns avatar url", () => {
-  const profileSrc = read(
-    "insforge-src/functions/vibeusage-public-view-profile.js"
-  );
+  const profileSrc = read("insforge-src/functions/vibeusage-public-view-profile.js");
   assert.match(profileSrc, /avatar_url/);
 });
 
 test("public view profile does not select user_metadata", () => {
-  const profileSrc = read(
-    "insforge-src/functions/vibeusage-public-view-profile.js"
-  );
+  const profileSrc = read("insforge-src/functions/vibeusage-public-view-profile.js");
   assert.doesNotMatch(profileSrc, /user_metadata/);
 });
 
 test("public view profile selects public users fields", () => {
-  const profileSrc = read(
-    "insforge-src/functions/vibeusage-public-view-profile.js"
-  );
+  const profileSrc = read("insforge-src/functions/vibeusage-public-view-profile.js");
   assert.match(profileSrc, /select\(['"]nickname,avatar_url,profile,metadata['"]\)/);
 });
 
 test("public view panel does not render share link text", () => {
   const src = read("dashboard/src/pages/DashboardPage.jsx");
-  assert.doesNotMatch(
-    src,
-    /publicViewUrl\s*\|\|\s*copy\("shared\.placeholder\.short"\)/
-  );
+  assert.doesNotMatch(src, /publicViewUrl\s*\|\|\s*copy\("shared\.placeholder\.short"\)/);
   assert.doesNotMatch(src, /publicViewSubtitle/);
 });
 
 test("public view hides upgrade banner", () => {
   const src = read("dashboard/src/App.jsx");
-  assert.match(
-    src,
-    /\{!publicMode\s*&&\s*!screenshotMode\s*\?\s*\(/
-  );
+  assert.match(src, /\{!publicMode\s*&&\s*!screenshotMode\s*\?\s*\(/);
 });
 
 test("public share header shows login entry", () => {
@@ -141,11 +125,7 @@ test("public view invalid check handles string errors", () => {
 
 test("public view uses raw identity name", () => {
   const src = read("dashboard/src/pages/DashboardPage.jsx");
-  const block = sliceBetween(
-    src,
-    "const identityRawName",
-    "const identityStartDate"
-  );
+  const block = sliceBetween(src, "const identityRawName", "const identityStartDate");
   assert.ok(block, "identity display block not found");
   assert.match(block, /publicMode/);
   assert.match(block, /publicProfileName/);
@@ -172,7 +152,7 @@ test("public view clears profile state before fetching new token", () => {
   const src = read("dashboard/src/pages/DashboardPage.jsx");
   assert.match(
     src,
-    /if\s*\(!publicToken\)\s*\{[\s\S]*?\}\s*setPublicProfileName\(null\);\s*setPublicProfileAvatarUrl\(null\);\s*let active = true;\s*getPublicViewProfile/s
+    /if\s*\(!publicToken\)\s*\{[\s\S]*?\}\s*setPublicProfileName\(null\);\s*setPublicProfileAvatarUrl\(null\);\s*let active = true;\s*getPublicViewProfile/s,
   );
 });
 
@@ -184,19 +164,12 @@ test("identity card supports avatar fallback", () => {
 
 test("public view copy reloads visibility state when token missing", () => {
   const src = read("dashboard/src/pages/DashboardPage.jsx");
-  const block = sliceBetween(
-    src,
-    "const handleCopyPublicView",
-    "const handleTogglePublicView"
-  );
+  const block = sliceBetween(src, "const handleCopyPublicView", "const handleTogglePublicView");
   assert.ok(block, "handleCopyPublicView block not found");
   assert.match(block, /getPublicVisibility/);
 });
 
 test("public view copy is not gated on existing url", () => {
   const src = read("dashboard/src/pages/DashboardPage.jsx");
-  assert.doesNotMatch(
-    src,
-    /onClick=\{handleCopyPublicView\}[\s\S]*disabled=\{[^}]*publicViewUrl/
-  );
+  assert.doesNotMatch(src, /onClick=\{handleCopyPublicView\}[\s\S]*disabled=\{[^}]*publicViewUrl/);
 });

@@ -11,6 +11,7 @@
 ### Task 1: Resolve user_id by email
 
 **Files:**
+
 - Reference: `openspec/project.md`
 
 **Step 1: Write the lookup query**
@@ -33,6 +34,7 @@ Store the UUID for use in the deletion script (replace `<user-uuid>`).
 ### Task 2: Snapshot pre-delete row counts
 
 **Files:**
+
 - Reference: `openspec/project.md`
 
 **Step 1: Write pre-delete count queries**
@@ -53,6 +55,7 @@ Expected: counts are >= 0 (some may be 0).
 ### Task 3: Delete user-scoped rows
 
 **Files:**
+
 - Reference: `openspec/project.md`
 
 **Step 1: Write delete transaction**
@@ -82,6 +85,7 @@ Expected: all counts return 0 for the user.
 ### Task 4: Purge local tracker state and re-upload
 
 **Files:**
+
 - Reference: `src/commands/sync.js`
 
 **Step 1: Purge local tracker state**
@@ -108,6 +112,7 @@ Expected: `Sync finished` with inserted rows.
 ### Task 5: Verify model reupload
 
 **Files:**
+
 - Reference: `openspec/changes/2025-12-25-add-usage-model/sql/001_add_model_to_hourly.sql`
 
 **Step 1: Query model distribution**

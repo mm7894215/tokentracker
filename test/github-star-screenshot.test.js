@@ -13,9 +13,9 @@ test("GithubStar skips fetch in screenshot mode", () => {
       "ui",
       "matrix-a",
       "components",
-      "GithubStar.jsx"
+      "GithubStar.jsx",
     ),
-    "utf8"
+    "utf8",
   );
 
   assert.match(src, /shouldFetchGithubStars/);

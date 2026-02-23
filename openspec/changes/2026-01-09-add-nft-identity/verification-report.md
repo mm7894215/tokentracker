@@ -1,9 +1,11 @@
 # Verification Report
 
 ## Scope
+
 - Public NFT display, wallet binding, controlled mint, lifetime totals aggregation.
 
 ## Tests Run
+
 - `node --test test/edge-functions.test.js -t "usage-lifetime-refresh"` (2026-01-10)
 - `node --test test/nft-identity-schema.test.js` (2026-01-10)
 - `node --test test/usage-lifetime-refresh-workflow.test.js` (2026-01-10)
@@ -18,6 +20,7 @@
 - `node --test test/nft-ipfs-pin.test.js` (2026-01-10, post-pin)
 
 ## Results
+
 - PASS (85 tests)
 - PASS (1 test)
 - PASS (1 test)
@@ -32,6 +35,7 @@
 - PASS (1 test)
 
 ## Evidence
+
 - Local test run for lifetime aggregation.
 - Local schema file validation.
 - Local workflow file validation.
@@ -45,5 +49,6 @@
 - Pinned IPFS assets and recorded CIDs in docs/ops/nft-identity-ipfs-cids.json.
 
 ## Remaining Risks
+
 - Fiat checkout provider integration pending.
 - Contract deployment and upgrade process pending.

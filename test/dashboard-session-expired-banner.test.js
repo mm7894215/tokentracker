@@ -145,7 +145,7 @@ test("DashboardPage shows session expired banner and bypasses auth gate", () => 
   assert.match(viewSrc, /dashboard\.session_expired\.title/);
   assert.match(
     pageSrc,
-    /requireAuthGate\s*=\s*!signedIn\s*&&\s*!mockEnabled\s*&&\s*!sessionSoftExpired/
+    /requireAuthGate\s*=\s*!signedIn\s*&&\s*!mockEnabled\s*&&\s*!sessionSoftExpired/,
   );
 });
 
@@ -207,15 +207,11 @@ test("vibeusage-api marks session soft expired only for jwt access tokens", () =
   const src = read("dashboard/src/lib/vibeusage-api.ts");
   assert.match(src, /markSessionSoftExpired/);
   assert.match(src, /isJwtAccessToken/);
-  const markMatch = src.match(
-    /function shouldMarkSessionSoftExpired\([\s\S]*?\)\s*\{[\s\S]*?\n\}/
-  );
+  const markMatch = src.match(/function shouldMarkSessionSoftExpired\([\s\S]*?\)\s*\{[\s\S]*?\n\}/);
   assert.ok(markMatch, "expected shouldMarkSessionSoftExpired helper");
   assert.match(markMatch[0], /status\s*!==\s*401/);
   assert.match(markMatch[0], /canSetSessionSoftExpired/);
-  const guardMatch = src.match(
-    /function canSetSessionSoftExpired\([\s\S]*?\)\s*\{[\s\S]*?\n\}/
-  );
+  const guardMatch = src.match(/function canSetSessionSoftExpired\([\s\S]*?\)\s*\{[\s\S]*?\n\}/);
   assert.ok(guardMatch, "expected canSetSessionSoftExpired helper");
   assert.match(guardMatch[0], /hasAccessTokenValue/);
   assert.match(guardMatch[0], /isJwtAccessToken\(/);
@@ -224,9 +220,7 @@ test("vibeusage-api marks session soft expired only for jwt access tokens", () =
 test("vibeusage-api clears session soft expired after successful jwt responses", () => {
   const src = read("dashboard/src/lib/vibeusage-api.ts");
   assert.match(src, /clearSessionSoftExpired/);
-  const match = src.match(
-    /function shouldClearSessionSoftExpired\([\s\S]*?\)\s*\{[\s\S]*?\n\}/
-  );
+  const match = src.match(/function shouldClearSessionSoftExpired\([\s\S]*?\)\s*\{[\s\S]*?\n\}/);
   assert.ok(match, "expected shouldClearSessionSoftExpired helper");
   assert.match(match[0], /canSetSessionSoftExpired/);
 });
@@ -246,7 +240,7 @@ test("vibeusage-api only marks soft expired after refresh when token missing", (
   const src = read("dashboard/src/lib/vibeusage-api.ts");
   assert.match(
     src,
-    /if\s*\(\s*hasAccessTokenValue\(refreshedToken\)\s*\)[\s\S]*?\}\s*else if\s*\([\s\S]*canSetSessionSoftExpired[\s\S]*\)[\s\S]*markSessionSoftExpired/
+    /if\s*\(\s*hasAccessTokenValue\(refreshedToken\)\s*\)[\s\S]*?\}\s*else if\s*\([\s\S]*canSetSessionSoftExpired[\s\S]*\)[\s\S]*markSessionSoftExpired/,
   );
 });
 
@@ -281,9 +275,7 @@ test("auth storage skips localStorage when window is undefined", async () => {
 
   if (hadWindow) delete globalThis.window;
 
-  const { setSessionSoftExpired } = await loadDashboardModule(
-    "dashboard/src/lib/auth-storage.ts"
-  );
+  const { setSessionSoftExpired } = await loadDashboardModule("dashboard/src/lib/auth-storage.ts");
 
   assert.doesNotThrow(() => {
     setSessionSoftExpired();
@@ -298,10 +290,7 @@ test("auth storage skips localStorage when window is undefined", async () => {
 test("DashboardPage gates expired UI", () => {
   const pageSrc = read("dashboard/src/pages/DashboardPage.jsx");
   const viewSrc = read("dashboard/src/ui/matrix-a/views/DashboardView.jsx");
-  assert.match(
-    pageSrc,
-    /const showExpiredGate\s*=\s*sessionSoftExpired\s*&&\s*!publicMode/
-  );
+  assert.match(pageSrc, /const showExpiredGate\s*=\s*sessionSoftExpired\s*&&\s*!publicMode/);
   assert.match(viewSrc, /showExpiredGate\s*\?\s*\(/);
 });
 

@@ -11,7 +11,7 @@ const upgradePath = path.join(
   "ui",
   "matrix-a",
   "components",
-  "UpgradeAlertModal.jsx"
+  "UpgradeAlertModal.jsx",
 );
 
 function read(filePath) {
@@ -23,6 +23,6 @@ test("upgrade alert ignores unknown dismiss when a version is available", () => 
   assert.doesNotMatch(
     src,
     /hasVersion\s*&&\s*safeGetItem\(unknownDismissKey\)/,
-    "expected UpgradeAlertModal to avoid suppressing new versions"
+    "expected UpgradeAlertModal to avoid suppressing new versions",
   );
 });

@@ -1,13 +1,13 @@
-const fs = require('node:fs/promises');
-const fssync = require('node:fs');
-const readline = require('node:readline');
+const fs = require("node:fs/promises");
+const fssync = require("node:fs");
+const readline = require("node:readline");
 
-const { ensureDir, readJson, writeJson } = require('./fs');
-const { ingestHourly } = require('./vibeusage-api');
+const { ensureDir, readJson, writeJson } = require("./fs");
+const { ingestHourly } = require("./vibeusage-api");
 
-const DEFAULT_SOURCE = 'codex';
-const DEFAULT_MODEL = 'unknown';
-const BUCKET_SEPARATOR = '|';
+const DEFAULT_SOURCE = "codex";
+const DEFAULT_MODEL = "unknown";
+const BUCKET_SEPARATOR = "|";
 const MAX_INGEST_BUCKETS = 500;
 
 async function drainQueueToCloud({
@@ -20,34 +20,36 @@ async function drainQueueToCloud({
   projectQueueStatePath,
   maxBatches,
   batchSize,
-  onProgress
+  onProgress,
 }) {
-  await ensureDir(require('node:path').dirname(queueStatePath));
-  const projectQueueEnabled = typeof projectQueuePath === 'string' && projectQueuePath.length > 0;
+  await ensureDir(require("node:path").dirname(queueStatePath));
+  const projectQueueEnabled = typeof projectQueuePath === "string" && projectQueuePath.length > 0;
   if (projectQueueEnabled && (!projectQueueStatePath || projectQueueStatePath.length === 0)) {
-    throw new Error('projectQueueStatePath is required when projectQueuePath is set');
+    throw new Error("projectQueueStatePath is required when projectQueuePath is set");
   }
   if (projectQueueEnabled) {
-    await ensureDir(require('node:path').dirname(projectQueueStatePath));
+    await ensureDir(require("node:path").dirname(projectQueueStatePath));
   }
 
   const state = (await readJson(queueStatePath)) || { offset: 0 };
   let offset = Number(state.offset || 0);
   const projectStatePath = projectQueueEnabled ? projectQueueStatePath : null;
-  const projectState = projectQueueEnabled ? (await readJson(projectStatePath)) || { offset: 0 } : { offset: 0 };
+  const projectState = projectQueueEnabled
+    ? (await readJson(projectStatePath)) || { offset: 0 }
+    : { offset: 0 };
   let projectOffset = Number(projectState.offset || 0);
   let inserted = 0;
   let skipped = 0;
   let attempted = 0;
 
-  const cb = typeof onProgress === 'function' ? onProgress : null;
+  const cb = typeof onProgress === "function" ? onProgress : null;
   const queueSize = await safeFileSize(queuePath);
   const projectQueueSize = projectQueueEnabled ? await safeFileSize(projectQueuePath) : 0;
   const maxBuckets = Math.max(1, Math.floor(Number(batchSize || 200)));
   const totalLimit = Math.min(maxBuckets, MAX_INGEST_BUCKETS);
 
   const normalizedSubscriptions = Array.isArray(deviceSubscriptions)
-    ? deviceSubscriptions.filter((entry) => entry && typeof entry === 'object')
+    ? deviceSubscriptions.filter((entry) => entry && typeof entry === "object")
     : [];
 
   for (let batch = 0; batch < maxBatches; batch++) {
@@ -66,7 +68,9 @@ async function drainQueueToCloud({
     }
 
     const res =
-      hourlyLimit > 0 ? await readBatch(queuePath, offset, hourlyLimit) : { buckets: [], nextOffset: offset };
+      hourlyLimit > 0
+        ? await readBatch(queuePath, offset, hourlyLimit)
+        : { buckets: [], nextOffset: offset };
     const projectRes =
       projectLimit > 0
         ? await readProjectBatch(projectQueuePath, projectOffset, projectLimit)
@@ -79,7 +83,7 @@ async function drainQueueToCloud({
       deviceToken,
       hourly: res.buckets,
       project_hourly: projectRes.buckets,
-      device_subscriptions: batch === 0 ? normalizedSubscriptions : undefined
+      device_subscriptions: batch === 0 ? normalizedSubscriptions : undefined,
     });
     inserted += ingest.inserted || 0;
     skipped += ingest.skipped || 0;
@@ -103,7 +107,7 @@ async function drainQueueToCloud({
         offset: combinedOffset,
         queueSize: queueSize + projectQueueSize,
         inserted,
-        skipped
+        skipped,
       });
     }
   }
@@ -116,14 +120,14 @@ async function readBatch(queuePath, startOffset, maxBuckets) {
   if (!st || !st.isFile()) return { buckets: [], nextOffset: startOffset };
   if (startOffset >= st.size) return { buckets: [], nextOffset: startOffset };
 
-  const stream = fssync.createReadStream(queuePath, { encoding: 'utf8', start: startOffset });
+  const stream = fssync.createReadStream(queuePath, { encoding: "utf8", start: startOffset });
   const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
 
   const bucketMap = new Map();
   let offset = startOffset;
   let linesRead = 0;
   for await (const line of rl) {
-    const bytes = Buffer.byteLength(line, 'utf8') + 1;
+    const bytes = Buffer.byteLength(line, "utf8") + 1;
     offset += bytes;
     if (!line.trim()) continue;
     let bucket;
@@ -132,7 +136,7 @@ async function readBatch(queuePath, startOffset, maxBuckets) {
     } catch (_e) {
       continue;
     }
-    const hourStart = typeof bucket?.hour_start === 'string' ? bucket.hour_start : null;
+    const hourStart = typeof bucket?.hour_start === "string" ? bucket.hour_start : null;
     if (!hourStart) continue;
     const source = normalizeSource(bucket?.source) || DEFAULT_SOURCE;
     const model = normalizeModel(bucket?.model) || DEFAULT_MODEL;
@@ -154,14 +158,14 @@ async function readProjectBatch(queuePath, startOffset, maxBuckets) {
   if (!st || !st.isFile()) return { buckets: [], nextOffset: startOffset };
   if (startOffset >= st.size) return { buckets: [], nextOffset: startOffset };
 
-  const stream = fssync.createReadStream(queuePath, { encoding: 'utf8', start: startOffset });
+  const stream = fssync.createReadStream(queuePath, { encoding: "utf8", start: startOffset });
   const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
 
   const bucketMap = new Map();
   let offset = startOffset;
   let linesRead = 0;
   for await (const line of rl) {
-    const bytes = Buffer.byteLength(line, 'utf8') + 1;
+    const bytes = Buffer.byteLength(line, "utf8") + 1;
     offset += bytes;
     if (!line.trim()) continue;
     let bucket;
@@ -170,9 +174,9 @@ async function readProjectBatch(queuePath, startOffset, maxBuckets) {
     } catch (_e) {
       continue;
     }
-    const hourStart = typeof bucket?.hour_start === 'string' ? bucket.hour_start : null;
-    const projectKey = typeof bucket?.project_key === 'string' ? bucket.project_key : null;
-    const projectRef = typeof bucket?.project_ref === 'string' ? bucket.project_ref : null;
+    const hourStart = typeof bucket?.hour_start === "string" ? bucket.hour_start : null;
+    const projectKey = typeof bucket?.project_key === "string" ? bucket.project_key : null;
+    const projectRef = typeof bucket?.project_ref === "string" ? bucket.project_ref : null;
     if (!hourStart || !projectKey || !projectRef) continue;
     const source = normalizeSource(bucket?.source) || DEFAULT_SOURCE;
     bucket.source = source;
@@ -206,13 +210,13 @@ function projectBucketKey(projectKey, source, hourStart) {
 }
 
 function normalizeSource(value) {
-  if (typeof value !== 'string') return null;
+  if (typeof value !== "string") return null;
   const trimmed = value.trim().toLowerCase();
   return trimmed.length > 0 ? trimmed : null;
 }
 
 function normalizeModel(value) {
-  if (typeof value !== 'string') return null;
+  if (typeof value !== "string") return null;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
 }

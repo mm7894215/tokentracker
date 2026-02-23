@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-
 import { getPaginationFlags, injectMeIntoFirstPage } from "../leaderboard-ui";
 
 describe("getPaginationFlags", () => {

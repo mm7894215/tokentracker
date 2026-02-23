@@ -18,7 +18,12 @@ export function formatCompactNumber(
     millionSuffix = "M",
     billionSuffix = "B",
     decimals = 1,
-  }: { thousandSuffix?: string; millionSuffix?: string; billionSuffix?: string; decimals?: number } = {}
+  }: {
+    thousandSuffix?: string;
+    millionSuffix?: string;
+    billionSuffix?: string;
+    decimals?: number;
+  } = {},
 ) {
   const n = Number(String(value));
   if (!Number.isFinite(n)) return "-";
@@ -64,10 +69,7 @@ export function toFiniteNumber(value: any) {
   return Number.isFinite(n) ? n : null;
 }
 
-export function formatUsdCurrency(
-  value: any,
-  { decimals = 2 }: { decimals?: number } = {}
-) {
+export function formatUsdCurrency(value: any, { decimals = 2 }: { decimals?: number } = {}) {
   if (value == null) return "-";
   const raw = String(value).trim();
   if (!raw) return "-";

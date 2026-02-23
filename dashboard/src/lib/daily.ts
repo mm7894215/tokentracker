@@ -38,9 +38,7 @@ type AnyRecord = Record<string, any>;
 
 export function getDetailsSortColumns(dateKey: any) {
   const key = isDetailDateKey(dateKey) ? dateKey : "day";
-  return DAILY_SORT_COLUMNS.map((col, index) =>
-    index === 0 ? { ...col, key } : col
-  );
+  return DAILY_SORT_COLUMNS.map((col, index) => (index === 0 ? { ...col, key } : col));
 }
 
 export function sortDailyRows(rows: any, { key, dir }: AnyRecord) {

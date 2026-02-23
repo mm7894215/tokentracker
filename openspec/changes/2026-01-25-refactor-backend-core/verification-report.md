@@ -1,11 +1,13 @@
 # Verification Report (Planned)
 
 ## Scope
+
 - Edge Functions refactor correctness
 - DB/RLS contract alignment
 - Build artifact consistency
 
 ## Planned Tests
+
 - `npm run build:insforge:check`
 - `node --test test/*.test.js`
 - `VIBEUSAGE_INSFORGE_BASE_URL=... VIBEUSAGE_SERVICE_ROLE_KEY=... node scripts/ops/insforge2-db-validate.cjs`
@@ -21,6 +23,7 @@
 - Runbook: `openspec/changes/2026-01-25-refactor-backend-core/runbook-device-token-dedupe.md`
 
 ## Expected Signals
+
 - All tests pass.
 - No regression in response schema.
 - Query paths respect index prefixes (EXPLAIN/metrics).
@@ -31,6 +34,7 @@
 - P95 for usage queries ≤ 2000ms (measured via handler timing or DB timing).
 
 ## Execution Notes (planned)
+
 - **Maintenance window**
   - Confirm maintenance window active and write paths paused (API, jobs, retries) before runbook execution.
 - **Device token replay check**
@@ -48,6 +52,7 @@
   - Compute P95 from handler timing or DB timing logs; verify `≤ 2000ms`.
 
 ## Evidence
+
 - 2026-01-25: `node --test test/insforge-src-core-db.test.js` (PASS)
 - 2026-01-25: `node --test test/*.test.js` (PASS)
 - 2026-01-25: `npm run build:insforge:check` (PASS)

@@ -1,10 +1,12 @@
 # Verification Report
 
 ## Scope
+
 - Opencode plugin install/uninstall.
 - Opencode message usage parsing into half-hour buckets.
 
 ## Tests Run
+
 - `node --test test/rollout-parser.test.js test/init-uninstall.test.js`
 - `node scripts/validate-copy-registry.cjs` (warnings only; no errors)
 - `node scripts/acceptance/opencode-plugin-install.cjs`
@@ -18,6 +20,7 @@
 - `node scripts/acceptance/opencode-plugin-install.cjs` (2026-01-04; deployment run)
 
 ## Results
+
 - Passed.
 - Opencode init/uninstall regression test passed.
 - Copy registry check passed with warnings for unused keys.
@@ -29,7 +32,9 @@
 - Opencode plugin acceptance passed (deployment run, 2026-01-04).
 
 ## Evidence
+
 - Added Opencode parser coverage and plugin install/uninstall coverage in the test suite.
 
 ## Remaining Risks
+
 - Manual smoke (end an Opencode session and confirm queue upload) not executed in this run.

@@ -1,15 +1,15 @@
-const assert = require('node:assert/strict');
-const { test } = require('node:test');
+const assert = require("node:assert/strict");
+const { test } = require("node:test");
 
-const { run } = require('../src/cli');
+const { run } = require("../src/cli");
 
-test('help output uses VibeUsage identifiers', async () => {
+test("help output uses VibeUsage identifiers", async () => {
   const prevWrite = process.stdout.write;
-  let out = '';
+  let out = "";
 
   try {
     process.stdout.write = (chunk) => {
-      out += String(chunk || '');
+      out += String(chunk || "");
       return true;
     };
 
@@ -19,7 +19,7 @@ test('help output uses VibeUsage identifiers', async () => {
   }
 
   assert.match(out, /vibeusage/);
-  assert.ok(!out.includes('@vibescore/tracker'));
+  assert.ok(!out.includes("@vibescore/tracker"));
   assert.match(out, /VIBEUSAGE_DASHBOARD_URL/);
   assert.match(out, /doctor/);
 });

@@ -2,13 +2,13 @@ name: Sync Pricing Profiles
 
 on:
   schedule:
-    - cron: '0 */6 * * *'
+    - cron: "0 */6 * * *"
   workflow_dispatch:
     inputs:
       retention_days:
-        description: 'Retention window in days (soft deactivate)'
+        description: "Retention window in days (soft deactivate)"
         required: false
-        default: '90'
+        default: "90"
 
 jobs:
   sync:

@@ -18,11 +18,7 @@ test("annual poster module is removed", () => {
   const appSrc = read("dashboard/src/App.jsx");
   assert.doesNotMatch(appSrc, /AnnualPosterPage/);
   assert.doesNotMatch(appSrc, /poster/);
-  const posterPath = path.join(
-    __dirname,
-    "..",
-    "dashboard/src/pages/AnnualPosterPage.jsx"
-  );
+  const posterPath = path.join(__dirname, "..", "dashboard/src/pages/AnnualPosterPage.jsx");
   assert.equal(fs.existsSync(posterPath), false);
 });
 

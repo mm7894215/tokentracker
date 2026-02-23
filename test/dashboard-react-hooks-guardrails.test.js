@@ -13,29 +13,22 @@ async function readAppSource() {
 test("App.jsx imports useRef from react", async () => {
   const source = await readAppSource();
   const hasUseRefImport =
-    /import\s+[^;]*\{\s*[^}]*\buseRef\b[^}]*\}\s+from\s+["']react["']\s*;/.test(
-      source
-    );
-  assert.ok(
-    hasUseRefImport,
-    "expected useRef to be imported from react in App.jsx"
-  );
+    /import\s+[^;]*\{\s*[^}]*\buseRef\b[^}]*\}\s+from\s+["']react["']\s*;/.test(source);
+  assert.ok(hasUseRefImport, "expected useRef to be imported from react in App.jsx");
 });
 
 test("App.jsx wires sessionExpired state from auth storage", async () => {
   const source = await readAppSource();
   assert.ok(
     source.includes("loadSessionExpired"),
-    "expected App.jsx to reference loadSessionExpired"
+    "expected App.jsx to reference loadSessionExpired",
   );
   assert.ok(
     source.includes("subscribeSessionExpired"),
-    "expected App.jsx to reference subscribeSessionExpired"
+    "expected App.jsx to reference subscribeSessionExpired",
   );
   assert.ok(
-    /const\s+\[\s*sessionExpired\s*,\s*setSessionExpired\s*\]\s*=\s*useState/.test(
-      source
-    ),
-    "expected sessionExpired state to be initialized via useState"
+    /const\s+\[\s*sessionExpired\s*,\s*setSessionExpired\s*\]\s*=\s*useState/.test(source),
+    "expected sessionExpired state to be initialized via useState",
   );
 });

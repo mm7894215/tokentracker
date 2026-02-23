@@ -301,7 +301,11 @@ var require_auth = __commonJS({
     }
     async function getEdgeClientAndUserIdFast({ baseUrl, bearer }) {
       const anonKey = getAnonKey2();
-      const edgeClient = createClient({ baseUrl, anonKey: anonKey || void 0, edgeFunctionToken: bearer });
+      const edgeClient = createClient({
+        baseUrl,
+        anonKey: anonKey || void 0,
+        edgeFunctionToken: bearer
+      });
       const local = await verifyUserJwtHs256({ token: bearer });
       const allowRemoteOnly = !local.ok && local?.code === "missing_jwt_secret";
       if (!local.ok && !allowRemoteOnly) {
@@ -410,7 +414,14 @@ var require_auth = __commonJS({
       }
       const publicView = await resolvePublicView({ baseUrl, shareToken: bearer });
       if (!publicView.ok) {
-        return { ok: false, edgeClient: null, userId: null, accessType: null, status: 401, error: "Unauthorized" };
+        return {
+          ok: false,
+          edgeClient: null,
+          userId: null,
+          accessType: null,
+          status: 401,
+          error: "Unauthorized"
+        };
       }
       return {
         ok: true,
@@ -700,7 +711,9 @@ module.exports = withRequestLogging("vibeusage-user-status", async function(requ
   if (entErr) return json({ error: entErr.message }, 500);
   let subscriptions = [];
   let subscriptionsPartial = false;
-  const { data: subscriptionRows, error: subscriptionErr } = await auth.edgeClient.database.from("vibeusage_tracker_subscriptions").select("tool,provider,product,plan_type,rate_limit_tier,active_start,active_until,last_checked,observed_at,updated_at").eq("user_id", auth.userId).order("updated_at", { ascending: false });
+  const { data: subscriptionRows, error: subscriptionErr } = await auth.edgeClient.database.from("vibeusage_tracker_subscriptions").select(
+    "tool,provider,product,plan_type,rate_limit_tier,active_start,active_until,last_checked,observed_at,updated_at"
+  ).eq("user_id", auth.userId).order("updated_at", { ascending: false });
   if (subscriptionErr) {
     if (isMissingRelationError(subscriptionErr, "vibeusage_tracker_subscriptions")) {
       subscriptionsPartial = true;

@@ -11,24 +11,25 @@
 ### Task 1: Public repo verification helper
 
 **Files:**
+
 - Create: `src/lib/vibeusage-public-repo.js`
 - Test: `test/public-repo-verification.test.js`
 
 **Step 1: Write the failing test**
 
 ```js
-const assert = require('node:assert/strict');
-const { test } = require('node:test');
-const { hashRepoRoot, parseGitHubRepoId } = require('../src/lib/vibeusage-public-repo');
+const assert = require("node:assert/strict");
+const { test } = require("node:test");
+const { hashRepoRoot, parseGitHubRepoId } = require("../src/lib/vibeusage-public-repo");
 
-test('parseGitHubRepoId extracts owner/repo from canonical ref', () => {
-  const res = parseGitHubRepoId('https://github.com/Acme/Alpha');
-  assert.equal(res.repoId, 'acme/alpha');
+test("parseGitHubRepoId extracts owner/repo from canonical ref", () => {
+  const res = parseGitHubRepoId("https://github.com/Acme/Alpha");
+  assert.equal(res.repoId, "acme/alpha");
 });
 
-test('hashRepoRoot returns stable hex hash', () => {
-  const a = hashRepoRoot('/tmp/repo');
-  const b = hashRepoRoot('/tmp/repo');
+test("hashRepoRoot returns stable hex hash", () => {
+  const a = hashRepoRoot("/tmp/repo");
+  const b = hashRepoRoot("/tmp/repo");
   assert.equal(a, b);
   assert.equal(a.length, 64);
 });
@@ -42,7 +43,7 @@ Expected: FAIL (module not found / function missing)
 **Step 3: Write minimal implementation**
 
 ```js
-const crypto = require('node:crypto');
+const crypto = require("node:crypto");
 
 function parseGitHubRepoId(projectRef) {
   // Accept canonical https://github.com/owner/repo
@@ -50,7 +51,7 @@ function parseGitHubRepoId(projectRef) {
 }
 
 function hashRepoRoot(repoRoot) {
-  return crypto.createHash('sha256').update(String(repoRoot)).digest('hex');
+  return crypto.createHash("sha256").update(String(repoRoot)).digest("hex");
 }
 
 module.exports = { parseGitHubRepoId, hashRepoRoot };
@@ -71,6 +72,7 @@ git commit -m "feat: add public repo helper"
 ### Task 2: Gate project buckets on public verification
 
 **Files:**
+
 - Modify: `src/lib/rollout.js`
 - Modify: `test/rollout-parser.test.js`
 
@@ -85,10 +87,10 @@ await parseRolloutIncremental({
   queuePath,
   projectQueuePath,
   publicRepoResolver: async () => ({
-    status: 'public_verified',
-    projectKey: 'acme/alpha',
-    projectRef: 'https://github.com/acme/alpha'
-  })
+    status: "public_verified",
+    projectKey: "acme/alpha",
+    projectRef: "https://github.com/acme/alpha",
+  }),
 });
 ```
 
@@ -122,6 +124,7 @@ git commit -m "feat: gate project buckets on public repos"
 ### Task 3: Purge blocked project usage locally
 
 **Files:**
+
 - Create: `src/lib/project-usage-purge.js`
 - Modify: `src/commands/sync.js`
 - Test: `test/project-usage-purge.test.js`
@@ -158,6 +161,7 @@ git commit -m "feat: purge blocked project usage locally"
 ### Task 4: Update integration tests and docs
 
 **Files:**
+
 - Modify: `test/sync-project-queue.test.js`
 - Modify: `docs/plans/2026-01-26-public-repo-project-usage-*.md`
 - Modify: `openspec/changes/2026-01-25-add-project-usage-totals/*`
@@ -190,6 +194,7 @@ git commit -m "docs: document public repo project usage"
 ### Task 5: Full regression
 
 **Files:**
+
 - Test: `test/*.test.js`
 
 **Step 1: Run full test suite**

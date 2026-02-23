@@ -210,7 +210,8 @@ var require_concurrency = __commonJS({
     function getLimiter({ name, maxInflight, retryAfterMs }) {
       const key = name || "default";
       const existing = LIMITERS.get(key);
-      if (existing && existing.maxInflight === maxInflight && existing.retryAfterMs === retryAfterMs) return existing;
+      if (existing && existing.maxInflight === maxInflight && existing.retryAfterMs === retryAfterMs)
+        return existing;
       const limiter = createLimiter({ maxInflight, retryAfterMs });
       LIMITERS.set(key, limiter);
       return limiter;
@@ -522,7 +523,11 @@ var require_auth = __commonJS({
     }
     async function getEdgeClientAndUserIdFast({ baseUrl, bearer }) {
       const anonKey = getAnonKey2();
-      const edgeClient = createClient({ baseUrl, anonKey: anonKey || void 0, edgeFunctionToken: bearer });
+      const edgeClient = createClient({
+        baseUrl,
+        anonKey: anonKey || void 0,
+        edgeFunctionToken: bearer
+      });
       const local = await verifyUserJwtHs256({ token: bearer });
       const allowRemoteOnly = !local.ok && local?.code === "missing_jwt_secret";
       if (!local.ok && !allowRemoteOnly) {
@@ -631,7 +636,14 @@ var require_auth = __commonJS({
       }
       const publicView = await resolvePublicView({ baseUrl, shareToken: bearer });
       if (!publicView.ok) {
-        return { ok: false, edgeClient: null, userId: null, accessType: null, status: 401, error: "Unauthorized" };
+        return {
+          ok: false,
+          edgeClient: null,
+          userId: null,
+          accessType: null,
+          status: 401,
+          error: "Unauthorized"
+        };
       }
       return {
         ok: true,
@@ -972,7 +984,8 @@ var require_ingest = __commonJS({
       };
     }
     function parseProjectHourlyBucket(raw) {
-      if (!raw || typeof raw !== "object") return { ok: false, error: "Invalid project half-hour bucket" };
+      if (!raw || typeof raw !== "object")
+        return { ok: false, error: "Invalid project half-hour bucket" };
       const hourStart = parseUtcHalfHourStart(raw.hour_start);
       if (!hourStart) {
         return { ok: false, error: "hour_start must be an ISO timestamp at UTC half-hour boundary" };
@@ -1014,7 +1027,10 @@ var require_ingest = __commonJS({
       const tool = normalizeTextField(raw.tool, { lowerCase: true, maxLen: 64 });
       const provider = normalizeTextField(raw.provider, { lowerCase: true, maxLen: 64 });
       const product = normalizeTextField(raw.product, { lowerCase: true, maxLen: 64 });
-      const planType = normalizeTextField(raw.plan_type ?? raw.planType, { lowerCase: true, maxLen: 64 });
+      const planType = normalizeTextField(raw.plan_type ?? raw.planType, {
+        lowerCase: true,
+        maxLen: 64
+      });
       if (!tool || !provider || !product || !planType) return null;
       return {
         tool,
@@ -1168,7 +1184,11 @@ var require_records = __commonJS({
       if (!text) return { data: null, error: null, code: null };
       try {
         const parsed = JSON.parse(text);
-        return { data: parsed, error: parsed?.message || parsed?.error || null, code: parsed?.code || null };
+        return {
+          data: parsed,
+          error: parsed?.message || parsed?.error || null,
+          code: parsed?.code || null
+        };
       } catch (_e) {
         return { data: null, error: text.slice(0, 300), code: null };
       }
@@ -1180,12 +1200,23 @@ var require_records = __commonJS({
     }
     function isUpsertUnsupported(result) {
       const status = Number(result?.status || 0);
-      if (status !== 400 && status !== 404 && status !== 405 && status !== 409 && status !== 422) return false;
+      if (status !== 400 && status !== 404 && status !== 405 && status !== 409 && status !== 422)
+        return false;
       const msg = String(result?.error || "").toLowerCase();
       if (!msg) return false;
       return msg.includes("on_conflict") || msg.includes("resolution") || msg.includes("prefer") || msg.includes("unknown") || msg.includes("invalid");
     }
-    async function recordsUpsert({ url, anonKey, tokenHash, rows, onConflict, prefer, resolution, select, fetcher }) {
+    async function recordsUpsert({
+      url,
+      anonKey,
+      tokenHash,
+      rows,
+      onConflict,
+      prefer,
+      resolution,
+      select,
+      fetcher
+    }) {
       const target = new URL(url.toString());
       if (onConflict) target.searchParams.set("on_conflict", onConflict);
       if (select) target.searchParams.set("select", select);
@@ -1397,7 +1428,12 @@ var require_ingest2 = __commonJS({
         return { ok: true, inserted, skipped: 0 };
       }
       if (isUpsertUnsupported(res)) {
-        return { ok: false, error: res.error || "Half-hour upsert unsupported", inserted: 0, skipped: 0 };
+        return {
+          ok: false,
+          error: res.error || "Half-hour upsert unsupported",
+          inserted: 0,
+          skipped: 0
+        };
       }
       return { ok: false, error: res.error || `HTTP ${res.status}`, inserted: 0, skipped: 0 };
     }
@@ -1463,7 +1499,12 @@ var require_ingest2 = __commonJS({
         return { ok: true, inserted, skipped: 0 };
       }
       if (isUpsertUnsupported(res)) {
-        return { ok: false, error: res.error || "Half-hour upsert unsupported", inserted: 0, skipped: 0 };
+        return {
+          ok: false,
+          error: res.error || "Half-hour upsert unsupported",
+          inserted: 0,
+          skipped: 0
+        };
       }
       return { ok: false, error: res.error || `HTTP ${res.status}`, inserted: 0, skipped: 0 };
     }
@@ -1588,7 +1629,12 @@ var require_ingest2 = __commonJS({
         return { ok: true, inserted, skipped: 0 };
       }
       if (isUpsertUnsupported(res)) {
-        return { ok: false, error: res.error || "Subscriptions upsert unsupported", inserted: 0, skipped: 0 };
+        return {
+          ok: false,
+          error: res.error || "Subscriptions upsert unsupported",
+          inserted: 0,
+          skipped: 0
+        };
       }
       return { ok: false, error: res.error || `HTTP ${res.status}`, inserted: 0, skipped: 0 };
     }
@@ -1727,7 +1773,10 @@ module.exports = withRequestLogging("vibeusage-ingest", async function(request, 
       return json({ error: `Too many buckets (max ${MAX_BUCKETS})` }, 413);
     }
     if (Array.isArray(deviceSubscriptions) && deviceSubscriptions.length > MAX_DEVICE_SUBSCRIPTIONS) {
-      return json({ error: `Too many device subscriptions (max ${MAX_DEVICE_SUBSCRIPTIONS})` }, 413);
+      return json(
+        { error: `Too many device subscriptions (max ${MAX_DEVICE_SUBSCRIPTIONS})` },
+        413
+      );
     }
     const nowIso = (/* @__PURE__ */ new Date()).toISOString();
     const rows = Array.isArray(hourly) ? buildRows({ hourly, tokenRow, nowIso, billableRuleVersion: BILLABLE_RULE_VERSION }) : { error: null, data: [] };
@@ -1811,7 +1860,13 @@ module.exports = withRequestLogging("vibeusage-ingest", async function(request, 
         fetcher
       });
       return json(
-        { success: true, inserted: 0, skipped: 0, project_inserted: projectInserted, project_skipped: projectSkipped },
+        {
+          success: true,
+          inserted: 0,
+          skipped: 0,
+          project_inserted: projectInserted,
+          project_skipped: projectSkipped
+        },
         200
       );
     }

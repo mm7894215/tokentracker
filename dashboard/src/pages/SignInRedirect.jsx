@@ -1,7 +1,5 @@
 import React, { useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-
-import { insforgeAuthClient } from "../lib/insforge-auth-client";
 import {
   storePostAuthPathFromSearch,
   storeRedirectFromSearch,
@@ -13,6 +11,7 @@ import {
   clearSessionExpired,
   clearSessionSoftExpired,
 } from "../lib/auth-storage";
+import { insforgeAuthClient } from "../lib/insforge-auth-client";
 import { clearInsforgePersistentStorage } from "../lib/insforge-client";
 
 function buildCallbackUrl() {
@@ -27,9 +26,7 @@ export function SignInRedirect() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     const { saved } = storeRedirectFromSearch(window.location.search);
-    const { saved: nextSaved } = storePostAuthPathFromSearch(
-      window.location.search
-    );
+    const { saved: nextSaved } = storePostAuthPathFromSearch(window.location.search);
     if (!saved && !nextSaved) return;
 
     let nextUrl = window.location.href;

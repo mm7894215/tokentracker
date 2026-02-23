@@ -1,12 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
-
 import { isScreenshotModeEnabled } from "../../../lib/screenshot-mode.js";
 
-export function ConnectionStatus({
-  status = "STABLE",
-  title,
-  className = "",
-}) {
+export function ConnectionStatus({ status = "STABLE", title, className = "" }) {
   const [bit, setBit] = useState("0");
   const screenshotMode = useMemo(() => {
     if (typeof window === "undefined") return false;

@@ -35,13 +35,13 @@ function parseCsv(raw: any) {
       continue;
     }
 
-    if (ch === ',') {
+    if (ch === ",") {
       row.push(field);
       field = "";
       continue;
     }
 
-    if (ch === '\n') {
+    if (ch === "\n") {
       row.push(field);
       field = "";
       if (!row.every((cell) => cell.trim() === "")) {
@@ -51,7 +51,7 @@ function parseCsv(raw: any) {
       continue;
     }
 
-    if (ch === '\r') {
+    if (ch === "\r") {
       continue;
     }
 
@@ -80,9 +80,7 @@ function buildRegistry(raw: any) {
     return { map: new Map(), rows: [] };
   }
 
-  const idx = Object.fromEntries(
-    header.map((col: any, index: number) => [col, index])
-  );
+  const idx = Object.fromEntries(header.map((col: any, index: number) => [col, index]));
   const entries: any[] = [];
   const map = new Map();
 

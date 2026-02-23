@@ -1,18 +1,18 @@
-'use strict';
+"use strict";
 
-const { normalizeSource } = require('../source');
-const { normalizeUsageModel } = require('../model');
-const { computeBillableTotalTokens } = require('../usage-billable');
+const { normalizeSource } = require("../source");
+const { normalizeUsageModel } = require("../model");
+const { computeBillableTotalTokens } = require("../usage-billable");
 
-const DEFAULT_MODEL = 'unknown';
+const DEFAULT_MODEL = "unknown";
 const BILLABLE_RULE_VERSION = 1;
 
 function normalizeHourlyPayload(data) {
   if (Array.isArray(data)) return data;
-  if (data && typeof data === 'object') {
+  if (data && typeof data === "object") {
     if (Array.isArray(data.hourly)) return data.hourly;
     if (Array.isArray(data.data)) return data.data;
-    if (data.data && typeof data.data === 'object' && Array.isArray(data.data.hourly)) {
+    if (data.data && typeof data.data === "object" && Array.isArray(data.data.hourly)) {
       return data.data.hourly;
     }
   }
@@ -20,25 +20,25 @@ function normalizeHourlyPayload(data) {
 }
 
 function normalizeProjectHourlyPayload(data) {
-  if (!data || typeof data !== 'object') return null;
+  if (!data || typeof data !== "object") return null;
   if (Array.isArray(data.project_hourly)) return data.project_hourly;
-  if (data.data && typeof data.data === 'object' && Array.isArray(data.data.project_hourly)) {
+  if (data.data && typeof data.data === "object" && Array.isArray(data.data.project_hourly)) {
     return data.data.project_hourly;
   }
   return null;
 }
 
 function normalizeDeviceSubscriptionsPayload(data) {
-  if (!data || typeof data !== 'object') return null;
+  if (!data || typeof data !== "object") return null;
   if (Array.isArray(data.device_subscriptions)) return data.device_subscriptions;
-  if (data.data && typeof data.data === 'object' && Array.isArray(data.data.device_subscriptions)) {
+  if (data.data && typeof data.data === "object" && Array.isArray(data.data.device_subscriptions)) {
     return data.data.device_subscriptions;
   }
   return null;
 }
 
 function normalizeTextField(value, { lowerCase = false, maxLen = 128 } = {}) {
-  if (typeof value !== 'string') return null;
+  if (typeof value !== "string") return null;
   const trimmed = value.trim();
   if (!trimmed) return null;
   const sliced = trimmed.length > maxLen ? trimmed.slice(0, maxLen) : trimmed;
@@ -46,7 +46,7 @@ function normalizeTextField(value, { lowerCase = false, maxLen = 128 } = {}) {
 }
 
 function normalizeIsoField(value) {
-  if (typeof value !== 'string') return null;
+  if (typeof value !== "string") return null;
   const trimmed = value.trim();
   if (!trimmed) return null;
   const dt = new Date(trimmed);
@@ -55,11 +55,15 @@ function normalizeIsoField(value) {
 }
 
 function parseUtcHalfHourStart(value) {
-  if (typeof value !== 'string' || value.trim() === '') return null;
+  if (typeof value !== "string" || value.trim() === "") return null;
   const dt = new Date(value);
   if (!Number.isFinite(dt.getTime())) return null;
   const minutes = dt.getUTCMinutes();
-  if ((minutes !== 0 && minutes !== 30) || dt.getUTCSeconds() !== 0 || dt.getUTCMilliseconds() !== 0) {
+  if (
+    (minutes !== 0 && minutes !== 30) ||
+    dt.getUTCSeconds() !== 0 ||
+    dt.getUTCMilliseconds() !== 0
+  ) {
     return null;
   }
   const hourStart = new Date(
@@ -70,14 +74,14 @@ function parseUtcHalfHourStart(value) {
       dt.getUTCHours(),
       minutes >= 30 ? 30 : 0,
       0,
-      0
-    )
+      0,
+    ),
   );
   return hourStart.toISOString();
 }
 
 function toNonNegativeInt(n) {
-  if (typeof n !== 'number') return null;
+  if (typeof n !== "number") return null;
   if (!Number.isFinite(n)) return null;
   if (!Number.isInteger(n)) return null;
   if (n < 0) return null;
@@ -85,11 +89,11 @@ function toNonNegativeInt(n) {
 }
 
 function parseHourlyBucket(raw) {
-  if (!raw || typeof raw !== 'object') return { ok: false, error: 'Invalid half-hour bucket' };
+  if (!raw || typeof raw !== "object") return { ok: false, error: "Invalid half-hour bucket" };
 
   const hourStart = parseUtcHalfHourStart(raw.hour_start);
   if (!hourStart) {
-    return { ok: false, error: 'hour_start must be an ISO timestamp at UTC half-hour boundary' };
+    return { ok: false, error: "hour_start must be an ISO timestamp at UTC half-hour boundary" };
   }
 
   const source = normalizeSource(raw.source);
@@ -101,7 +105,7 @@ function parseHourlyBucket(raw) {
   const total = toNonNegativeInt(raw.total_tokens);
 
   if ([input, cached, output, reasoning, total].some((n) => n == null)) {
-    return { ok: false, error: 'Token fields must be non-negative integers' };
+    return { ok: false, error: "Token fields must be non-negative integers" };
   }
 
   return {
@@ -114,22 +118,23 @@ function parseHourlyBucket(raw) {
       cached_input_tokens: cached,
       output_tokens: output,
       reasoning_output_tokens: reasoning,
-      total_tokens: total
-    }
+      total_tokens: total,
+    },
   };
 }
 
 function parseProjectHourlyBucket(raw) {
-  if (!raw || typeof raw !== 'object') return { ok: false, error: 'Invalid project half-hour bucket' };
+  if (!raw || typeof raw !== "object")
+    return { ok: false, error: "Invalid project half-hour bucket" };
 
   const hourStart = parseUtcHalfHourStart(raw.hour_start);
   if (!hourStart) {
-    return { ok: false, error: 'hour_start must be an ISO timestamp at UTC half-hour boundary' };
+    return { ok: false, error: "hour_start must be an ISO timestamp at UTC half-hour boundary" };
   }
 
   const source = normalizeSource(raw.source);
-  const projectKey = typeof raw.project_key === 'string' ? raw.project_key.trim() : '';
-  const projectRef = typeof raw.project_ref === 'string' ? raw.project_ref.trim() : '';
+  const projectKey = typeof raw.project_key === "string" ? raw.project_key.trim() : "";
+  const projectRef = typeof raw.project_ref === "string" ? raw.project_ref.trim() : "";
   const input = toNonNegativeInt(raw.input_tokens);
   const cached = toNonNegativeInt(raw.cached_input_tokens);
   const output = toNonNegativeInt(raw.output_tokens);
@@ -137,13 +142,13 @@ function parseProjectHourlyBucket(raw) {
   const total = toNonNegativeInt(raw.total_tokens);
 
   if (!projectKey) {
-    return { ok: false, error: 'project_key is required' };
+    return { ok: false, error: "project_key is required" };
   }
   if (!projectRef) {
-    return { ok: false, error: 'project_ref is required' };
+    return { ok: false, error: "project_ref is required" };
   }
   if ([input, cached, output, reasoning, total].some((n) => n == null)) {
-    return { ok: false, error: 'Token fields must be non-negative integers' };
+    return { ok: false, error: "Token fields must be non-negative integers" };
   }
 
   return {
@@ -157,18 +162,21 @@ function parseProjectHourlyBucket(raw) {
       cached_input_tokens: cached,
       output_tokens: output,
       reasoning_output_tokens: reasoning,
-      total_tokens: total
-    }
+      total_tokens: total,
+    },
   };
 }
 
 function parseDeviceSubscription(raw) {
-  if (!raw || typeof raw !== 'object') return null;
+  if (!raw || typeof raw !== "object") return null;
 
   const tool = normalizeTextField(raw.tool, { lowerCase: true, maxLen: 64 });
   const provider = normalizeTextField(raw.provider, { lowerCase: true, maxLen: 64 });
   const product = normalizeTextField(raw.product, { lowerCase: true, maxLen: 64 });
-  const planType = normalizeTextField(raw.plan_type ?? raw.planType, { lowerCase: true, maxLen: 64 });
+  const planType = normalizeTextField(raw.plan_type ?? raw.planType, {
+    lowerCase: true,
+    maxLen: 64,
+  });
 
   if (!tool || !provider || !product || !planType) return null;
 
@@ -179,11 +187,11 @@ function parseDeviceSubscription(raw) {
     plan_type: planType,
     rate_limit_tier: normalizeTextField(raw.rate_limit_tier ?? raw.rateLimitTier, {
       lowerCase: true,
-      maxLen: 128
+      maxLen: 128,
     }),
     active_start: normalizeIsoField(raw.active_start ?? raw.activeStart),
     active_until: normalizeIsoField(raw.active_until ?? raw.activeUntil),
-    last_checked: normalizeIsoField(raw.last_checked ?? raw.lastChecked)
+    last_checked: normalizeIsoField(raw.last_checked ?? raw.lastChecked),
   };
 }
 
@@ -193,7 +201,7 @@ function buildRows({ hourly, tokenRow, nowIso, billableRuleVersion = BILLABLE_RU
   for (const raw of hourly) {
     const parsed = parseHourlyBucket(raw);
     if (!parsed.ok) return { error: parsed.error, data: [] };
-    const source = parsed.value.source || 'codex';
+    const source = parsed.value.source || "codex";
     const model = parsed.value.model || DEFAULT_MODEL;
     const dedupeKey = `${parsed.value.hour_start}::${source}::${model}`;
     byHour.set(dedupeKey, { ...parsed.value, source, model });
@@ -216,7 +224,7 @@ function buildRows({ hourly, tokenRow, nowIso, billableRuleVersion = BILLABLE_RU
       total_tokens: bucket.total_tokens,
       billable_total_tokens: billable.toString(),
       billable_rule_version: billableRuleVersion,
-      updated_at: nowIso
+      updated_at: nowIso,
     });
   }
 
@@ -229,7 +237,7 @@ function buildProjectRows({ hourly, tokenRow, nowIso }) {
   for (const raw of hourly) {
     const parsed = parseProjectHourlyBucket(raw);
     if (!parsed.ok) return { error: parsed.error, data: [] };
-    const source = parsed.value.source || 'codex';
+    const source = parsed.value.source || "codex";
     const dedupeKey = `${parsed.value.hour_start}::${source}::${parsed.value.project_key}`;
     byHour.set(dedupeKey, { ...parsed.value, source });
   }
@@ -252,7 +260,7 @@ function buildProjectRows({ hourly, tokenRow, nowIso }) {
       total_tokens: bucket.total_tokens,
       billable_total_tokens: billable.toString(),
       billable_rule_version: BILLABLE_RULE_VERSION,
-      updated_at: nowIso
+      updated_at: nowIso,
     });
   }
 
@@ -283,7 +291,7 @@ function buildSubscriptionRows({ subscriptions, tokenRow, nowIso }) {
       active_until: subscription.active_until,
       last_checked: subscription.last_checked,
       observed_at: nowIso,
-      updated_at: nowIso
+      updated_at: nowIso,
     });
   }
 
@@ -294,11 +302,11 @@ function deriveMetricsSource(rows) {
   if (!Array.isArray(rows) || rows.length === 0) return null;
   const sources = new Set();
   for (const row of rows) {
-    const source = typeof row?.source === 'string' ? row.source.trim() : '';
+    const source = typeof row?.source === "string" ? row.source.trim() : "";
     if (source) sources.add(source);
   }
   if (sources.size === 1) return Array.from(sources)[0];
-  if (sources.size > 1) return 'mixed';
+  if (sources.size > 1) return "mixed";
   return null;
 }
 
@@ -316,5 +324,5 @@ module.exports = {
   buildRows,
   buildProjectRows,
   buildSubscriptionRows,
-  deriveMetricsSource
+  deriveMetricsSource,
 };

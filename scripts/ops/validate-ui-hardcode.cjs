@@ -65,9 +65,7 @@ function main() {
   if (update) {
     fs.writeFileSync(BASELINE_PATH, `${JSON.stringify(snapshot, null, 2)}\n`);
     console.log(`Baseline written: ${BASELINE_PATH}`);
-    console.log(
-      `Totals: colors=${snapshot.totals.colors}, rawText=${snapshot.totals.rawText}`
-    );
+    console.log(`Totals: colors=${snapshot.totals.colors}, rawText=${snapshot.totals.rawText}`);
     return;
   }
 
@@ -87,7 +85,7 @@ function main() {
   }
 
   console.log(
-    `UI hardcode guardrails ok: colors=${snapshot.totals.colors}, rawText=${snapshot.totals.rawText}`
+    `UI hardcode guardrails ok: colors=${snapshot.totals.colors}, rawText=${snapshot.totals.rawText}`,
   );
 }
 

@@ -1,9 +1,11 @@
 # Change: Add NFT identity display and controlled mint
 
 ## Why
+
 - Provide a brand-aligned NFT identity that reflects real usage while keeping privacy and eligibility controls.
 
 ## What Changes
+
 - Add public NFT display route in the Dashboard (`/nft/:tokenId`) using IdentityCard styling.
 - Add public read-only edge function for NFT display data (tokenId/wallet lookup).
 - Add SIWE wallet binding with audit and one-to-one mapping.
@@ -15,6 +17,7 @@
 - Use Foundry as the contract toolchain.
 
 ## Impact
+
 - Affected specs: `openspec/specs/vibeusage-tracker/spec.md`
 - Affected code:
   - `dashboard/src/pages/*` (new public page + routing)
@@ -28,6 +31,7 @@
 - **BREAKING**: None
 
 ## Architecture / Flow
+
 - Public route `/nft/:tokenId` → public edge function → sanitized display payload.
 - Login + SIWE → wallet binding table (one-to-one) + audit log.
 - Merkle allowlist (member-free / invite / purchase) + voucher (price + expiry) → contract mint.
@@ -35,12 +39,14 @@
 - TokenURI static on IPFS; dynamic display via external_url/animation_url.
 
 ## Risks & Mitigations
+
 - Voucher replay or wallet hijack → enforce SIWE nonce + binding checks, short voucher TTL.
 - Data leakage → strict field whitelist + handle masking on public endpoint.
 - Cache staleness → 5-min CDN cache aligned to hourly aggregation.
 - External provider downtime → retry/backoff + graceful UI fallbacks.
 
 ## Rollout / Milestones
+
 - M1: Requirements + acceptance confirmed.
 - M2: OpenSpec proposal + deltas validated.
 - M3: DB + edge functions + unit tests.

@@ -61,7 +61,10 @@ test("isAccessTokenReady only accepts non-empty strings", async () => {
 
 test("isAccessTokenReady accepts token providers only", async () => {
   const { isAccessTokenReady } = await loadAuthToken();
-  assert.equal(isAccessTokenReady(async () => "token"), true);
+  assert.equal(
+    isAccessTokenReady(async () => "token"),
+    true,
+  );
   assert.equal(isAccessTokenReady({ getAccessToken: async () => "token" }), true);
   assert.equal(isAccessTokenReady({ accessToken: "token" }), false);
 });

@@ -1,4 +1,4 @@
-'use strict';
+"use strict";
 
 const LIMITERS = new Map();
 
@@ -7,7 +7,7 @@ function createConcurrencyGuard({
   envKey,
   defaultMax = 0,
   retryAfterEnvKey,
-  defaultRetryAfterMs = 1000
+  defaultRetryAfterMs = 1000,
 }) {
   const maxInflight = readEnvInt(envKey, defaultMax);
   if (!Number.isFinite(maxInflight) || maxInflight <= 0) return null;
@@ -16,9 +16,10 @@ function createConcurrencyGuard({
 }
 
 function getLimiter({ name, maxInflight, retryAfterMs }) {
-  const key = name || 'default';
+  const key = name || "default";
   const existing = LIMITERS.get(key);
-  if (existing && existing.maxInflight === maxInflight && existing.retryAfterMs === retryAfterMs) return existing;
+  if (existing && existing.maxInflight === maxInflight && existing.retryAfterMs === retryAfterMs)
+    return existing;
   const limiter = createLimiter({ maxInflight, retryAfterMs });
   LIMITERS.set(key, limiter);
   return limiter;
@@ -34,8 +35,8 @@ function createLimiter({ maxInflight, retryAfterMs }) {
         ok: false,
         retryAfterMs,
         headers: {
-          'Retry-After': String(retryAfterSeconds)
-        }
+          "Retry-After": String(retryAfterSeconds),
+        },
       };
     }
     inflight += 1;
@@ -43,14 +44,14 @@ function createLimiter({ maxInflight, retryAfterMs }) {
       ok: true,
       release() {
         inflight = Math.max(0, inflight - 1);
-      }
+      },
     };
   }
 
   return {
     maxInflight,
     retryAfterMs,
-    acquire
+    acquire,
   };
 }
 
@@ -60,7 +61,7 @@ function readEnvInt(key, fallback) {
   for (const candidate of keys) {
     if (!candidate) continue;
     const raw = readEnvValue(candidate);
-    if (raw == null || raw === '') continue;
+    if (raw == null || raw === "") continue;
     const n = Number(raw);
     if (!Number.isFinite(n)) continue;
     return Math.floor(n);
@@ -70,13 +71,13 @@ function readEnvInt(key, fallback) {
 
 function readEnvValue(key) {
   try {
-    if (typeof Deno !== 'undefined' && Deno?.env?.get) {
+    if (typeof Deno !== "undefined" && Deno?.env?.get) {
       const value = Deno.env.get(key);
       if (value !== undefined) return value;
     }
   } catch (_e) {}
   try {
-    if (typeof process !== 'undefined' && process?.env) {
+    if (typeof process !== "undefined" && process?.env) {
       return process.env[key];
     }
   } catch (_e) {}
@@ -84,5 +85,5 @@ function readEnvValue(key) {
 }
 
 module.exports = {
-  createConcurrencyGuard
+  createConcurrencyGuard,
 };

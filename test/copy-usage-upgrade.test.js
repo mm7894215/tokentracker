@@ -12,7 +12,7 @@ const fleetPath = path.join(
   "ui",
   "matrix-a",
   "components",
-  "NeuralAdaptiveFleet.jsx"
+  "NeuralAdaptiveFleet.jsx",
 );
 const upgradePath = path.join(
   root,
@@ -21,7 +21,7 @@ const upgradePath = path.join(
   "ui",
   "matrix-a",
   "components",
-  "UpgradeAlertModal.jsx"
+  "UpgradeAlertModal.jsx",
 );
 
 function read(filePath) {
@@ -48,10 +48,7 @@ test("dashboard copy registry covers fleet usage and upgrade alert text", () => 
   ];
 
   for (const key of requiredKeys) {
-    assert.ok(
-      hasCopyKey(csv, key),
-      `expected copy registry to include ${key}`
-    );
+    assert.ok(hasCopyKey(csv, key), `expected copy registry to include ${key}`);
   }
 });
 
@@ -59,12 +56,9 @@ test("fleet usage and upgrade alert components use copy keys", () => {
   const fleetSource = read(fleetPath);
   assert.ok(
     fleetSource.includes('copy("dashboard.model_breakdown.usage_label"'),
-    "expected fleet usage label to use copy key"
+    "expected fleet usage label to use copy key",
   );
-  assert.ok(
-    !fleetSource.includes("Usage:"),
-    "expected hardcoded usage label removed"
-  );
+  assert.ok(!fleetSource.includes("Usage:"), "expected hardcoded usage label removed");
 
   const upgradeSource = read(upgradePath);
   const requiredUpgradeKeys = [
@@ -81,7 +75,7 @@ test("fleet usage and upgrade alert components use copy keys", () => {
   for (const key of requiredUpgradeKeys) {
     assert.ok(
       upgradeSource.includes(`copy(\"${key}\"`),
-      `expected UpgradeAlertModal to use copy key ${key}`
+      `expected UpgradeAlertModal to use copy key ${key}`,
     );
   }
 
@@ -96,7 +90,7 @@ test("fleet usage and upgrade alert components use copy keys", () => {
   for (const literal of bannedLiterals) {
     assert.ok(
       !upgradeSource.includes(literal),
-      `expected UpgradeAlertModal to remove hardcoded text: ${literal}`
+      `expected UpgradeAlertModal to remove hardcoded text: ${literal}`,
     );
   }
 });

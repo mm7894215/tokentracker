@@ -13,7 +13,7 @@ test("getMockUsageModelBreakdown includes model_id per model", async () => {
   });
 
   const models = (data?.sources || []).flatMap((source) =>
-    Array.isArray(source?.models) ? source.models : []
+    Array.isArray(source?.models) ? source.models : [],
   );
 
   assert.ok(models.length > 0, "expected mock models");

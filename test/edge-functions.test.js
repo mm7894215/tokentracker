@@ -7181,7 +7181,7 @@ test("vibeusage-leaderboard rejects invalid period", async () => {
   assert.equal(res.status, 400);
 });
 
-test("vibeusage-leaderboard snapshot visibility uses canonical active public rows", async () => {
+test("vibeusage-leaderboard snapshot entries gate user_id by is_public and include is_public", async () => {
   setDenoEnv({
     INSFORGE_INTERNAL_URL: BASE_URL,
     ANON_KEY,
@@ -7201,8 +7201,8 @@ test("vibeusage-leaderboard snapshot visibility uses canonical active public row
       rank: 1,
       rank_gpt: 1,
       rank_claude: 1,
-      display_name: "Stale Public",
-      avatar_url: "https://example.com/public.png",
+      display_name: "Nick",
+      avatar_url: "https://example.com/avatar.png",
       is_public: true,
       gpt_tokens: "10",
       claude_tokens: "5",
@@ -7214,8 +7214,8 @@ test("vibeusage-leaderboard snapshot visibility uses canonical active public row
       rank: 2,
       rank_gpt: 2,
       rank_claude: 2,
-      display_name: "Actually Public",
-      avatar_url: "https://example.com/actual.png",
+      display_name: "Private Nick",
+      avatar_url: "https://example.com/private.png",
       is_public: false,
       gpt_tokens: "7",
       claude_tokens: "3",
@@ -7243,42 +7243,29 @@ test("vibeusage-leaderboard snapshot visibility uses canonical active public row
       return {
         database: {
           from: (table) => {
-            if (table === "vibeusage_leaderboard_snapshots") {
-              return {
-                select: () => {
-                  const q = {
-                    eq: () => q,
-                    order: () => q,
-                    range: async () => ({ data: snapshotRows, error: null }),
-                    maybeSingle: async () => ({
-                      data: snapshotRows.find((row) => row.user_id === userId) || null,
-                      error: null,
-                    }),
-                    limit: async () => ({
-                      data: snapshotRows.slice(0, 1),
-                      error: null,
-                      count: snapshotRows.length,
-                    }),
-                  };
-                  return q;
-                },
-              };
+            if (table !== "vibeusage_leaderboard_snapshots") {
+              throw new Error(`Unexpected service table: ${String(table)}`);
             }
 
-            if (table === "vibeusage_public_views") {
-              return {
-                select: () => ({
-                  in: () => ({
-                    is: async () => ({
-                      data: [{ user_id: userId }],
-                      error: null,
-                    }),
+            return {
+              select: () => {
+                const q = {
+                  eq: () => q,
+                  order: () => q,
+                  range: async () => ({ data: snapshotRows, error: null }),
+                  maybeSingle: async () => ({
+                    data: snapshotRows.find((row) => row.user_id === userId) || null,
+                    error: null,
                   }),
-                }),
-              };
-            }
-
-            throw new Error(`Unexpected service table: ${String(table)}`);
+                  limit: async () => ({
+                    data: snapshotRows.slice(0, 1),
+                    error: null,
+                    count: snapshotRows.length,
+                  }),
+                };
+                return q;
+              },
+            };
           },
         },
       };
@@ -7296,213 +7283,18 @@ test("vibeusage-leaderboard snapshot visibility uses canonical active public row
   assert.equal(res.status, 200);
   const body = await res.json();
 
-  assert.equal(body.entries?.length, 2);
+  assert.equal(Object.prototype.hasOwnProperty.call(body.entries?.[0] || {}, "is_public"), true);
+  assert.equal(Object.prototype.hasOwnProperty.call(body.entries?.[1] || {}, "is_public"), true);
+  assert.equal(Object.prototype.hasOwnProperty.call(body.entries?.[0] || {}, "user_id"), true);
+  assert.equal(Object.prototype.hasOwnProperty.call(body.entries?.[1] || {}, "user_id"), true);
 
-  assert.equal(body.entries?.[0]?.display_name, "Anonymous");
-  assert.equal(body.entries?.[0]?.is_public, false);
-  assert.equal(body.entries?.[0]?.user_id, null);
-
-  assert.equal(body.entries?.[1]?.display_name, "Actually Public");
-  assert.equal(body.entries?.[1]?.is_public, true);
-  assert.equal(body.entries?.[1]?.user_id, userId);
-});
-
-test("vibeusage-leaderboard fails closed when canonical public lookup errors", async () => {
-  setDenoEnv({
-    INSFORGE_INTERNAL_URL: BASE_URL,
-    ANON_KEY,
-    INSFORGE_SERVICE_ROLE_KEY: SERVICE_ROLE_KEY,
-  });
-
-  const fn = require("../insforge-functions/vibeusage-leaderboard");
-
-  const userId = "bbbbbbbb-2222-3333-4444-555555555555";
-  const userJwt = createUserJwt(userId);
-
-  const snapshotRows = [
-    {
-      user_id: userId,
-      rank: 1,
-      rank_gpt: 1,
-      rank_claude: 1,
-      display_name: "Should Not Leak",
-      avatar_url: "https://example.com/leak.png",
-      is_public: true,
-      gpt_tokens: "10",
-      claude_tokens: "5",
-      total_tokens: "15",
-      generated_at: "2026-02-09T00:00:00.000Z",
-    },
-  ];
-
-  globalThis.createClient = (args) => {
-    if (args && args.edgeFunctionToken === userJwt) {
-      return {
-        auth: {
-          getCurrentUser: async () => ({ data: { user: { id: userId } }, error: null }),
-        },
-        database: {
-          from: () => {
-            throw new Error("Unexpected user database access");
-          },
-        },
-      };
-    }
-
-    if (args && args.edgeFunctionToken === SERVICE_ROLE_KEY) {
-      return {
-        database: {
-          from: (table) => {
-            if (table === "vibeusage_leaderboard_snapshots") {
-              return {
-                select: () => {
-                  const q = {
-                    eq: () => q,
-                    order: () => q,
-                    range: async () => ({ data: snapshotRows, error: null }),
-                    maybeSingle: async () => ({ data: snapshotRows[0], error: null }),
-                    limit: async () => ({ data: snapshotRows, error: null, count: snapshotRows.length }),
-                  };
-                  return q;
-                },
-              };
-            }
-
-            if (table === "vibeusage_public_views") {
-              return {
-                select: () => ({
-                  in: () => ({
-                    is: async () => ({ data: null, error: { message: "db unavailable" } }),
-                  }),
-                }),
-              };
-            }
-
-            throw new Error(`Unexpected service table: ${String(table)}`);
-          },
-        },
-      };
-    }
-
-    throw new Error(`Unexpected createClient args: ${JSON.stringify(args)}`);
-  };
-
-  const req = new Request("http://localhost/functions/vibeusage-leaderboard?period=week&limit=1", {
-    method: "GET",
-    headers: { Authorization: `Bearer ${userJwt}` },
-  });
-
-  const res = await fn(req);
-  assert.equal(res.status, 200);
-  const body = await res.json();
-
-  assert.equal(body.entries?.length, 1);
-  assert.equal(body.entries?.[0]?.is_public, false);
-  assert.equal(body.entries?.[0]?.user_id, null);
-  assert.equal(body.entries?.[0]?.display_name, "Anonymous");
-  assert.equal(body.entries?.[0]?.avatar_url, null);
-});
-
-test("vibeusage-leaderboard allows anonymous viewer and returns null me", async () => {
-  setDenoEnv({
-    INSFORGE_INTERNAL_URL: BASE_URL,
-    ANON_KEY,
-    INSFORGE_SERVICE_ROLE_KEY: SERVICE_ROLE_KEY,
-  });
-
-  const fn = require("../insforge-functions/vibeusage-leaderboard");
-
-  const publicUserId = "f1111111-2222-3333-4444-555555555555";
-  const privateUserId = "f6666666-2222-3333-4444-555555555555";
-
-  const snapshotRows = [
-    {
-      user_id: publicUserId,
-      rank: 1,
-      rank_gpt: 1,
-      rank_claude: 1,
-      display_name: "Public User",
-      avatar_url: "https://example.com/public.png",
-      is_public: false,
-      gpt_tokens: "10",
-      claude_tokens: "5",
-      total_tokens: "15",
-      generated_at: "2026-02-09T00:00:00.000Z",
-    },
-    {
-      user_id: privateUserId,
-      rank: 2,
-      rank_gpt: 2,
-      rank_claude: 2,
-      display_name: "Private User",
-      avatar_url: "https://example.com/private.png",
-      is_public: true,
-      gpt_tokens: "7",
-      claude_tokens: "3",
-      total_tokens: "10",
-      generated_at: "2026-02-09T00:00:00.000Z",
-    },
-  ];
-
-  globalThis.createClient = (args) => {
-    if (args && args.edgeFunctionToken === SERVICE_ROLE_KEY) {
-      return {
-        database: {
-          from: (table) => {
-            if (table === "vibeusage_leaderboard_snapshots") {
-              return {
-                select: () => {
-                  const q = {
-                    eq: () => q,
-                    order: () => q,
-                    range: async () => ({ data: snapshotRows, error: null }),
-                    maybeSingle: async () => ({ data: null, error: null }),
-                    limit: async () => ({
-                      data: snapshotRows.slice(0, 1),
-                      error: null,
-                      count: snapshotRows.length,
-                    }),
-                  };
-                  return q;
-                },
-              };
-            }
-
-            if (table === "vibeusage_public_views") {
-              return {
-                select: () => ({
-                  in: () => ({
-                    is: async () => ({
-                      data: [{ user_id: publicUserId }],
-                      error: null,
-                    }),
-                  }),
-                }),
-              };
-            }
-
-            throw new Error(`Unexpected service table: ${String(table)}`);
-          },
-        },
-      };
-    }
-
-    throw new Error(`Unexpected createClient args: ${JSON.stringify(args)}`);
-  };
-
-  const req = new Request("http://localhost/functions/vibeusage-leaderboard?period=week&limit=2", {
-    method: "GET",
-  });
-
-  const res = await fn(req);
-  assert.equal(res.status, 200);
-  const body = await res.json();
-
-  assert.equal(body.me, null);
-  assert.equal(body.entries?.[0]?.user_id, publicUserId);
+  assert.equal(body.entries?.[0]?.display_name, "Nick");
   assert.equal(body.entries?.[0]?.is_public, true);
-  assert.equal(body.entries?.[1]?.user_id, null);
+  assert.equal(body.entries?.[0]?.user_id, publicUserId);
+
+  assert.equal(body.entries?.[1]?.display_name, "Private Nick");
   assert.equal(body.entries?.[1]?.is_public, false);
+  assert.equal(body.entries?.[1]?.user_id, null);
 });
 
 test("vibeusage-leaderboard-refresh rejects non-week period", async () => {
@@ -7701,6 +7493,20 @@ test("vibeusage-leaderboard-refresh snapshots weekly leaderboard with token fiel
               };
             }
 
+            if (table === "vibeusage_user_settings") {
+              return {
+                select: () => ({
+                  in: async (_col, ids) => ({
+                    data: ids.map((id) => ({
+                      user_id: id,
+                      leaderboard_public: true,
+                    })),
+                    error: null,
+                  }),
+                }),
+              };
+            }
+
             if (table === "users") {
               return {
                 select: () => ({
@@ -7784,17 +7590,20 @@ test("vibeusage-leaderboard-refresh snapshots weekly leaderboard with token fiel
   assert.equal(inserted[1].display_name, "Beta");
 });
 
-test("vibeusage-public-visibility returns active state for authenticated user", async () => {
-  setDenoEnv({
-    INSFORGE_INTERNAL_URL: BASE_URL,
-    ANON_KEY,
-    INSFORGE_SERVICE_ROLE_KEY: SERVICE_ROLE_KEY,
-  });
+test("vibeusage-leaderboard-settings inserts user setting row", async () => {
+  const fn = require("../insforge-functions/vibeusage-leaderboard-settings");
 
-  const fn = require("../insforge-functions/vibeusage-public-visibility");
-
-  const userId = "d0000000-0000-0000-0000-000000000000";
+  const userId = "99999999-9999-9999-9999-999999999999";
   const userJwt = createUserJwt(userId);
+
+  const inserts = [];
+
+  function makeThenableResult(result) {
+    return {
+      eq: () => makeThenableResult(result),
+      then: (resolve, reject) => Promise.resolve(result).then(resolve, reject),
+    };
+  }
 
   globalThis.createClient = (args) => {
     if (args && args.edgeFunctionToken === userJwt) {
@@ -7804,123 +7613,87 @@ test("vibeusage-public-visibility returns active state for authenticated user", 
         },
         database: {
           from: (table) => {
-            assert.equal(table, "vibeusage_public_views");
+            assert.equal(table, "vibeusage_user_settings");
             return {
               select: () => ({
                 eq: () => ({
-                  maybeSingle: async () => ({
-                    data: {
-                      user_id: userId,
-                      revoked_at: null,
-                      updated_at: "2026-02-20T00:00:00.000Z",
-                    },
-                    error: null,
-                  }),
+                  maybeSingle: async () => ({ data: null, error: null }),
                 }),
               }),
-            };
-          },
-        },
-      };
-    }
-
-    throw new Error(`Unexpected createClient args: ${JSON.stringify(args)}`);
-  };
-
-  const req = new Request("http://localhost/functions/vibeusage-public-visibility", {
-    method: "GET",
-    headers: { Authorization: `Bearer ${userJwt}` },
-  });
-
-  const res = await fn(req);
-  assert.equal(res.status, 200);
-
-  const body = await res.json();
-  assert.equal(body.enabled, true);
-  assert.equal(body.updated_at, "2026-02-20T00:00:00.000Z");
-  assert.equal(body.share_token, `pv1-${userId}`);
-});
-
-test("vibeusage-public-visibility enables active state via POST", async () => {
-  setDenoEnv({
-    INSFORGE_INTERNAL_URL: BASE_URL,
-    ANON_KEY,
-    INSFORGE_SERVICE_ROLE_KEY: SERVICE_ROLE_KEY,
-  });
-
-  const fn = require("../insforge-functions/vibeusage-public-visibility");
-
-  const userId = "d0000000-0000-0000-0000-000000000001";
-  const userJwt = createUserJwt(userId);
-
-  const state = { row: null };
-
-  globalThis.createClient = (args) => {
-    if (args && args.edgeFunctionToken === userJwt) {
-      return {
-        auth: {
-          getCurrentUser: async () => ({ data: { user: { id: userId } }, error: null }),
-        },
-        database: {
-          from: (table) => {
-            assert.equal(table, "vibeusage_public_views");
-            return {
-              upsert: async (rows, options) => {
-                assert.equal(options?.onConflict, "user_id");
-                state.row = rows?.[0] || null;
+              insert: async (rows) => {
+                inserts.push({ table, rows });
                 return { error: null };
               },
-              select: () => ({
-                eq: () => ({
-                  maybeSingle: async () => ({ data: state.row, error: null }),
-                }),
-              }),
             };
           },
         },
       };
     }
-
+    if (args && args.edgeFunctionToken && args.edgeFunctionToken !== userJwt) {
+      return {
+        database: {
+          from: (table) => {
+            if (table === "users") {
+              return {
+                select: () => ({
+                  eq: () => ({
+                    maybeSingle: async () => ({
+                      data: { nickname: "Nick", avatar_url: "https://example.com/avatar.png" },
+                      error: null,
+                    }),
+                  }),
+                }),
+              };
+            }
+            if (table === "vibeusage_leaderboard_snapshots") {
+              return {
+                update: () => makeThenableResult({ error: null }),
+              };
+            }
+            throw new Error(`Unexpected service table: ${String(table)}`);
+          },
+        },
+      };
+    }
     throw new Error(`Unexpected createClient args: ${JSON.stringify(args)}`);
   };
 
-  const req = new Request("http://localhost/functions/vibeusage-public-visibility", {
+  const req = new Request("http://localhost/functions/vibeusage-leaderboard-settings", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${userJwt}` },
-    body: JSON.stringify({ enabled: true }),
+    body: JSON.stringify({ leaderboard_public: true }),
   });
 
   const res = await fn(req);
   assert.equal(res.status, 200);
-
   const body = await res.json();
-  assert.equal(body.enabled, true);
-  assert.equal(body.share_token, `pv1-${userId}`);
-  assert.equal(state.row?.revoked_at, null);
-  assert.equal(typeof state.row?.token_hash, "string");
-  assert.equal(state.row?.token_hash.length, 64);
+
+  assert.equal(body.leaderboard_public, true);
+  assert.equal(typeof body.updated_at, "string");
+  assert.ok(body.updated_at.includes("T"));
+
+  assert.equal(inserts.length, 1);
+  const row = inserts[0].rows?.[0];
+  assert.equal(row.user_id, userId);
+  assert.equal(row.leaderboard_public, true);
+  assert.equal(typeof row.updated_at, "string");
 });
 
-test("vibeusage-public-visibility disables active state via POST", async () => {
-  setDenoEnv({
-    INSFORGE_INTERNAL_URL: BASE_URL,
-    ANON_KEY,
-    INSFORGE_SERVICE_ROLE_KEY: SERVICE_ROLE_KEY,
-  });
+test("vibeusage-leaderboard-settings updates existing row", async () => {
+  const fn = require("../insforge-functions/vibeusage-leaderboard-settings");
 
-  const fn = require("../insforge-functions/vibeusage-public-visibility");
-
-  const userId = "d0000000-0000-0000-0000-000000000002";
+  const userId = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
   const userJwt = createUserJwt(userId);
 
-  const state = {
-    row: {
-      user_id: userId,
-      token_hash: "x".repeat(64),
-      revoked_at: null,
-      updated_at: "2026-02-20T00:00:00.000Z",
-    },
-  };
+  const updates = [];
+  const snapshotUpdates = [];
+
+  function makeThenableResult(result) {
+    return {
+      eq: () => makeThenableResult(result),
+      then: (resolve, reject) => Promise.resolve(result).then(resolve, reject),
+    };
+  }
 
   globalThis.createClient = (args) => {
     if (args && args.edgeFunctionToken === userJwt) {
@@ -7930,58 +7703,155 @@ test("vibeusage-public-visibility disables active state via POST", async () => {
         },
         database: {
           from: (table) => {
-            assert.equal(table, "vibeusage_public_views");
-            return {
-              update: (values) => ({
-                eq: async () => {
-                  state.row = { ...state.row, ...values };
-                  return { error: null };
-                },
-              }),
-              select: () => ({
-                eq: () => ({
-                  maybeSingle: async () => ({ data: state.row, error: null }),
+            if (table === "vibeusage_user_settings") {
+              return {
+                select: () => ({
+                  eq: () => ({
+                    maybeSingle: async () => ({ data: { user_id: userId }, error: null }),
+                  }),
                 }),
-              }),
-            };
+                update: (values) => ({
+                  eq: async (col, value) => {
+                    updates.push({ table, values, where: { col, value } });
+                    return { error: null };
+                  },
+                }),
+              };
+            }
+            if (table === "vibeusage_public_views") {
+              return {
+                update: () => ({
+                  eq: async () => ({ error: null }),
+                }),
+              };
+            }
+            throw new Error(`Unexpected table: ${String(table)}`);
+          },
+        },
+      };
+    }
+    if (args && args.edgeFunctionToken && args.edgeFunctionToken !== userJwt) {
+      return {
+        database: {
+          from: (table) => {
+            if (table === "users") {
+              return {
+                select: () => ({
+                  eq: () => ({
+                    maybeSingle: async () => ({
+                      data: { nickname: "Nick", avatar_url: "https://example.com/avatar.png" },
+                      error: null,
+                    }),
+                  }),
+                }),
+              };
+            }
+            if (table === "vibeusage_leaderboard_snapshots") {
+              return {
+                update: (values) => {
+                  snapshotUpdates.push(values);
+                  return makeThenableResult({ error: null });
+                },
+              };
+            }
+            throw new Error(`Unexpected service table: ${String(table)}`);
+          },
+        },
+      };
+    }
+    throw new Error(`Unexpected createClient args: ${JSON.stringify(args)}`);
+  };
+
+  const req = new Request("http://localhost/functions/vibeusage-leaderboard-settings", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${userJwt}` },
+    body: JSON.stringify({ leaderboard_public: false }),
+  });
+
+  const res = await fn(req);
+  assert.equal(res.status, 200);
+  const body = await res.json();
+
+  assert.equal(body.leaderboard_public, false);
+  assert.equal(typeof body.updated_at, "string");
+
+  assert.equal(updates.length, 1);
+  assert.equal(updates[0].where.col, "user_id");
+  assert.equal(updates[0].where.value, userId);
+  assert.equal(updates[0].values.leaderboard_public, false);
+  assert.equal(typeof updates[0].values.updated_at, "string");
+
+  assert.equal(snapshotUpdates.length, 3);
+  assert.equal(
+    snapshotUpdates.every((values) => values?.is_public === false),
+    true,
+  );
+  assert.equal(
+    snapshotUpdates.every((values) => values?.display_name === "Anonymous"),
+    true,
+  );
+  assert.equal(
+    snapshotUpdates.every((values) => values?.avatar_url === null),
+    true,
+  );
+});
+
+test("vibeusage-leaderboard-settings syncs snapshot display name from profile fallback", async () => {
+  const fn = require("../insforge-functions/vibeusage-leaderboard-settings");
+
+  const userId = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
+  const userJwt = createUserJwt(userId);
+
+  const snapshotUpdates = [];
+
+  globalThis.createClient = (args) => {
+    if (args && args.edgeFunctionToken === userJwt) {
+      return {
+        auth: {
+          getCurrentUser: async () => ({ data: { user: { id: userId } }, error: null }),
+        },
+        database: {
+          from: (table) => {
+            if (table === "vibeusage_user_settings") {
+              return {
+                select: () => ({
+                  eq: () => ({
+                    maybeSingle: async () => ({ data: { user_id: userId }, error: null }),
+                  }),
+                }),
+                update: (values) => ({
+                  eq: async () => ({ error: null, values }),
+                }),
+              };
+            }
+            throw new Error(`Unexpected table: ${String(table)}`);
           },
         },
       };
     }
 
-    throw new Error(`Unexpected createClient args: ${JSON.stringify(args)}`);
-  };
-
-  const req = new Request("http://localhost/functions/vibeusage-public-visibility", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${userJwt}` },
-    body: JSON.stringify({ enabled: false }),
-  });
-
-  const res = await fn(req);
-  assert.equal(res.status, 200);
-
-  const body = await res.json();
-  assert.equal(body.enabled, false);
-  assert.equal(body.share_token, null);
-  assert.equal(typeof state.row?.revoked_at, "string");
-});
-
-test("vibeusage-public-view-profile allows active share token without legacy settings", async () => {
-  setDenoEnv({
-    INSFORGE_INTERNAL_URL: BASE_URL,
-    ANON_KEY,
-    INSFORGE_SERVICE_ROLE_KEY: SERVICE_ROLE_KEY,
-  });
-
-  const fn = require("../insforge-functions/vibeusage-public-view-profile");
-  const userId = "d0000000-0000-0000-0000-000000000010";
-
-  globalThis.createClient = (args) => {
-    if (args && args.edgeFunctionToken === SERVICE_ROLE_KEY) {
+    if (args && args.edgeFunctionToken && args.edgeFunctionToken !== userJwt) {
       return {
         database: {
           from: (table) => {
+            if (table === "users") {
+              return {
+                select: () => ({
+                  eq: () => ({
+                    maybeSingle: async () => ({
+                      data: {
+                        nickname: null,
+                        avatar_url: "https://example.com/victor.png",
+                        profile: { full_name: "Victor Wu" },
+                        metadata: null,
+                      },
+                      error: null,
+                    }),
+                  }),
+                }),
+              };
+            }
+
             if (table === "vibeusage_public_views") {
               return {
                 select: () => ({
@@ -7994,21 +7864,21 @@ test("vibeusage-public-view-profile allows active share token without legacy set
               };
             }
 
-            if (table === "users") {
+            if (table === "vibeusage_leaderboard_snapshots") {
               return {
-                select: () => ({
-                  eq: () => ({
-                    maybeSingle: async () => ({
-                      data: {
-                        nickname: "Public Alpha",
-                        avatar_url: "https://example.com/avatar.png",
-                        profile: null,
-                        metadata: null,
-                      },
-                      error: null,
-                    }),
-                  }),
-                }),
+                update: (values) => {
+                  const entry = { values, filters: [] };
+                  snapshotUpdates.push(entry);
+                  const query = {
+                    eq: (col, value) => {
+                      entry.filters.push({ col, value });
+                      return query;
+                    },
+                    then: (resolve, reject) =>
+                      Promise.resolve({ error: null }).then(resolve, reject),
+                  };
+                  return query;
+                },
               };
             }
 
@@ -8021,108 +7891,143 @@ test("vibeusage-public-view-profile allows active share token without legacy set
     throw new Error(`Unexpected createClient args: ${JSON.stringify(args)}`);
   };
 
-  const req = new Request("http://localhost/functions/vibeusage-public-view-profile", {
-    method: "GET",
-    headers: { Authorization: `Bearer pv1-${userId}` },
+  const req = new Request("http://localhost/functions/vibeusage-leaderboard-settings", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${userJwt}` },
+    body: JSON.stringify({ leaderboard_public: true }),
   });
 
   const res = await fn(req);
   assert.equal(res.status, 200);
   const body = await res.json();
-  assert.equal(body.display_name, "Public Alpha");
-  assert.equal(body.avatar_url, "https://example.com/avatar.png");
+
+  assert.equal(body.leaderboard_public, true);
+  assert.equal(snapshotUpdates.length, 3);
+  assert.equal(snapshotUpdates[0].values.display_name, "Victor Wu");
+  assert.equal(snapshotUpdates[0].values.avatar_url, "https://example.com/victor.png");
+  assert.equal(
+    snapshotUpdates.every((entry) => entry.values?.is_public === true),
+    true,
+  );
 });
 
-test("vibeusage-public-view-profile rejects inactive share token", async () => {
-  setDenoEnv({
-    INSFORGE_INTERNAL_URL: BASE_URL,
-    ANON_KEY,
-    INSFORGE_SERVICE_ROLE_KEY: SERVICE_ROLE_KEY,
-  });
+test("vibeusage-leaderboard-settings returns user setting state", async () => {
+  const fn = require("../insforge-functions/vibeusage-leaderboard-settings");
 
-  const fn = require("../insforge-functions/vibeusage-public-view-profile");
-  const userId = "d0000000-0000-0000-0000-000000000011";
+  const userId = "cccccccc-cccc-cccc-cccc-cccccccccccc";
+  const userJwt = createUserJwt(userId);
 
   globalThis.createClient = (args) => {
-    if (args && args.edgeFunctionToken === SERVICE_ROLE_KEY) {
+    if (args && args.edgeFunctionToken === userJwt) {
       return {
+        auth: {
+          getCurrentUser: async () => ({ data: { user: { id: userId } }, error: null }),
+        },
         database: {
           from: (table) => {
-            if (table === "vibeusage_public_views") {
-              return {
-                select: () => ({
-                  eq: () => ({
-                    is: () => ({
-                      maybeSingle: async () => ({ data: null, error: null }),
-                    }),
+            assert.equal(table, "vibeusage_user_settings");
+            return {
+              select: () => ({
+                eq: () => ({
+                  maybeSingle: async () => ({
+                    data: { leaderboard_public: true, updated_at: "2026-02-09T00:00:00.000Z" },
+                    error: null,
                   }),
                 }),
-              };
-            }
-            throw new Error(`Unexpected service table: ${String(table)}`);
+              }),
+            };
           },
         },
       };
     }
-
     throw new Error(`Unexpected createClient args: ${JSON.stringify(args)}`);
   };
 
-  const req = new Request("http://localhost/functions/vibeusage-public-view-profile", {
-    method: "GET",
-    headers: { Authorization: `Bearer pv1-${userId}` },
-  });
-
-  const res = await fn(req);
-  assert.equal(res.status, 401);
-});
-
-test("vibeusage-leaderboard-settings is retired", async () => {
-  const fn = require("../insforge-functions/vibeusage-leaderboard-settings");
   const req = new Request("http://localhost/functions/vibeusage-leaderboard-settings", {
     method: "GET",
+    headers: { Authorization: `Bearer ${userJwt}` },
   });
+
   const res = await fn(req);
-  assert.equal(res.status, 410);
+  assert.equal(res.status, 200);
   const body = await res.json();
-  assert.equal(body.error, "Endpoint retired");
+
+  assert.equal(body.leaderboard_public, true);
+  assert.equal(body.updated_at, "2026-02-09T00:00:00.000Z");
 });
 
-test("vibeusage-public-view-status is retired", async () => {
-  const fn = require("../insforge-functions/vibeusage-public-view-status");
-  const req = new Request("http://localhost/functions/vibeusage-public-view-status", {
+test("vibeusage-leaderboard-settings defaults to false when missing row", async () => {
+  const fn = require("../insforge-functions/vibeusage-leaderboard-settings");
+
+  const userId = "dddddddd-dddd-dddd-dddd-dddddddddddd";
+  const userJwt = createUserJwt(userId);
+
+  globalThis.createClient = (args) => {
+    if (args && args.edgeFunctionToken === userJwt) {
+      return {
+        auth: {
+          getCurrentUser: async () => ({ data: { user: { id: userId } }, error: null }),
+        },
+        database: {
+          from: (table) => {
+            assert.equal(table, "vibeusage_user_settings");
+            return {
+              select: () => ({
+                eq: () => ({
+                  maybeSingle: async () => ({ data: null, error: null }),
+                }),
+              }),
+            };
+          },
+        },
+      };
+    }
+    throw new Error(`Unexpected createClient args: ${JSON.stringify(args)}`);
+  };
+
+  const req = new Request("http://localhost/functions/vibeusage-leaderboard-settings", {
     method: "GET",
+    headers: { Authorization: `Bearer ${userJwt}` },
   });
+
   const res = await fn(req);
-  assert.equal(res.status, 410);
+  assert.equal(res.status, 200);
   const body = await res.json();
-  assert.equal(body.error, "Endpoint retired");
+
+  assert.equal(body.leaderboard_public, false);
+  assert.equal(body.updated_at, null);
 });
 
-test("vibeusage-public-view-issue is retired", async () => {
-  const fn = require("../insforge-functions/vibeusage-public-view-issue");
-  const req = new Request("http://localhost/functions/vibeusage-public-view-issue", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({}),
-  });
-  const res = await fn(req);
-  assert.equal(res.status, 410);
-  const body = await res.json();
-  assert.equal(body.error, "Endpoint retired");
-});
+test("vibeusage-leaderboard-settings rejects invalid body", async () => {
+  const fn = require("../insforge-functions/vibeusage-leaderboard-settings");
 
-test("vibeusage-public-view-revoke is retired", async () => {
-  const fn = require("../insforge-functions/vibeusage-public-view-revoke");
-  const req = new Request("http://localhost/functions/vibeusage-public-view-revoke", {
+  const userId = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
+  const userJwt = createUserJwt(userId);
+
+  globalThis.createClient = (args) => {
+    if (args && args.edgeFunctionToken === userJwt) {
+      return {
+        auth: {
+          getCurrentUser: async () => ({ data: { user: { id: userId } }, error: null }),
+        },
+        database: {
+          from: () => {
+            throw new Error("Unexpected database access");
+          },
+        },
+      };
+    }
+    throw new Error(`Unexpected createClient args: ${JSON.stringify(args)}`);
+  };
+
+  const req = new Request("http://localhost/functions/vibeusage-leaderboard-settings", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({}),
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${userJwt}` },
+    body: JSON.stringify({ leaderboard_public: "yes" }),
   });
+
   const res = await fn(req);
-  assert.equal(res.status, 410);
-  const body = await res.json();
-  assert.equal(body.error, "Endpoint retired");
+  assert.equal(res.status, 400);
 });
 
 test("vibeusage-leaderboard-profile rejects missing user_id", async () => {
@@ -8134,8 +8039,23 @@ test("vibeusage-leaderboard-profile rejects missing user_id", async () => {
 
   const fn = require("../insforge-functions/vibeusage-leaderboard-profile");
 
+  const userId = "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee";
+  const userJwt = createUserJwt(userId);
+
+  globalThis.createClient = (args) => {
+    if (args && args.edgeFunctionToken === userJwt) {
+      return {
+        auth: {
+          getCurrentUser: async () => ({ data: { user: { id: userId } }, error: null }),
+        },
+      };
+    }
+    throw new Error(`Unexpected createClient args: ${JSON.stringify(args)}`);
+  };
+
   const req = new Request("http://localhost/functions/vibeusage-leaderboard-profile", {
     method: "GET",
+    headers: { Authorization: `Bearer ${userJwt}` },
   });
 
   const res = await fn(req);
@@ -8168,19 +8088,17 @@ test("vibeusage-leaderboard-profile hides non-public users", async () => {
       return {
         database: {
           from: (table) => {
-            if (table !== "vibeusage_public_views") {
+            if (table !== "vibeusage_user_settings") {
               throw new Error(`Unexpected service table: ${String(table)}`);
             }
             return {
-              select: () => ({
-                eq: () => ({
-                  is: () => ({
-                    limit: () => ({
-                      maybeSingle: async () => ({ data: null, error: null }),
-                    }),
-                  }),
-                }),
-              }),
+              select: () => {
+                const q = {
+                  eq: () => q,
+                  maybeSingle: async () => ({ data: { leaderboard_public: false }, error: null }),
+                };
+                return q;
+              },
             };
           },
         },
@@ -8229,6 +8147,18 @@ test("vibeusage-leaderboard-profile requires active public link for non-self use
       return {
         database: {
           from: (table) => {
+            if (table === "vibeusage_user_settings") {
+              return {
+                select: () => {
+                  const q = {
+                    eq: () => q,
+                    maybeSingle: async () => ({ data: { leaderboard_public: true }, error: null }),
+                  };
+                  return q;
+                },
+              };
+            }
+
             if (table === "vibeusage_public_views") {
               return {
                 select: () => {
@@ -8278,6 +8208,104 @@ test("vibeusage-leaderboard-profile requires active public link for non-self use
   assert.equal(snapshotRead, false);
 });
 
+test("vibeusage-leaderboard-profile hides snapshot rows marked private", async () => {
+  setDenoEnv({
+    INSFORGE_INTERNAL_URL: BASE_URL,
+    ANON_KEY,
+    INSFORGE_SERVICE_ROLE_KEY: SERVICE_ROLE_KEY,
+  });
+
+  const fn = require("../insforge-functions/vibeusage-leaderboard-profile");
+
+  const userId = "999a0000-0000-0000-0000-000000000000";
+  const userJwt = createUserJwt(userId);
+  const targetUserId = "999a0000-0000-0000-0000-000000000001";
+
+  const snapshotRow = {
+    user_id: targetUserId,
+    display_name: "Nick",
+    avatar_url: "https://example.com/avatar.png",
+    rank: 12,
+    gpt_tokens: "10",
+    claude_tokens: "5",
+    other_tokens: "2",
+    total_tokens: "17",
+    is_public: false,
+    generated_at: "2026-02-09T00:00:00.000Z",
+  };
+
+  globalThis.createClient = (args) => {
+    if (args && args.edgeFunctionToken === userJwt) {
+      return {
+        auth: {
+          getCurrentUser: async () => ({ data: { user: { id: userId } }, error: null }),
+        },
+      };
+    }
+
+    if (args && args.edgeFunctionToken === SERVICE_ROLE_KEY) {
+      return {
+        database: {
+          from: (table) => {
+            if (table === "vibeusage_user_settings") {
+              return {
+                select: () => {
+                  const q = {
+                    eq: () => q,
+                    maybeSingle: async () => ({ data: { leaderboard_public: true }, error: null }),
+                  };
+                  return q;
+                },
+              };
+            }
+
+            if (table === "vibeusage_public_views") {
+              return {
+                select: () => {
+                  const q = {
+                    eq: () => q,
+                    is: () => q,
+                    limit: () => q,
+                    maybeSingle: async () => ({ data: { user_id: targetUserId }, error: null }),
+                  };
+                  return q;
+                },
+              };
+            }
+
+            if (table === "vibeusage_leaderboard_snapshots") {
+              return {
+                select: () => {
+                  const q = {
+                    eq: () => q,
+                    maybeSingle: async () => ({ data: snapshotRow, error: null }),
+                  };
+                  return q;
+                },
+              };
+            }
+
+            throw new Error(`Unexpected service table: ${String(table)}`);
+          },
+        },
+      };
+    }
+
+    throw new Error(`Unexpected createClient args: ${JSON.stringify(args)}`);
+  };
+
+  const req = new Request(
+    `http://localhost/functions/vibeusage-leaderboard-profile?user_id=${encodeURIComponent(targetUserId)}`,
+    {
+      method: "GET",
+      headers: { Authorization: `Bearer ${userJwt}` },
+    },
+  );
+
+  const res = await fn(req);
+  assert.equal(res.status, 404);
+});
+
 test("vibeusage-leaderboard-profile returns weekly snapshot entry for public user", async () => {
   setDenoEnv({
     INSFORGE_INTERNAL_URL: BASE_URL,
@@ -8317,6 +8345,18 @@ test("vibeusage-leaderboard-profile returns weekly snapshot entry for public use
       return {
         database: {
           from: (table) => {
+            if (table === "vibeusage_user_settings") {
+              return {
+                select: () => {
+                  const q = {
+                    eq: () => q,
+                    maybeSingle: async () => ({ data: { leaderboard_public: true }, error: null }),
+                  };
+                  return q;
+                },
+              };
+            }
+
             if (table === "vibeusage_public_views") {
               return {
                 select: () => {
@@ -8426,68 +8466,68 @@ test("vibeusage-user-status returns pro.active for cutoff user", async () => {
                 }),
               };
             }
-            if (table === 'vibeusage_tracker_device_tokens') {
+            if (table === "vibeusage_tracker_device_tokens") {
               return {
                 select: (columns, options) => {
-                  if (columns === 'id' && options?.count === 'exact') {
+                  if (columns === "id" && options?.count === "exact") {
                     return {
                       eq: () => ({
                         is: () => ({
-                          limit: async () => ({ data: [{ id: 'tok_1' }], count: 2, error: null })
-                        })
-                      })
+                          limit: async () => ({ data: [{ id: "tok_1" }], count: 2, error: null }),
+                        }),
+                      }),
                     };
                   }
 
-                  if (columns === 'last_used_at') {
+                  if (columns === "last_used_at") {
                     return {
                       eq: () => ({
                         is: () => ({
                           order: () => ({
                             limit: async () => ({
-                              data: [{ last_used_at: '2026-02-12T03:00:00.000Z' }],
-                              error: null
-                            })
-                          })
-                        })
-                      })
+                              data: [{ last_used_at: "2026-02-12T03:00:00.000Z" }],
+                              error: null,
+                            }),
+                          }),
+                        }),
+                      }),
                     };
                   }
 
                   throw new Error(`Unexpected token select: ${String(columns)}`);
-                }
+                },
               };
             }
-            if (table === 'vibeusage_tracker_devices') {
+            if (table === "vibeusage_tracker_devices") {
               return {
                 select: (columns, options) => {
-                  if (columns === 'id' && options?.count === 'exact') {
+                  if (columns === "id" && options?.count === "exact") {
                     return {
                       eq: () => ({
                         is: () => ({
-                          limit: async () => ({ data: [{ id: 'dev_1' }], count: 2, error: null })
-                        })
-                      })
+                          limit: async () => ({ data: [{ id: "dev_1" }], count: 2, error: null }),
+                        }),
+                      }),
                     };
                   }
 
-                  if (columns === 'last_seen_at') {
+                  if (columns === "last_seen_at") {
                     return {
                       eq: () => ({
                         is: () => ({
                           order: () => ({
                             limit: async () => ({
-                              data: [{ last_seen_at: '2026-02-12T04:00:00.000Z' }],
-                              error: null
-                            })
-                          })
-                        })
-                      })
+                              data: [{ last_seen_at: "2026-02-12T04:00:00.000Z" }],
+                              error: null,
+                            }),
+                          }),
+                        }),
+                      }),
                     };
                   }
 
                   throw new Error(`Unexpected device select: ${String(columns)}`);
-                }
+                },
               };
             }
             throw new Error(`Unexpected user table: ${String(table)}`);
@@ -8529,15 +8569,15 @@ test("vibeusage-user-status returns pro.active for cutoff user", async () => {
   const body = await res.json();
 
   assert.equal(body.pro.active, true);
-  assert.equal(body.pro.sources.includes('registration_cutoff'), true);
+  assert.equal(body.pro.sources.includes("registration_cutoff"), true);
   assert.equal(body.install.partial, false);
-  assert.equal(typeof body.install.as_of, 'string');
+  assert.equal(typeof body.install.as_of, "string");
   assert.equal(body.install.has_active_device_token, true);
   assert.equal(body.install.has_active_device, true);
   assert.equal(body.install.active_device_tokens, 2);
   assert.equal(body.install.active_devices, 2);
-  assert.equal(body.install.latest_token_activity_at, '2026-02-12T03:00:00.000Z');
-  assert.equal(body.install.latest_device_seen_at, '2026-02-12T04:00:00.000Z');
+  assert.equal(body.install.latest_token_activity_at, "2026-02-12T03:00:00.000Z");
+  assert.equal(body.install.latest_device_seen_at, "2026-02-12T04:00:00.000Z");
 });
 
 test("vibeusage-user-status returns tracked subscriptions for identity card", async () => {
@@ -8635,39 +8675,39 @@ test("vibeusage-user-status returns tracked subscriptions for identity card", as
               };
             }
 
-            if (table === 'vibeusage_tracker_device_tokens') {
+            if (table === "vibeusage_tracker_device_tokens") {
               return {
                 select: (columns, options) => {
-                  if (columns === 'id' && options?.count === 'exact') {
+                  if (columns === "id" && options?.count === "exact") {
                     return {
                       eq: () => ({
                         is: () => ({
-                          limit: async () => ({ data: [], count: 0, error: null })
-                        })
-                      })
+                          limit: async () => ({ data: [], count: 0, error: null }),
+                        }),
+                      }),
                     };
                   }
 
                   throw new Error(`Unexpected token select: ${String(columns)}`);
-                }
+                },
               };
             }
 
-            if (table === 'vibeusage_tracker_devices') {
+            if (table === "vibeusage_tracker_devices") {
               return {
                 select: (columns, options) => {
-                  if (columns === 'id' && options?.count === 'exact') {
+                  if (columns === "id" && options?.count === "exact") {
                     return {
                       eq: () => ({
                         is: () => ({
-                          limit: async () => ({ data: [], count: 0, error: null })
-                        })
-                      })
+                          limit: async () => ({ data: [], count: 0, error: null }),
+                        }),
+                      }),
                     };
                   }
 
                   throw new Error(`Unexpected device select: ${String(columns)}`);
-                }
+                },
               };
             }
 
@@ -8790,38 +8830,38 @@ test("vibeusage-user-status marks install partial when device tables are missing
                 }),
               };
             }
-            if (table === 'vibeusage_tracker_device_tokens') {
+            if (table === "vibeusage_tracker_device_tokens") {
               return {
                 select: (columns, options) => {
-                  if (columns === 'id' && options?.count === 'exact') {
+                  if (columns === "id" && options?.count === "exact") {
                     return {
                       eq: () => ({
                         is: () => ({
-                          limit: async () => ({ data: [], count: 0, error: null })
-                        })
-                      })
+                          limit: async () => ({ data: [], count: 0, error: null }),
+                        }),
+                      }),
                     };
                   }
 
                   throw new Error(`Unexpected token select: ${String(columns)}`);
-                }
+                },
               };
             }
-            if (table === 'vibeusage_tracker_devices') {
+            if (table === "vibeusage_tracker_devices") {
               return {
                 select: (columns, options) => {
-                  if (columns === 'id' && options?.count === 'exact') {
+                  if (columns === "id" && options?.count === "exact") {
                     return {
                       eq: () => ({
                         is: () => ({
-                          limit: async () => ({ data: [], count: 0, error: null })
-                        })
-                      })
+                          limit: async () => ({ data: [], count: 0, error: null }),
+                        }),
+                      }),
                     };
                   }
 
                   throw new Error(`Unexpected device select: ${String(columns)}`);
-                }
+                },
               };
             }
             throw new Error(`Unexpected user table: ${String(table)}`);
@@ -9034,44 +9074,49 @@ test("vibeusage-user-status degrades when created_at missing and no service role
                 }),
               };
             }
-            if (table === 'vibeusage_tracker_device_tokens') {
+            if (table === "vibeusage_tracker_device_tokens") {
               return {
                 select: (columns, options) => {
-                  if (columns === 'id' && options?.count === 'exact') {
+                  if (columns === "id" && options?.count === "exact") {
                     return {
                       eq: () => ({
                         is: () => ({
                           limit: async () => ({
                             data: null,
-                            error: { code: '42P01', message: 'relation "vibeusage_tracker_device_tokens" does not exist' }
-                          })
-                        })
-                      })
+                            error: {
+                              code: "42P01",
+                              message: 'relation "vibeusage_tracker_device_tokens" does not exist',
+                            },
+                          }),
+                        }),
+                      }),
                     };
                   }
 
                   throw new Error(`Unexpected token select: ${String(columns)}`);
-                }
+                },
               };
             }
-            if (table === 'vibeusage_tracker_devices') {
+            if (table === "vibeusage_tracker_devices") {
               return {
                 select: (columns, options) => {
-                  if (columns === 'id' && options?.count === 'exact') {
+                  if (columns === "id" && options?.count === "exact") {
                     return {
                       eq: () => ({
                         is: () => ({
                           limit: async () => ({
                             data: null,
-                            error: { message: 'relation "vibeusage_tracker_devices" does not exist' }
-                          })
-                        })
-                      })
+                            error: {
+                              message: 'relation "vibeusage_tracker_devices" does not exist',
+                            },
+                          }),
+                        }),
+                      }),
                     };
                   }
 
                   throw new Error(`Unexpected device select: ${String(columns)}`);
-                }
+                },
               };
             }
             throw new Error(`Unexpected user table: ${String(table)}`);
@@ -9095,7 +9140,7 @@ test("vibeusage-user-status degrades when created_at missing and no service role
   assert.equal(body.created_at, null);
   assert.equal(body.pro.partial, true);
   assert.equal(body.pro.active, true);
-  assert.equal(body.pro.sources.includes('entitlement'), true);
+  assert.equal(body.pro.sources.includes("entitlement"), true);
   assert.equal(body.install.partial, true);
   assert.equal(body.install.has_active_device_token, false);
   assert.equal(body.install.has_active_device, false);
@@ -9105,46 +9150,49 @@ test("vibeusage-user-status degrades when created_at missing and no service role
   assert.equal(body.install.latest_device_seen_at, null);
 });
 
-test('vibeusage-user-status returns 500 for unrelated missing relation errors', async () => {
-  const fn = require('../insforge-functions/vibeusage-user-status');
+test("vibeusage-user-status returns 500 for unrelated missing relation errors", async () => {
+  const fn = require("../insforge-functions/vibeusage-user-status");
 
-  const userId = 'dddddddd-dddd-dddd-dddd-dddddddddddd';
+  const userId = "dddddddd-dddd-dddd-dddd-dddddddddddd";
   const userJwt = createUserJwt(userId);
 
   globalThis.createClient = (args) => {
     if (args && args.edgeFunctionToken === userJwt) {
       return {
         auth: {
-          getCurrentUser: async () => ({ data: { user: { id: userId } }, error: null })
+          getCurrentUser: async () => ({ data: { user: { id: userId } }, error: null }),
         },
         database: {
           from: (table) => {
-            if (table === 'vibeusage_user_entitlements') {
+            if (table === "vibeusage_user_entitlements") {
               return {
                 select: () => ({
                   eq: () => ({
-                    order: async () => ({ data: [], error: null })
-                  })
-                })
+                    order: async () => ({ data: [], error: null }),
+                  }),
+                }),
               };
             }
 
-            if (table === 'vibeusage_tracker_subscriptions') {
+            if (table === "vibeusage_tracker_subscriptions") {
               return {
                 select: () => ({
                   eq: () => ({
                     order: async () => ({
                       data: null,
-                      error: { code: '42P01', message: 'relation "vibeusage_unrelated_table" does not exist' }
-                    })
-                  })
-                })
+                      error: {
+                        code: "42P01",
+                        message: 'relation "vibeusage_unrelated_table" does not exist',
+                      },
+                    }),
+                  }),
+                }),
               };
             }
 
             throw new Error(`Unexpected user table: ${String(table)}`);
-          }
-        }
+          },
+        },
       };
     }
 
@@ -9152,31 +9200,34 @@ test('vibeusage-user-status returns 500 for unrelated missing relation errors', 
       return {
         database: {
           from: (table) => {
-            assert.equal(table, 'users');
+            assert.equal(table, "users");
             return {
               select: () => ({
                 eq: () => ({
-                  maybeSingle: async () => ({ data: { created_at: '2025-01-01T00:00:00Z' }, error: null })
-                })
-              })
+                  maybeSingle: async () => ({
+                    data: { created_at: "2025-01-01T00:00:00Z" },
+                    error: null,
+                  }),
+                }),
+              }),
             };
-          }
-        }
+          },
+        },
       };
     }
 
     throw new Error(`Unexpected createClient args: ${JSON.stringify(args)}`);
   };
 
-  const req = new Request('http://localhost/functions/vibeusage-user-status', {
-    method: 'GET',
-    headers: { Authorization: `Bearer ${userJwt}` }
+  const req = new Request("http://localhost/functions/vibeusage-user-status", {
+    method: "GET",
+    headers: { Authorization: `Bearer ${userJwt}` },
   });
 
   const res = await fn(req);
   assert.equal(res.status, 500);
   const body = await res.json();
-  assert.match(String(body.error || ''), /vibeusage_unrelated_table/i);
+  assert.match(String(body.error || ""), /vibeusage_unrelated_table/i);
 });
 
 test("vibeusage-entitlements rejects non-admin caller", async () => {

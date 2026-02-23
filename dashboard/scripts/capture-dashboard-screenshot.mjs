@@ -1,7 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
-
 import { chromium } from "playwright";
 
 function readArg(flag, fallback) {
@@ -22,13 +21,10 @@ function toNumber(value, fallback) {
 }
 
 const url =
-  readArg("--url", process.env.VIBESCORE_SCREENSHOT_URL) ||
-  "http://localhost:5173/?screenshot=1";
+  readArg("--url", process.env.VIBESCORE_SCREENSHOT_URL) || "http://localhost:5173/?screenshot=1";
 const out =
-  readArg(
-    "--out",
-    path.resolve("docs", "screenshots", "dashboard-screenshot.png")
-  ) || path.resolve("docs", "screenshots", "dashboard-screenshot.png");
+  readArg("--out", path.resolve("docs", "screenshots", "dashboard-screenshot.png")) ||
+  path.resolve("docs", "screenshots", "dashboard-screenshot.png");
 const width = toNumber(readArg("--width", "1512"), 1512);
 const height = toNumber(readArg("--height", "997"), 997);
 const dpr = toNumber(readArg("--dpr", "2"), 2);

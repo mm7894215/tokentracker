@@ -1,8 +1,8 @@
-const assert = require('node:assert/strict');
-const os = require('node:os');
-const path = require('node:path');
-const fs = require('node:fs/promises');
-const { test } = require('node:test');
+const assert = require("node:assert/strict");
+const os = require("node:os");
+const path = require("node:path");
+const fs = require("node:fs/promises");
+const { test } = require("node:test");
 
 const {
   OPENCLAW_HOOK_NAME,
@@ -10,17 +10,17 @@ const {
   ensureOpenclawHookFiles,
   probeOpenclawHookState,
   installOpenclawHook,
-  removeOpenclawHookConfig
-} = require('../src/lib/openclaw-hook');
+  removeOpenclawHookConfig,
+} = require("../src/lib/openclaw-hook");
 
-test('probeOpenclawHookState detects linked + enabled hook', async () => {
-  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vibeusage-openclaw-hook-'));
-  const home = path.join(tmp, 'home');
-  const trackerDir = path.join(home, '.vibeusage', 'tracker');
+test("probeOpenclawHookState detects linked + enabled hook", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "vibeusage-openclaw-hook-"));
+  const home = path.join(tmp, "home");
+  const trackerDir = path.join(home, ".vibeusage", "tracker");
   await fs.mkdir(trackerDir, { recursive: true });
 
   const { hookDir, openclawConfigPath } = resolveOpenclawHookPaths({ home, trackerDir, env: {} });
-  await ensureOpenclawHookFiles({ hookDir, trackerDir, packageName: 'vibeusage' });
+  await ensureOpenclawHookFiles({ hookDir, trackerDir, packageName: "vibeusage" });
   await fs.mkdir(path.dirname(openclawConfigPath), { recursive: true });
   await fs.writeFile(
     openclawConfigPath,
@@ -29,18 +29,18 @@ test('probeOpenclawHookState detects linked + enabled hook', async () => {
         hooks: {
           internal: {
             entries: {
-              [OPENCLAW_HOOK_NAME]: { enabled: true }
+              [OPENCLAW_HOOK_NAME]: { enabled: true },
             },
             load: {
-              extraDirs: [hookDir]
-            }
-          }
-        }
+              extraDirs: [hookDir],
+            },
+          },
+        },
       },
       null,
-      2
-    ) + '\n',
-    'utf8'
+      2,
+    ) + "\n",
+    "utf8",
   );
 
   const state = await probeOpenclawHookState({ home, trackerDir, env: {} });
@@ -52,36 +52,36 @@ test('probeOpenclawHookState detects linked + enabled hook', async () => {
   await fs.rm(tmp, { recursive: true, force: true });
 });
 
-test('installOpenclawHook returns skipped when openclaw CLI is missing', async () => {
-  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vibeusage-openclaw-hook-'));
-  const home = path.join(tmp, 'home');
-  const trackerDir = path.join(home, '.vibeusage', 'tracker');
+test("installOpenclawHook returns skipped when openclaw CLI is missing", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "vibeusage-openclaw-hook-"));
+  const home = path.join(tmp, "home");
+  const trackerDir = path.join(home, ".vibeusage", "tracker");
   await fs.mkdir(trackerDir, { recursive: true });
 
   const result = await installOpenclawHook({
     home,
     trackerDir,
-    packageName: 'vibeusage',
-    env: { PATH: '', OPENCLAW_CONFIG_PATH: path.join(home, '.openclaw', 'openclaw.json') }
+    packageName: "vibeusage",
+    env: { PATH: "", OPENCLAW_CONFIG_PATH: path.join(home, ".openclaw", "openclaw.json") },
   });
 
   assert.equal(result.configured, false);
-  assert.equal(result.skippedReason, 'openclaw-cli-missing');
+  assert.equal(result.skippedReason, "openclaw-cli-missing");
 
   await fs.rm(tmp, { recursive: true, force: true });
 });
 
-test('removeOpenclawHookConfig removes linked config and hook dir', async () => {
-  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vibeusage-openclaw-hook-'));
-  const home = path.join(tmp, 'home');
-  const trackerDir = path.join(home, '.vibeusage', 'tracker');
+test("removeOpenclawHookConfig removes linked config and hook dir", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "vibeusage-openclaw-hook-"));
+  const home = path.join(tmp, "home");
+  const trackerDir = path.join(home, ".vibeusage", "tracker");
   await fs.mkdir(trackerDir, { recursive: true });
 
   const { hookDir, openclawConfigPath } = resolveOpenclawHookPaths({ home, trackerDir, env: {} });
-  await ensureOpenclawHookFiles({ hookDir, trackerDir, packageName: 'vibeusage' });
+  await ensureOpenclawHookFiles({ hookDir, trackerDir, packageName: "vibeusage" });
   await fs.mkdir(path.dirname(openclawConfigPath), { recursive: true });
 
-  const keepDir = path.join(tmp, 'keep-hook-dir');
+  const keepDir = path.join(tmp, "keep-hook-dir");
   await fs.mkdir(keepDir, { recursive: true });
 
   await fs.writeFile(
@@ -92,38 +92,38 @@ test('removeOpenclawHookConfig removes linked config and hook dir', async () => 
           internal: {
             entries: {
               [OPENCLAW_HOOK_NAME]: { enabled: true },
-              keep_hook: { enabled: true }
+              keep_hook: { enabled: true },
             },
             load: {
-              extraDirs: [hookDir, keepDir]
+              extraDirs: [hookDir, keepDir],
             },
             installs: {
               [OPENCLAW_HOOK_NAME]: {
-                source: 'path',
+                source: "path",
                 sourcePath: hookDir,
                 installPath: hookDir,
-                hooks: [OPENCLAW_HOOK_NAME]
+                hooks: [OPENCLAW_HOOK_NAME],
               },
               keep_hook: {
-                source: 'path',
+                source: "path",
                 sourcePath: keepDir,
                 installPath: keepDir,
-                hooks: ['keep_hook']
-              }
-            }
-          }
-        }
+                hooks: ["keep_hook"],
+              },
+            },
+          },
+        },
       },
       null,
-      2
-    ) + '\n',
-    'utf8'
+      2,
+    ) + "\n",
+    "utf8",
   );
 
   const removed = await removeOpenclawHookConfig({ home, trackerDir, env: {} });
   assert.equal(removed.removed, true);
 
-  const next = JSON.parse(await fs.readFile(openclawConfigPath, 'utf8'));
+  const next = JSON.parse(await fs.readFile(openclawConfigPath, "utf8"));
   assert.equal(Boolean(next?.hooks?.internal?.entries?.[OPENCLAW_HOOK_NAME]), false);
   assert.equal(Boolean(next?.hooks?.internal?.entries?.keep_hook), true);
   assert.deepEqual(next?.hooks?.internal?.load?.extraDirs, [keepDir]);
@@ -135,24 +135,27 @@ test('removeOpenclawHookConfig removes linked config and hook dir', async () => 
   await fs.rm(tmp, { recursive: true, force: true });
 });
 
-test('ensureOpenclawHookFiles keeps command-only trigger set and command guard', async () => {
-  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vibeusage-openclaw-hook-'));
-  const home = path.join(tmp, 'home');
-  const trackerDir = path.join(home, '.vibeusage', 'tracker');
+test("ensureOpenclawHookFiles keeps command-only trigger set and command guard", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "vibeusage-openclaw-hook-"));
+  const home = path.join(tmp, "home");
+  const trackerDir = path.join(home, ".vibeusage", "tracker");
   await fs.mkdir(trackerDir, { recursive: true });
 
   const { hookDir, hookEntryDir } = resolveOpenclawHookPaths({ home, trackerDir, env: {} });
-  await ensureOpenclawHookFiles({ hookDir, trackerDir, packageName: 'vibeusage' });
+  await ensureOpenclawHookFiles({ hookDir, trackerDir, packageName: "vibeusage" });
 
-  const hookMd = await fs.readFile(path.join(hookEntryDir, 'HOOK.md'), 'utf8');
+  const hookMd = await fs.readFile(path.join(hookEntryDir, "HOOK.md"), "utf8");
   assert.doesNotMatch(hookMd, /"agent:bootstrap"/);
   assert.match(hookMd, /"command:new"/);
   assert.match(hookMd, /"command:reset"/);
   assert.match(hookMd, /"command:stop"/);
 
-  const handler = await fs.readFile(path.join(hookEntryDir, 'handler.js'), 'utf8');
+  const handler = await fs.readFile(path.join(hookEntryDir, "handler.js"), "utf8");
   assert.match(handler, /if \(!event \|\| event\.type !== 'command'\) return;/);
-  assert.match(handler, /if \(event\.action !== 'new' && event\.action !== 'reset' && event\.action !== 'stop'\) return;/);
+  assert.match(
+    handler,
+    /if \(event\.action !== 'new' && event\.action !== 'reset' && event\.action !== 'stop'\) return;/,
+  );
   assert.match(handler, /if \(!event \|\| event\.type !== 'command'\) return null;/);
 
   await fs.rm(tmp, { recursive: true, force: true });

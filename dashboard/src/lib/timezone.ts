@@ -60,10 +60,13 @@ export function getLocalDayKey({
         day: "2-digit",
       });
       const parts = formatter.formatToParts(dt);
-      const values = parts.reduce((acc: Record<string, string>, part) => {
-        if (part.type && part.value) acc[part.type] = part.value;
-        return acc;
-      }, {} as Record<string, string>);
+      const values = parts.reduce(
+        (acc: Record<string, string>, part) => {
+          if (part.type && part.value) acc[part.type] = part.value;
+          return acc;
+        },
+        {} as Record<string, string>,
+      );
       const year = values.year;
       const month = values.month;
       const day = values.day;
@@ -98,10 +101,13 @@ export function getLocalDateParts({
         day: "2-digit",
       });
       const parts = formatter.formatToParts(dt);
-      const values = parts.reduce((acc: Record<string, string>, part) => {
-        if (part.type && part.value) acc[part.type] = part.value;
-        return acc;
-      }, {} as Record<string, string>);
+      const values = parts.reduce(
+        (acc: Record<string, string>, part) => {
+          if (part.type && part.value) acc[part.type] = part.value;
+          return acc;
+        },
+        {} as Record<string, string>,
+      );
       const year = Number(values.year);
       const month = Number(values.month);
       const day = Number(values.day);
@@ -125,10 +131,7 @@ export function getLocalDateParts({
   return { year: dt.getFullYear(), month: dt.getMonth() + 1, day: dt.getDate() };
 }
 
-export function getTimeZoneCacheKey({
-  timeZone,
-  offsetMinutes,
-}: TimeZoneOptions = {}) {
+export function getTimeZoneCacheKey({ timeZone, offsetMinutes }: TimeZoneOptions = {}) {
   if (timeZone) return `tz:${timeZone}`;
   if (typeof offsetMinutes === "number" && Number.isFinite(offsetMinutes)) {
     return `offset:${Math.trunc(offsetMinutes)}`;

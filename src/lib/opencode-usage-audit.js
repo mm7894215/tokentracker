@@ -1,24 +1,24 @@
-const fs = require('node:fs/promises');
-const os = require('node:os');
-const path = require('node:path');
+const fs = require("node:fs/promises");
+const os = require("node:os");
+const path = require("node:path");
 
-const { listOpencodeMessageFiles, parseOpencodeIncremental } = require('./rollout');
+const { listOpencodeMessageFiles, parseOpencodeIncremental } = require("./rollout");
 
-const BUCKET_SEPARATOR = '|';
+const BUCKET_SEPARATOR = "|";
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 function formatHourKey(date) {
-  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(
-    date.getUTCDate()
-  ).padStart(2, '0')}T${String(date.getUTCHours()).padStart(2, '0')}:${String(
-    date.getUTCMinutes() >= 30 ? 30 : 0
-  ).padStart(2, '0')}:00`;
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(
+    date.getUTCDate(),
+  ).padStart(2, "0")}T${String(date.getUTCHours()).padStart(2, "0")}:${String(
+    date.getUTCMinutes() >= 30 ? 30 : 0,
+  ).padStart(2, "0")}:00`;
 }
 
 function toBig(value) {
-  if (typeof value === 'bigint') return value;
-  if (typeof value === 'number') return BigInt(value);
-  if (typeof value === 'string' && value.trim()) return BigInt(value);
+  if (typeof value === "bigint") return value;
+  if (typeof value === "number") return BigInt(value);
+  if (typeof value === "string" && value.trim()) return BigInt(value);
   return 0n;
 }
 
@@ -30,9 +30,12 @@ function addTotals(target, delta) {
   target.total_tokens += toBig(delta.total_tokens);
 }
 
-async function buildLocalHourlyTotals({ storageDir, source = 'opencode' }) {
+async function buildLocalHourlyTotals({ storageDir, source = "opencode" }) {
   const messageFiles = await listOpencodeMessageFiles(storageDir);
-  const queuePath = path.join(os.tmpdir(), `vibeusage-opencode-audit-${process.pid}-${Date.now()}.jsonl`);
+  const queuePath = path.join(
+    os.tmpdir(),
+    `vibeusage-opencode-audit-${process.pid}-${Date.now()}.jsonl`,
+  );
   const cursors = { version: 1, files: {}, hourly: null, opencode: null };
 
   await parseOpencodeIncremental({ messageFiles, cursors, queuePath, source });
@@ -58,7 +61,7 @@ async function buildLocalHourlyTotals({ storageDir, source = 'opencode' }) {
       cached_input_tokens: 0n,
       output_tokens: 0n,
       reasoning_output_tokens: 0n,
-      total_tokens: 0n
+      total_tokens: 0n,
     };
     addTotals(totals, bucket.totals || {});
     byHour.set(hourKey, totals);
@@ -78,8 +81,8 @@ function normalizeServerRows(rows) {
         cached_input_tokens: toBig(row.cached_input_tokens),
         output_tokens: toBig(row.output_tokens),
         reasoning_output_tokens: toBig(row.reasoning_output_tokens),
-        total_tokens: toBig(row.total_tokens)
-      }
+        total_tokens: toBig(row.total_tokens),
+      },
     });
   }
   return map;
@@ -91,7 +94,7 @@ function diffTotals(local, server) {
     cached_input_tokens: local.cached_input_tokens - server.cached_input_tokens,
     output_tokens: local.output_tokens - server.output_tokens,
     reasoning_output_tokens: local.reasoning_output_tokens - server.reasoning_output_tokens,
-    total_tokens: local.total_tokens - server.total_tokens
+    total_tokens: local.total_tokens - server.total_tokens,
   };
 }
 
@@ -101,7 +104,7 @@ function maxAbsDelta(delta) {
     delta.cached_input_tokens,
     delta.output_tokens,
     delta.reasoning_output_tokens,
-    delta.total_tokens
+    delta.total_tokens,
   ].reduce((acc, value) => {
     const abs = value < 0n ? -value : value;
     return abs > acc ? abs : acc;
@@ -121,25 +124,25 @@ function listDays(from, to) {
   const start = new Date(`${from}T00:00:00.000Z`);
   const end = new Date(`${to}T00:00:00.000Z`);
   for (let dt = start; dt <= end; dt = new Date(dt.getTime() + 24 * 60 * 60 * 1000)) {
-    const day = `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(
-      dt.getUTCDate()
-    ).padStart(2, '0')}`;
+    const day = `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, "0")}-${String(
+      dt.getUTCDate(),
+    ).padStart(2, "0")}`;
     out.push(day);
   }
   return out;
 }
 
 async function auditOpencodeUsage({ storageDir, from, to, fetchHourly, includeMissing = false }) {
-  const local = await buildLocalHourlyTotals({ storageDir, source: 'opencode' });
+  const local = await buildLocalHourlyTotals({ storageDir, source: "opencode" });
   if (!local.minDay || !local.maxDay) {
-    throw new Error('No local opencode data found');
+    throw new Error("No local opencode data found");
   }
 
   const fromDay = from || local.minDay;
   const toDay = to || local.maxDay;
   const days = listDays(fromDay, toDay);
   if (days.length === 0) {
-    throw new Error('Invalid date range for audit');
+    throw new Error("Invalid date range for audit");
   }
 
   const diffs = [];
@@ -153,13 +156,13 @@ async function auditOpencodeUsage({ storageDir, from, to, fetchHourly, includeMi
     const serverByHour = normalizeServerRows(server?.data || []);
     for (let h = 0; h < 24; h++) {
       for (const m of [0, 30]) {
-        const hourKey = `${day}T${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00`;
+        const hourKey = `${day}T${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:00`;
         const localTotals = local.byHour.get(hourKey) || {
           input_tokens: 0n,
           cached_input_tokens: 0n,
           output_tokens: 0n,
           reasoning_output_tokens: 0n,
-          total_tokens: 0n
+          total_tokens: 0n,
         };
         const serverEntry = serverByHour.get(hourKey) || null;
         if (serverEntry?.missing && !includeMissing) {
@@ -171,7 +174,7 @@ async function auditOpencodeUsage({ storageDir, from, to, fetchHourly, includeMi
           cached_input_tokens: 0n,
           output_tokens: 0n,
           reasoning_output_tokens: 0n,
-          total_tokens: 0n
+          total_tokens: 0n,
         };
         const delta = diffTotals(localTotals, serverTotals);
         const deltaMax = maxAbsDelta(delta);
@@ -193,9 +196,9 @@ async function auditOpencodeUsage({ storageDir, from, to, fetchHourly, includeMi
       matched,
       mismatched,
       incomplete,
-      maxDelta
+      maxDelta,
     },
-    diffs
+    diffs,
   };
 }
 

@@ -13,6 +13,7 @@
 ### Task 1: Add frontend test framework dependencies + config (config-only)
 
 **Files:**
+
 - Modify: `dashboard/package.json`
 - Create: `dashboard/vitest.config.ts`
 
@@ -69,6 +70,7 @@ git commit -m "test: add vitest configuration"
 ### Task 2: Add test setup + minimal interactive component test (TDD)
 
 **Files:**
+
 - Create: `dashboard/src/test/setupTests.ts`
 - Create: `dashboard/src/test/test-utils.tsx`
 - Create: `dashboard/src/ui/foundation/__tests__/MatrixButton.test.jsx`
@@ -96,7 +98,7 @@ it("respects disabled state", async () => {
   render(
     <MatrixButton onClick={onClick} disabled>
       Run
-    </MatrixButton>
+    </MatrixButton>,
   );
 
   const button = screen.getByRole("button", { name: "Run" });
@@ -114,11 +116,13 @@ Expected: FAIL (missing setup or matcher errors).
 **Step 3: Add test setup + utilities**
 
 `dashboard/src/test/setupTests.ts`
+
 ```ts
 import "@testing-library/jest-dom/vitest";
 ```
 
 `dashboard/src/test/test-utils.tsx`
+
 ```tsx
 import { render } from "@testing-library/react";
 
@@ -144,66 +148,67 @@ git commit -m "test: add matrix button interaction test"
 ### Task 3: Add API test for rolling summary (TDD)
 
 **Files:**
+
 - Modify: `test/edge-functions.test.js`
 
 **Step 1: Write failing test**
 
 ```js
-test('vibeusage-usage-summary returns rolling metrics when requested', () =>
+test("vibeusage-usage-summary returns rolling metrics when requested", () =>
   withRollupDisabled(async () => {
-    const fn = require('../insforge-functions/vibeusage-usage-summary');
+    const fn = require("../insforge-functions/vibeusage-usage-summary");
 
-    const userId = '99999999-9999-9999-9999-999999999999';
-    const userJwt = 'user_jwt_test';
+    const userId = "99999999-9999-9999-9999-999999999999";
+    const userJwt = "user_jwt_test";
 
     const rows = [
       {
-        hour_start: '2025-12-21T00:00:00.000Z',
-        source: 'codex',
-        model: 'gpt-4o',
-        total_tokens: '10',
-        input_tokens: '4',
-        cached_input_tokens: '1',
-        output_tokens: '3',
-        reasoning_output_tokens: '2'
-      }
+        hour_start: "2025-12-21T00:00:00.000Z",
+        source: "codex",
+        model: "gpt-4o",
+        total_tokens: "10",
+        input_tokens: "4",
+        cached_input_tokens: "1",
+        output_tokens: "3",
+        reasoning_output_tokens: "2",
+      },
     ];
 
     globalThis.createClient = (args) => {
       if (args && args.edgeFunctionToken === userJwt) {
         return {
           auth: {
-            getCurrentUser: async () => ({ data: { user: { id: userId } }, error: null })
+            getCurrentUser: async () => ({ data: { user: { id: userId } }, error: null }),
           },
           database: {
             from: (table) => {
-              if (table === 'vibeusage_tracker_hourly') {
+              if (table === "vibeusage_tracker_hourly") {
                 const query = createQueryMock({ rows });
                 return { select: () => query };
               }
-              if (table === 'vibeusage_model_aliases') {
+              if (table === "vibeusage_model_aliases") {
                 return createQueryMock({ rows: [] });
               }
-              if (table === 'vibeusage_pricing_profiles') {
+              if (table === "vibeusage_pricing_profiles") {
                 return createQueryMock({ rows: [] });
               }
-              if (table === 'vibeusage_pricing_model_aliases') {
+              if (table === "vibeusage_pricing_model_aliases") {
                 return createQueryMock({ rows: [] });
               }
               throw new Error(`Unexpected table ${table}`);
-            }
-          }
+            },
+          },
         };
       }
       throw new Error(`Unexpected createClient args: ${JSON.stringify(args)}`);
     };
 
     const req = new Request(
-      'http://localhost/functions/vibeusage-usage-summary?from=2025-12-21&to=2025-12-21&rolling=1',
+      "http://localhost/functions/vibeusage-usage-summary?from=2025-12-21&to=2025-12-21&rolling=1",
       {
-        method: 'GET',
-        headers: { Authorization: `Bearer ${userJwt}` }
-      }
+        method: "GET",
+        headers: { Authorization: `Bearer ${userJwt}` },
+      },
     );
 
     const res = await fn(req);
@@ -234,10 +239,12 @@ git commit -m "test: add rolling usage summary expectation"
 ### Task 4: Implement rolling metrics in usage summary API
 
 **Files:**
+
 - Modify: `insforge-src/functions/vibeusage-usage-summary.js`
 - Modify: `insforge-functions/vibeusage-usage-summary.js` (via build)
 
 **Step 1: Implement rolling calculation (minimal)**
+
 - Add `rolling=1` query param support.
 - Compute rolling ranges based on existing timezone context.
 - Aggregate totals + active days.
@@ -266,6 +273,7 @@ git commit -m "feat: add rolling metrics to usage summary"
 ### Task 5: Plumb rolling data through dashboard data layer
 
 **Files:**
+
 - Modify: `dashboard/src/lib/vibeusage-api.ts`
 - Modify: `dashboard/src/hooks/use-usage-data.ts`
 - Modify: `dashboard/src/lib/mock-data.ts`
@@ -294,6 +302,7 @@ git commit -m "feat: expose rolling usage summary data"
 ### Task 6: Add RollingUsagePanel UI + copy registry
 
 **Files:**
+
 - Create: `dashboard/src/ui/matrix-a/components/RollingUsagePanel.jsx`
 - Modify: `dashboard/src/pages/DashboardPage.jsx`
 - Modify: `dashboard/src/ui/matrix-a/views/DashboardView.jsx`
@@ -306,6 +315,7 @@ git commit -m "feat: expose rolling usage summary data"
 **Step 3: Wire into DashboardPage + DashboardView**
 
 **Step 4: Add component test (optional but preferred)**
+
 - `dashboard/src/ui/matrix-a/components/__tests__/RollingUsagePanel.test.jsx`
 
 **Step 5: Run validations**
@@ -335,6 +345,7 @@ git commit -m "feat: add rolling usage panel"
 ### Task 7: Post-implementation canvas sync
 
 **Files:**
+
 - Modify: `architecture.canvas`
 
 **Step 1: Re-run canvas generator**
@@ -357,6 +368,7 @@ git commit -m "chore: sync architecture canvas"
 ### Final Verification
 
 Run:
+
 - `npm test`
 - `npm --prefix dashboard run test`
 - `npm run validate:copy`

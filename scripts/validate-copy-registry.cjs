@@ -151,9 +151,7 @@ function main() {
     for (const col of REQUIRED_COLUMNS) {
       const value = record[col];
       if (!value || String(value).trim() === "") {
-        errors.push(
-          `Row ${record.row}: missing ${col} for key '${record.key || "<empty>"}'`
-        );
+        errors.push(`Row ${record.row}: missing ${col} for key '${record.key || "<empty>"}'`);
         break;
       }
     }

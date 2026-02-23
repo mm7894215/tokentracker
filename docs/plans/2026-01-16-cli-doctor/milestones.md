@@ -1,6 +1,7 @@
 # Milestones
 
 ## M1 - Requirements & Acceptance
+
 - Entry criteria:
   - 设计已确认
 - Exit criteria:
@@ -11,6 +12,7 @@
   - docs/plans/2026-01-16-cli-doctor/acceptance-criteria.md
 
 ## M2 - OpenSpec Proposal (if applicable)
+
 - Entry criteria:
   - M1 完成
 - Exit criteria:
@@ -22,6 +24,7 @@
   - openspec/changes/2026-01-16-add-cli-doctor/specs/vibeusage-tracker/spec.md
 
 ## M3 - Unit Test Coverage
+
 - Entry criteria:
   - OpenSpec proposal 已批准
 - Exit criteria:
@@ -31,6 +34,7 @@
   - test/runtime-config.test.js
 
 ## M4 - Regression & Integration
+
 - Entry criteria:
   - M3 完成
 - Exit criteria:
@@ -40,6 +44,7 @@
   - test/cli-help.test.js（更新）
 
 ## M5 - Release & Monitoring
+
 - Entry criteria:
   - 所有测试通过
 - Exit criteria:

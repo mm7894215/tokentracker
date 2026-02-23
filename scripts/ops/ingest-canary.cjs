@@ -1,47 +1,47 @@
 #!/usr/bin/env node
 
-'use strict';
+"use strict";
 
 const baseUrl =
   process.env.VIBEUSAGE_CANARY_BASE_URL ||
   process.env.VIBEUSAGE_INSFORGE_BASE_URL ||
   process.env.INSFORGE_BASE_URL ||
-  '';
-const deviceToken = process.env.VIBEUSAGE_CANARY_DEVICE_TOKEN || '';
+  "";
+const deviceToken = process.env.VIBEUSAGE_CANARY_DEVICE_TOKEN || "";
 
 if (!baseUrl) {
   console.error(
-    'Missing base URL: set VIBEUSAGE_CANARY_BASE_URL or VIBEUSAGE_INSFORGE_BASE_URL or INSFORGE_BASE_URL'
+    "Missing base URL: set VIBEUSAGE_CANARY_BASE_URL or VIBEUSAGE_INSFORGE_BASE_URL or INSFORGE_BASE_URL",
   );
   process.exit(2);
 }
 
 if (!deviceToken) {
-  console.error('Missing device token: set VIBEUSAGE_CANARY_DEVICE_TOKEN');
+  console.error("Missing device token: set VIBEUSAGE_CANARY_DEVICE_TOKEN");
   process.exit(2);
 }
 
 const confirmIsolated = normalizeFlag(process.env.VIBEUSAGE_CANARY_CONFIRM_ISOLATED);
 if (!confirmIsolated) {
-  console.error('Refusing to run canary without isolation confirmation.');
-  console.error('Set VIBEUSAGE_CANARY_CONFIRM_ISOLATED=1 and use a dedicated user token.');
-  console.error('Also disable leaderboard for that user to avoid public exposure.');
+  console.error("Refusing to run canary without isolation confirmation.");
+  console.error("Set VIBEUSAGE_CANARY_CONFIRM_ISOLATED=1 and use a dedicated user token.");
+  console.error("Also disable leaderboard for that user to avoid public exposure.");
   process.exit(2);
 }
 
-const source = process.env.VIBEUSAGE_CANARY_SOURCE || 'canary';
-const model = process.env.VIBEUSAGE_CANARY_MODEL || 'canary';
+const source = process.env.VIBEUSAGE_CANARY_SOURCE || "canary";
+const model = process.env.VIBEUSAGE_CANARY_MODEL || "canary";
 const hourStart = process.env.VIBEUSAGE_CANARY_HOUR_START || currentHalfHourIso();
 const allowCustomTag = normalizeFlag(process.env.VIBEUSAGE_CANARY_ALLOW_CUSTOM_TAG);
 
 if (!allowCustomTag && (!isCanaryTag(source) || !isCanaryTag(model))) {
-  console.error('Refusing to run canary with non-canary source/model.');
-  console.error('Set VIBEUSAGE_CANARY_ALLOW_CUSTOM_TAG=1 to override.');
+  console.error("Refusing to run canary with non-canary source/model.");
+  console.error("Set VIBEUSAGE_CANARY_ALLOW_CUSTOM_TAG=1 to override.");
   process.exit(2);
 }
 
 if (!isHalfHourIso(hourStart)) {
-  console.error('Invalid VIBEUSAGE_CANARY_HOUR_START: must be UTC half-hour boundary ISO');
+  console.error("Invalid VIBEUSAGE_CANARY_HOUR_START: must be UTC half-hour boundary ISO");
   process.exit(2);
 }
 
@@ -62,12 +62,12 @@ const payload = {
       cached_input_tokens: cachedTokens,
       output_tokens: outputTokens,
       reasoning_output_tokens: reasoningTokens,
-      total_tokens: totalTokens
-    }
-  ]
+      total_tokens: totalTokens,
+    },
+  ],
 };
 
-const url = new URL('/functions/vibeusage-ingest', baseUrl).toString();
+const url = new URL("/functions/vibeusage-ingest", baseUrl).toString();
 
 run().catch((err) => {
   console.error(err?.message || err);
@@ -76,12 +76,12 @@ run().catch((err) => {
 
 async function run() {
   const res = await fetch(url, {
-    method: 'POST',
+    method: "POST",
     headers: {
       Authorization: `Bearer ${deviceToken}`,
-      'Content-Type': 'application/json'
+      "Content-Type": "application/json",
     },
-    body: JSON.stringify(payload)
+    body: JSON.stringify(payload),
   });
 
   const text = await res.text();
@@ -98,32 +98,36 @@ function currentHalfHourIso() {
   const now = new Date();
   const minutes = now.getUTCMinutes();
   const bucketMinutes = minutes >= 30 ? 30 : 0;
-  const dt = new Date(Date.UTC(
-    now.getUTCFullYear(),
-    now.getUTCMonth(),
-    now.getUTCDate(),
-    now.getUTCHours(),
-    bucketMinutes,
-    0,
-    0
-  ));
+  const dt = new Date(
+    Date.UTC(
+      now.getUTCFullYear(),
+      now.getUTCMonth(),
+      now.getUTCDate(),
+      now.getUTCHours(),
+      bucketMinutes,
+      0,
+      0,
+    ),
+  );
   return dt.toISOString();
 }
 
 function isHalfHourIso(value) {
-  if (typeof value !== 'string') return false;
+  if (typeof value !== "string") return false;
   const dt = new Date(value);
   if (!Number.isFinite(dt.getTime())) return false;
   const minutes = dt.getUTCMinutes();
-  return (minutes === 0 || minutes === 30) && dt.getUTCSeconds() === 0 && dt.getUTCMilliseconds() === 0;
+  return (
+    (minutes === 0 || minutes === 30) && dt.getUTCSeconds() === 0 && dt.getUTCMilliseconds() === 0
+  );
 }
 
 function isCanaryTag(value) {
-  return typeof value === 'string' && value.trim().toLowerCase() === 'canary';
+  return typeof value === "string" && value.trim().toLowerCase() === "canary";
 }
 
 function toNonNegativeInt(raw) {
-  if (raw == null || raw === '') return null;
+  if (raw == null || raw === "") return null;
   const n = Number(raw);
   if (!Number.isFinite(n)) return null;
   if (!Number.isInteger(n)) return null;
@@ -134,5 +138,5 @@ function toNonNegativeInt(raw) {
 function normalizeFlag(value) {
   if (value == null) return false;
   const s = String(value).trim().toLowerCase();
-  return s === '1' || s === 'true' || s === 'yes' || s === 'y';
+  return s === "1" || s === "true" || s === "yes" || s === "y";
 }

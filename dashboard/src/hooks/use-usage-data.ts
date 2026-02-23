@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
-
-import { getUsageDaily, getUsageSummary } from "../lib/vibeusage-api";
+import { isAccessTokenReady, resolveAuthAccessToken } from "../lib/auth-token";
 import { formatDateLocal, formatDateUTC } from "../lib/date-range";
 import { isMockEnabled } from "../lib/mock-data";
-import { isAccessTokenReady, resolveAuthAccessToken } from "../lib/auth-token";
 import { getLocalDayKey, getTimeZoneCacheKey } from "../lib/timezone";
+import { getUsageDaily, getUsageSummary } from "../lib/vibeusage-api";
 
 export function useUsageData({
   baseUrl,
@@ -59,7 +58,7 @@ export function useUsageData({
         // ignore write errors (quota/private mode)
       }
     },
-    [storageKey]
+    [storageKey],
   );
 
   const clearCache = useCallback(() => {
@@ -114,8 +113,7 @@ export function useUsageData({
         });
       }
 
-      let nextDaily =
-        includeDaily && Array.isArray(dailyRes?.data) ? dailyRes.data : [];
+      let nextDaily = includeDaily && Array.isArray(dailyRes?.data) ? dailyRes.data : [];
       if (includeDaily) {
         nextDaily = fillDailyGaps(nextDaily, from, to, {
           timeZone,
@@ -309,23 +307,20 @@ function parseUtcDate(yyyyMmDd: any) {
 }
 
 function addUtcDays(date: Date, days: number) {
-  return new Date(
-    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() + days)
-  );
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() + days));
 }
 
 function fillDailyGaps(
   rows: any[],
   from: any,
   to: any,
-  { timeZone, offsetMinutes, now }: any = {}
+  { timeZone, offsetMinutes, now }: any = {},
 ) {
   const start = parseUtcDate(from);
   const end = parseUtcDate(to);
   if (!start || !end || end < start) return Array.isArray(rows) ? rows : [];
 
-  const baseDate =
-    now instanceof Date && Number.isFinite(now.getTime()) ? now : new Date();
+  const baseDate = now instanceof Date && Number.isFinite(now.getTime()) ? now : new Date();
   const todayKey = getLocalDayKey({ timeZone, offsetMinutes, date: baseDate });
   const today = parseUtcDate(todayKey);
   const todayTime = today ? today.getTime() : baseDate.getTime();

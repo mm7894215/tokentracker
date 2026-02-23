@@ -1,4 +1,5 @@
 ## 1. Implementation
+
 - [x] Add consent-first init UI (menu + privacy header) with non-interactive fallback.
 - [x] Improve interactive menu to support arrow key navigation.
 - [x] Add spinner phase and suppress verbose logs during setup.
@@ -9,16 +10,19 @@
 - [x] (Optional) Add `prompts`, `ora`, `boxen` or equivalent internal helpers.
 
 ## 2. Tests
+
 - [x] Update `test/init-uninstall.test.js` to run init with `--yes` (no prompts).
 - [x] Update acceptance scripts to pass `--yes` and avoid TTY hangs.
 - [x] Add regression check for dry-run no-write behavior (if kept).
 
 ## 3. Verification
+
 - [x] Run `node --test test/init-uninstall.test.js test/init-spawn-error.test.js`.
 - [x] Run `node scripts/acceptance/gemini-hook-install.cjs`.
 - [x] Run `node scripts/acceptance/opencode-plugin-install.cjs`.
 - [x] Manual smoke: `npx --yes @vibescore/tracker init --no-open` (no-auth and link-code paths).
 
 ## 4. Docs
+
 - [x] Update CLI install copy in `README.md` and `README.zh-CN.md`.
 - [ ] (Optional) Update dashboard install copy in `dashboard/src/content/copy.csv`.

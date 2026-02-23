@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-'use strict';
+"use strict";
 
-const assert = require('node:assert/strict');
+const assert = require("node:assert/strict");
 
 class DatabaseStub {
   constructor({ tokenRows = [], aggregateRows = [], eventRows = [] } = {}) {
@@ -31,7 +31,7 @@ class DatabaseStub {
   }
 
   lt() {
-    if (this._table !== 'vibeusage_tracker_hourly') {
+    if (this._table !== "vibeusage_tracker_hourly") {
       return { data: [], error: null };
     }
 
@@ -39,11 +39,11 @@ class DatabaseStub {
   }
 
   order() {
-    if (this._table === 'vibeusage_tracker_device_tokens') {
+    if (this._table === "vibeusage_tracker_device_tokens") {
       return this;
     }
 
-    if (this._table !== 'vibeusage_tracker_hourly') {
+    if (this._table !== "vibeusage_tracker_hourly") {
       return { data: [], error: null };
     }
 
@@ -51,7 +51,7 @@ class DatabaseStub {
   }
 
   limit(n) {
-    if (this._table === 'vibeusage_tracker_device_tokens') {
+    if (this._table === "vibeusage_tracker_device_tokens") {
       return { data: this.tokenRows.slice(0, n), error: null };
     }
     return { data: [], error: null };
@@ -62,51 +62,51 @@ function createClientStub(database) {
   return {
     auth: {
       async getCurrentUser() {
-        return { data: { user: { id: 'user-id' } }, error: null };
-      }
+        return { data: { user: { id: "user-id" } }, error: null };
+      },
     },
-    database
+    database,
   };
 }
 
 async function main() {
-  process.env.INSFORGE_INTERNAL_URL = 'http://insforge:7130';
-  process.env.INSFORGE_ANON_KEY = 'anon';
+  process.env.INSFORGE_INTERNAL_URL = "http://insforge:7130";
+  process.env.INSFORGE_ANON_KEY = "anon";
 
   global.Deno = {
     env: {
       get(key) {
         const v = process.env[key];
-        return v == null || v === '' ? null : v;
-      }
-    }
+        return v == null || v === "" ? null : v;
+      },
+    },
   };
 
-  const tokenRows = [{ last_sync_at: '2025-12-22T10:30:00Z' }];
+  const tokenRows = [{ last_sync_at: "2025-12-22T10:30:00Z" }];
   global.createClient = () => createClientStub(new DatabaseStub({ tokenRows }));
-  delete require.cache[require.resolve('../../insforge-src/functions/vibeusage-usage-hourly.js')];
-  const usageHourly = require('../../insforge-src/functions/vibeusage-usage-hourly.js');
+  delete require.cache[require.resolve("../../insforge-src/functions/vibeusage-usage-hourly.js")];
+  const usageHourly = require("../../insforge-src/functions/vibeusage-usage-hourly.js");
 
   const res = await usageHourly(
-    new Request('http://local/functions/vibeusage-usage-hourly?day=2025-12-22', {
-      method: 'GET',
-      headers: { Authorization: 'Bearer user-jwt' }
-    })
+    new Request("http://local/functions/vibeusage-usage-hourly?day=2025-12-22", {
+      method: "GET",
+      headers: { Authorization: "Bearer user-jwt" },
+    }),
   );
 
   const body = await res.json();
-  assert.equal(res.status, 200, 'status');
-  assert.equal(body.day, '2025-12-22', 'day');
-  assert.ok(body.sync, 'sync');
-  assert.equal(body.sync.last_sync_at, '2025-12-22T10:30:00.000Z', 'last_sync_at');
-  assert.equal(body.sync.min_interval_minutes, 30, 'min_interval_minutes');
+  assert.equal(res.status, 200, "status");
+  assert.equal(body.day, "2025-12-22", "day");
+  assert.ok(body.sync, "sync");
+  assert.equal(body.sync.last_sync_at, "2025-12-22T10:30:00.000Z", "last_sync_at");
+  assert.equal(body.sync.min_interval_minutes, 30, "min_interval_minutes");
 
-  const row1030 = body.data.find((row) => row.hour === '2025-12-22T10:30:00');
-  const row11 = body.data.find((row) => row.hour === '2025-12-22T11:00:00');
-  assert.ok(row1030, 'row1030');
-  assert.ok(row11, 'row11');
-  assert.ok(!row1030.missing, '10:30 not missing');
-  assert.ok(row11.missing, '11:00 missing');
+  const row1030 = body.data.find((row) => row.hour === "2025-12-22T10:30:00");
+  const row11 = body.data.find((row) => row.hour === "2025-12-22T11:00:00");
+  assert.ok(row1030, "row1030");
+  assert.ok(row11, "row11");
+  assert.ok(!row1030.missing, "10:30 not missing");
+  assert.ok(row11.missing, "11:00 missing");
 }
 
 main().catch((err) => {

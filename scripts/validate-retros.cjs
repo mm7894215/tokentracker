@@ -1,16 +1,16 @@
-const fs = require('node:fs');
-const path = require('node:path');
+const fs = require("node:fs");
+const path = require("node:path");
 
-const ROOT = path.resolve(__dirname, '..');
-const RETRO_ROOT = path.join(ROOT, 'docs', 'retrospective');
+const ROOT = path.resolve(__dirname, "..");
+const RETRO_ROOT = path.join(ROOT, "docs", "retrospective");
 
-const REQUIRED_KEYS = ['repo', 'layer', 'module', 'severity', 'design_mismatch', 'detection_gap'];
-const ALLOWED_LAYER = new Set(['frontend', 'backend', 'fullstack', 'infra']);
-const ALLOWED_SEVERITY = new Set(['S1', 'S2', 'S3', 'S4']);
-const ALLOWED_YN = new Set(['yes', 'no']);
+const REQUIRED_KEYS = ["repo", "layer", "module", "severity", "design_mismatch", "detection_gap"];
+const ALLOWED_LAYER = new Set(["frontend", "backend", "fullstack", "infra"]);
+const ALLOWED_SEVERITY = new Set(["S1", "S2", "S3", "S4"]);
+const ALLOWED_YN = new Set(["yes", "no"]);
 
 function readText(filePath) {
-  return fs.readFileSync(filePath, 'utf8');
+  return fs.readFileSync(filePath, "utf8");
 }
 
 function parseFrontmatter(text) {
@@ -36,7 +36,7 @@ function parseFrontmatter(text) {
     const key = kv[1];
     const value = kv[2].trim();
 
-    if (value === '') {
+    if (value === "") {
       out[key] = [];
       currentListKey = key;
       continue;
@@ -53,7 +53,7 @@ function listRepoDirs(retroRoot) {
   if (!fs.existsSync(retroRoot)) return [];
   return fs
     .readdirSync(retroRoot, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory() && !entry.name.startsWith('.'))
+    .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
     .map((entry) => entry.name)
     .sort();
 }
@@ -62,16 +62,16 @@ function listRetrosForRepo(repoDirPath) {
   if (!fs.existsSync(repoDirPath)) return [];
   return fs
     .readdirSync(repoDirPath, { withFileTypes: true })
-    .filter((entry) => entry.isFile() && entry.name.endsWith('.md') && entry.name !== '_index.md')
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".md") && entry.name !== "_index.md")
     .map((entry) => entry.name)
     .sort();
 }
 
 function runRetroValidation({ root = ROOT } = {}) {
   const errors = [];
-  const retroRoot = path.join(root, 'docs', 'retrospective');
+  const retroRoot = path.join(root, "docs", "retrospective");
 
-  const globalIndexPath = path.join(retroRoot, '_index.md');
+  const globalIndexPath = path.join(retroRoot, "_index.md");
   if (!fs.existsSync(globalIndexPath)) {
     errors.push(`Missing global index: ${path.relative(root, globalIndexPath)}`);
     return { errors, warnings: [] };
@@ -81,7 +81,7 @@ function runRetroValidation({ root = ROOT } = {}) {
   const repoDirs = listRepoDirs(retroRoot);
   for (const repo of repoDirs) {
     const repoDirPath = path.join(retroRoot, repo);
-    const repoIndexPath = path.join(repoDirPath, '_index.md');
+    const repoIndexPath = path.join(repoDirPath, "_index.md");
 
     if (!fs.existsSync(repoIndexPath)) {
       errors.push(`Missing repo index: ${path.relative(root, repoIndexPath)}`);
@@ -91,7 +91,7 @@ function runRetroValidation({ root = ROOT } = {}) {
 
     for (const fileName of listRetrosForRepo(repoDirPath)) {
       const fullPath = path.join(repoDirPath, fileName);
-      const relPath = path.join('docs', 'retrospective', repo, fileName);
+      const relPath = path.join("docs", "retrospective", repo, fileName);
       const relPathFromRetro = path.join(repo, fileName);
       const text = readText(fullPath);
       const fm = parseFrontmatter(text);
@@ -102,7 +102,7 @@ function runRetroValidation({ root = ROOT } = {}) {
       }
 
       for (const key of REQUIRED_KEYS) {
-        if (!(key in fm) || String(fm[key]).trim() === '') {
+        if (!(key in fm) || String(fm[key]).trim() === "") {
           errors.push(`${relPath}: missing required frontmatter key '${key}'`);
         }
       }
@@ -137,17 +137,17 @@ function runRetroValidation({ root = ROOT } = {}) {
 
 function main() {
   const args = process.argv.slice(2);
-  const rootIndex = args.indexOf('--root');
+  const rootIndex = args.indexOf("--root");
   const root = rootIndex >= 0 && args[rootIndex + 1] ? path.resolve(args[rootIndex + 1]) : ROOT;
 
   const { errors } = runRetroValidation({ root });
   if (errors.length) {
-    console.error('Retrospective validation errors:');
+    console.error("Retrospective validation errors:");
     for (const err of errors) console.error(`- ${err}`);
     process.exit(1);
   }
 
-  console.log('Retrospective validation ok.');
+  console.log("Retrospective validation ok.");
 }
 
 module.exports = { runRetroValidation, parseFrontmatter };

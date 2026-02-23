@@ -14,7 +14,7 @@ vi.mock("../insforge-client", () => ({
 
 vi.mock("../auth-token", () => ({
   normalizeAccessToken: vi.fn((token: any) =>
-    typeof token === "string" && token.trim() ? token.trim() : null
+    typeof token === "string" && token.trim() ? token.trim() : null,
   ),
   resolveAuthAccessToken: vi.fn(async (token: any) => token),
 }));
@@ -68,7 +68,7 @@ describe("error normalization", () => {
     });
 
     await expect(
-      api.probeBackend({ baseUrl: "https://example.com", accessToken: null })
+      api.probeBackend({ baseUrl: "https://example.com", accessToken: null }),
     ).rejects.toMatchObject({
       message: "Missing bearer token",
       status: 401,

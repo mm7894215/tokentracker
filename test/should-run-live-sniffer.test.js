@@ -4,7 +4,7 @@ const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 
 const modulePath = pathToFileURL(
-  path.resolve("dashboard/src/ui/matrix-a/util/should-run-live-sniffer.js")
+  path.resolve("dashboard/src/ui/matrix-a/util/should-run-live-sniffer.js"),
 ).href;
 
 test("shouldRunLiveSniffer disables animation in reduced motion or screenshot", async () => {
@@ -15,7 +15,7 @@ test("shouldRunLiveSniffer disables animation in reduced motion or screenshot", 
       prefersReducedMotion: true,
       screenshotMode: false,
     }),
-    false
+    false,
   );
 
   assert.equal(
@@ -23,7 +23,7 @@ test("shouldRunLiveSniffer disables animation in reduced motion or screenshot", 
       prefersReducedMotion: false,
       screenshotMode: true,
     }),
-    false
+    false,
   );
 
   assert.equal(
@@ -31,6 +31,6 @@ test("shouldRunLiveSniffer disables animation in reduced motion or screenshot", 
       prefersReducedMotion: false,
       screenshotMode: false,
     }),
-    true
+    true,
   );
 });

@@ -1,33 +1,33 @@
 #!/usr/bin/env node
-'use strict';
+"use strict";
 
-const fs = require('node:fs');
-const path = require('node:path');
-const { execFileSync } = require('node:child_process');
+const fs = require("node:fs");
+const path = require("node:path");
+const { execFileSync } = require("node:child_process");
 
-const FRONT_PREFIXES = ['dashboard/'];
-const FRONT_FILES = ['copy.jsx'];
-const BACK_PREFIXES = ['insforge-functions/', 'insforge-src/', 'src/', 'test/'];
+const FRONT_PREFIXES = ["dashboard/"];
+const FRONT_FILES = ["copy.jsx"];
+const BACK_PREFIXES = ["insforge-functions/", "insforge-src/", "src/", "test/"];
 
 function parseArgs(argv) {
   const out = {
     since: null,
     minCycles: 3,
     limit: 5,
-    outDir: 'docs/retrospective',
+    outDir: "docs/retrospective",
     fetchLimit: 200,
     includeUnmergedFallback: true,
-    maxPrs: null
+    maxPrs: null,
   };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
-    if (arg === '--since') out.since = argv[++i];
-    else if (arg === '--min-cycles') out.minCycles = Number(argv[++i]);
-    else if (arg === '--limit') out.limit = Number(argv[++i]);
-    else if (arg === '--out-dir') out.outDir = argv[++i];
-    else if (arg === '--fetch-limit') out.fetchLimit = Number(argv[++i]);
-    else if (arg === '--max-prs') out.maxPrs = Number(argv[++i]);
-    else if (arg === '--no-unmerged-fallback') out.includeUnmergedFallback = false;
+    if (arg === "--since") out.since = argv[++i];
+    else if (arg === "--min-cycles") out.minCycles = Number(argv[++i]);
+    else if (arg === "--limit") out.limit = Number(argv[++i]);
+    else if (arg === "--out-dir") out.outDir = argv[++i];
+    else if (arg === "--fetch-limit") out.fetchLimit = Number(argv[++i]);
+    else if (arg === "--max-prs") out.maxPrs = Number(argv[++i]);
+    else if (arg === "--no-unmerged-fallback") out.includeUnmergedFallback = false;
   }
   if (!Number.isFinite(out.minCycles) || out.minCycles <= 0) out.minCycles = 3;
   if (!Number.isFinite(out.limit) || out.limit <= 0) out.limit = 5;
@@ -37,7 +37,7 @@ function parseArgs(argv) {
 }
 
 function runGh(args) {
-  const output = execFileSync('gh', args, { encoding: 'utf8' });
+  const output = execFileSync("gh", args, { encoding: "utf8" });
   return output.trim();
 }
 
@@ -48,8 +48,8 @@ function jsonGh(args) {
 
 function formatDate(date) {
   const year = date.getUTCFullYear();
-  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
-  const day = String(date.getUTCDate()).padStart(2, '0');
+  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(date.getUTCDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
 }
 
@@ -73,8 +73,8 @@ function isCodePath(filePath) {
 }
 
 function summarizeText(text) {
-  if (!text) return '';
-  return text.replace(/\s+/g, ' ').trim();
+  if (!text) return "";
+  return text.replace(/\s+/g, " ").trim();
 }
 
 function countItems(items) {
@@ -96,7 +96,7 @@ function summarizePr(pr) {
     reviewCount: countItems(pr.reviews),
     commentCount: countItems(pr.comments),
     commitCount: countItems(pr.commits),
-    fileCount: countItems(pr.files)
+    fileCount: countItems(pr.files),
   };
 }
 
@@ -112,23 +112,23 @@ function computeCycles(reviews, codeCommits) {
   const events = [];
   for (const review of reviews) {
     if (!review.submittedAt) continue;
-    events.push({ type: 'review', date: review.submittedAt });
+    events.push({ type: "review", date: review.submittedAt });
   }
   for (const commit of codeCommits) {
     if (!commit.committedDate) continue;
-    events.push({ type: 'code', date: commit.committedDate });
+    events.push({ type: "code", date: commit.committedDate });
   }
   events.sort((a, b) => {
     const delta = new Date(a.date) - new Date(b.date);
     if (delta !== 0) return delta;
     if (a.type === b.type) return 0;
-    return a.type === 'code' ? -1 : 1;
+    return a.type === "code" ? -1 : 1;
   });
   let sawReview = false;
   let sawCode = false;
   let cycles = 0;
   for (const event of events) {
-    if (event.type === 'review') {
+    if (event.type === "review") {
       if (sawReview && sawCode) {
         cycles += 1;
         sawCode = false;
@@ -136,7 +136,7 @@ function computeCycles(reviews, codeCommits) {
       } else {
         sawReview = true;
       }
-    } else if (event.type === 'code') {
+    } else if (event.type === "code") {
       if (sawReview) sawCode = true;
     }
   }
@@ -145,68 +145,69 @@ function computeCycles(reviews, codeCommits) {
 
 function buildCsv(rows) {
   const header = [
-    'number',
-    'title',
-    'url',
-    'closed_at',
-    'merged_at',
-    'review_cycles',
-    'frontend',
-    'backend',
-    'primary_stage',
-    'secondary_stages',
-    'topic_summary',
-    'review_signals'
+    "number",
+    "title",
+    "url",
+    "closed_at",
+    "merged_at",
+    "review_cycles",
+    "frontend",
+    "backend",
+    "primary_stage",
+    "secondary_stages",
+    "topic_summary",
+    "review_signals",
   ];
-  const lines = [header.join(',')];
+  const lines = [header.join(",")];
   for (const row of rows) {
     const fields = [
       row.number,
-      JSON.stringify(row.title || ''),
-      JSON.stringify(row.url || ''),
-      row.closedAt || '',
-      row.mergedAt || '',
-      row.cycles ?? '',
-      row.frontend ? 'yes' : 'no',
-      row.backend ? 'yes' : 'no',
-      '',
-      '',
-      '',
-      ''
+      JSON.stringify(row.title || ""),
+      JSON.stringify(row.url || ""),
+      row.closedAt || "",
+      row.mergedAt || "",
+      row.cycles ?? "",
+      row.frontend ? "yes" : "no",
+      row.backend ? "yes" : "no",
+      "",
+      "",
+      "",
+      "",
     ];
-    lines.push(fields.join(','));
+    lines.push(fields.join(","));
   }
-  return `${lines.join('\n')}\n`;
+  return `${lines.join("\n")}\n`;
 }
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const repoInfo = jsonGh(['repo', 'view', '--json', 'nameWithOwner']);
+  const repoInfo = jsonGh(["repo", "view", "--json", "nameWithOwner"]);
   if (!repoInfo || !repoInfo.nameWithOwner) {
-    throw new Error('Unable to resolve repo via gh.');
+    throw new Error("Unable to resolve repo via gh.");
   }
-  const [owner, repo] = repoInfo.nameWithOwner.split('/');
+  const [owner, repo] = repoInfo.nameWithOwner.split("/");
   const now = new Date();
   const since = args.since || formatDate(addMonths(now, -6));
 
-  const prList = jsonGh([
-    'pr',
-    'list',
-    '--state',
-    'closed',
-    '--search',
-    `closed:>=${since}`,
-    '--json',
-    'number,title,closedAt,mergedAt,url,author,labels',
-    '--limit',
-    String(args.fetchLimit)
-  ]) || [];
+  const prList =
+    jsonGh([
+      "pr",
+      "list",
+      "--state",
+      "closed",
+      "--search",
+      `closed:>=${since}`,
+      "--json",
+      "number,title,closedAt,mergedAt,url,author,labels",
+      "--limit",
+      String(args.fetchLimit),
+    ]) || [];
 
   const commitCache = new Map();
 
   function fetchCommitFiles(oid) {
     if (commitCache.has(oid)) return commitCache.get(oid);
-    const detail = jsonGh(['api', `repos/${owner}/${repo}/commits/${oid}`]) || {};
+    const detail = jsonGh(["api", `repos/${owner}/${repo}/commits/${oid}`]) || {};
     const files = Array.isArray(detail.files) ? detail.files : [];
     const paths = files.map((file) => file.filename).filter(Boolean);
     commitCache.set(oid, paths);
@@ -220,22 +221,22 @@ async function main() {
     index += 1;
     console.log(`Processing PR #${pr.number} (${index}/${cap.length})...`);
     const details = jsonGh([
-      'pr',
-      'view',
+      "pr",
+      "view",
       String(pr.number),
-      '--json',
-      'number,title,closedAt,mergedAt,url,author,labels,reviews,comments,commits,files'
+      "--json",
+      "number,title,closedAt,mergedAt,url,author,labels,reviews,comments,commits,files",
     ]);
     if (!details) continue;
 
     const reviews = Array.isArray(details.reviews) ? details.reviews : [];
     const filteredReviews = reviews
-      .filter((review) => ['CHANGES_REQUESTED', 'COMMENTED', 'APPROVED'].includes(review.state))
+      .filter((review) => ["CHANGES_REQUESTED", "COMMENTED", "APPROVED"].includes(review.state))
       .map((review) => ({
         author: review.author?.login || null,
         state: review.state,
         submittedAt: review.submittedAt,
-        body: summarizeText(review.body)
+        body: summarizeText(review.body),
       }));
 
     const commits = Array.isArray(details.commits) ? details.commits : [];
@@ -255,7 +256,7 @@ async function main() {
           codeCommits.push({
             oid,
             committedDate: commit.committedDate,
-            files: paths
+            files: paths,
           });
         }
       }
@@ -267,7 +268,7 @@ async function main() {
     const issueComments = comments.map((comment) => ({
       author: comment.author?.login || null,
       createdAt: comment.createdAt,
-      body: summarizeText(comment.body)
+      body: summarizeText(comment.body),
     }));
 
     prs.push({
@@ -284,7 +285,7 @@ async function main() {
       reviews: filteredReviews,
       comments: issueComments,
       commits: codeCommits,
-      files: filePaths
+      files: filePaths,
     });
   }
 
@@ -324,7 +325,7 @@ async function main() {
     selectedCount: picked.length,
     selected: picked.map((row) => row.number),
     prs: shaped.prs,
-    picked: shaped.picked
+    picked: shaped.picked,
   };
 
   fs.writeFileSync(jsonPath, `${JSON.stringify(payload, null, 2)}\n`);
@@ -348,5 +349,5 @@ if (require.main === module) {
 module.exports = {
   main,
   summarizePr,
-  shapeRetroOutput
+  shapeRetroOutput,
 };

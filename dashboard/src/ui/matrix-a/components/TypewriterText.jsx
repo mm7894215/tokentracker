@@ -88,9 +88,7 @@ export function TypewriterText({
     let remaining = count;
     return segments.map((segment, index) => {
       const sliceCount = Math.max(0, remaining);
-      const nextText = sliceCount
-        ? String(segment.text || "").slice(0, sliceCount)
-        : "";
+      const nextText = sliceCount ? String(segment.text || "").slice(0, sliceCount) : "";
       remaining -= String(segment.text || "").length;
       return (
         <span key={index} className={segment.className || ""}>

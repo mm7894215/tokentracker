@@ -1,33 +1,30 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-
-import { copy } from "../lib/copy";
-import { getRangeForPeriod } from "../lib/date-range";
-import { getDetailsSortColumns, sortDailyRows } from "../lib/daily";
+import { BackendStatus } from "../components/BackendStatus.jsx";
+import { useActivityHeatmap } from "../hooks/use-activity-heatmap.js";
+import { useProjectUsageSummary } from "../hooks/use-project-usage-summary";
+import { useTrendData } from "../hooks/use-trend-data.js";
+import { useUsageData } from "../hooks/use-usage-data.js";
+import { useUsageModelBreakdown } from "../hooks/use-usage-model-breakdown.js";
 import {
-  DETAILS_PAGE_SIZE,
-  paginateRows,
-  trimLeadingZeroMonths,
-} from "../lib/details";
+  isAccessTokenReady,
+  normalizeAccessToken,
+  resolveAuthAccessToken,
+} from "../lib/auth-token";
+import { copy } from "../lib/copy";
+import { getDetailsSortColumns, sortDailyRows } from "../lib/daily";
+import { getRangeForPeriod } from "../lib/date-range";
+import { DETAILS_PAGE_SIZE, paginateRows, trimLeadingZeroMonths } from "../lib/details";
 import {
   formatCompactNumber,
   formatUsdCurrency,
   toDisplayNumber,
   toFiniteNumber,
 } from "../lib/format";
-import {
-  getPublicVisibility,
-  setPublicVisibility,
-  getUserStatus,
-  getPublicViewProfile,
-  requestInstallLinkCode,
-} from "../lib/vibeusage-api";
+import { shouldShowInstallCard } from "../lib/install-status";
+import { getMockNow, isMockEnabled } from "../lib/mock-data";
 import { buildFleetData, buildTopModels } from "../lib/model-breakdown";
 import { safeWriteClipboard, safeWriteClipboardImage } from "../lib/safe-browser";
-import { useActivityHeatmap } from "../hooks/use-activity-heatmap.js";
-import { useTrendData } from "../hooks/use-trend-data.js";
-import { useUsageData } from "../hooks/use-usage-data.js";
-import { useUsageModelBreakdown } from "../hooks/use-usage-model-breakdown.js";
-import { useProjectUsageSummary } from "../hooks/use-project-usage-summary";
+import { isScreenshotModeEnabled } from "../lib/screenshot-mode";
 import {
   formatTimeZoneLabel,
   formatTimeZoneShortLabel,
@@ -35,7 +32,13 @@ import {
   getBrowserTimeZoneOffsetMinutes,
   getLocalDayKey,
 } from "../lib/timezone";
-import { BackendStatus } from "../components/BackendStatus.jsx";
+import {
+  getPublicVisibility,
+  setPublicVisibility,
+  getUserStatus,
+  getPublicViewProfile,
+  requestInstallLinkCode,
+} from "../lib/vibeusage-api";
 import { AsciiBox } from "../ui/foundation/AsciiBox.jsx";
 import { MatrixButton } from "../ui/foundation/MatrixButton.jsx";
 import { ActivityHeatmap } from "../ui/matrix-a/components/ActivityHeatmap.jsx";
@@ -43,14 +46,6 @@ import { BootScreen } from "../ui/matrix-a/components/BootScreen.jsx";
 import { GithubStar } from "../ui/matrix-a/components/GithubStar.jsx";
 import { ProjectUsagePanel } from "../ui/matrix-a/components/ProjectUsagePanel.jsx";
 import { DashboardView } from "../ui/matrix-a/views/DashboardView.jsx";
-import { getMockNow, isMockEnabled } from "../lib/mock-data";
-import { isScreenshotModeEnabled } from "../lib/screenshot-mode";
-import { shouldShowInstallCard } from "../lib/install-status";
-import {
-  isAccessTokenReady,
-  normalizeAccessToken,
-  resolveAuthAccessToken,
-} from "../lib/auth-token";
 
 const PERIODS = ["day", "week", "month", "total"];
 const DETAILS_DATE_KEYS = new Set(["day", "hour", "month"]);
@@ -90,7 +85,6 @@ function isProductionHost(hostname) {
   if (!hostname) return false;
   return hostname === "www.vibeusage.cc";
 }
-
 
 function isForceInstallEnabled() {
   if (typeof window === "undefined") return false;
@@ -205,9 +199,7 @@ export function DashboardPage({
         });
         if (!active) return;
         setLinkCode(typeof data?.link_code === "string" ? data.link_code : null);
-        setLinkCodeExpiresAt(
-          typeof data?.expires_at === "string" ? data.expires_at : null
-        );
+        setLinkCodeExpiresAt(typeof data?.expires_at === "string" ? data.expires_at : null);
       } catch (err) {
         if (!active) return;
         setLinkCode(null);
@@ -304,12 +296,8 @@ export function DashboardPage({
     getPublicViewProfile({ baseUrl, accessToken: publicToken })
       .then((data) => {
         if (!active) return;
-        setPublicProfileName(
-          typeof data?.display_name === "string" ? data.display_name : null
-        );
-        setPublicProfileAvatarUrl(
-          typeof data?.avatar_url === "string" ? data.avatar_url : null
-        );
+        setPublicProfileName(typeof data?.display_name === "string" ? data.display_name : null);
+        setPublicProfileAvatarUrl(typeof data?.avatar_url === "string" ? data.avatar_url : null);
       })
       .catch(() => {
         if (!active) return;
@@ -358,14 +346,7 @@ export function DashboardPage({
     return () => {
       active = false;
     };
-  }, [
-    authTokenReady,
-    baseUrl,
-    effectiveAuthToken,
-    mockEnabled,
-    publicMode,
-    signedIn,
-  ]);
+  }, [authTokenReady, baseUrl, effectiveAuthToken, mockEnabled, publicMode, signedIn]);
 
   const linkCodeExpired = useMemo(() => {
     if (!linkCodeExpiresAt) return false;
@@ -383,13 +364,7 @@ export function DashboardPage({
     setLinkCodeExpiresAt(null);
     setLinkCodeError(null);
     setLinkCodeRefreshToken((value) => value + 1);
-  }, [
-    linkCodeExpired,
-    linkCodeExpiresAt,
-    linkCodeLoading,
-    mockEnabled,
-    signedIn,
-  ]);
+  }, [linkCodeExpired, linkCodeExpiresAt, linkCodeLoading, mockEnabled, signedIn]);
 
   useEffect(() => {
     if (!linkCodeExpiresAt || publicMode) return;
@@ -398,10 +373,7 @@ export function DashboardPage({
     const now = Date.now();
     setLinkCodeExpiryTick(now);
     if (ts <= now) return;
-    const timeoutId = window.setTimeout(
-      () => setLinkCodeExpiryTick(Date.now()),
-      ts - now
-    );
+    const timeoutId = window.setTimeout(() => setLinkCodeExpiryTick(Date.now()), ts - now);
     const handleVisibilityChange = () => {
       if (typeof document === "undefined") return;
       if (document.visibilityState !== "visible") return;
@@ -436,9 +408,7 @@ export function DashboardPage({
   const timeZone = useMemo(() => getBrowserTimeZone(), []);
   const tzOffsetMinutes = useMemo(() => getBrowserTimeZoneOffsetMinutes(), []);
   const mockNow = useMemo(() => getMockNow(), []);
-  const cacheKey = publicMode
-    ? null
-    : auth?.userId || auth?.email || "default";
+  const cacheKey = publicMode ? null : auth?.userId || auth?.email || "default";
   const [selectedPeriod, setSelectedPeriod] = useState("week");
   const period = screenshotMode ? "total" : selectedPeriod;
   const range = useMemo(
@@ -448,22 +418,21 @@ export function DashboardPage({
         offsetMinutes: tzOffsetMinutes,
         now: mockNow,
       }),
-    [mockNow, period, timeZone, tzOffsetMinutes]
+    [mockNow, period, timeZone, tzOffsetMinutes],
   );
   const from = range.from;
   const to = range.to;
   const timeZoneLabel = useMemo(
     () => formatTimeZoneLabel({ timeZone, offsetMinutes: tzOffsetMinutes }),
-    [timeZone, tzOffsetMinutes]
+    [timeZone, tzOffsetMinutes],
   );
   const timeZoneShortLabel = useMemo(
-    () =>
-      formatTimeZoneShortLabel({ timeZone, offsetMinutes: tzOffsetMinutes }),
-    [timeZone, tzOffsetMinutes]
+    () => formatTimeZoneShortLabel({ timeZone, offsetMinutes: tzOffsetMinutes }),
+    [timeZone, tzOffsetMinutes],
   );
   const timeZoneRangeLabel = useMemo(
     () => `Local time (${timeZoneShortLabel})`,
-    [timeZoneShortLabel]
+    [timeZoneShortLabel],
   );
   const trendTimeZone = timeZone;
   const trendTzOffsetMinutes = tzOffsetMinutes;
@@ -475,7 +444,7 @@ export function DashboardPage({
         offsetMinutes: tzOffsetMinutes,
         date: mockNow || new Date(),
       }),
-    [mockNow, timeZone, tzOffsetMinutes]
+    [mockNow, timeZone, tzOffsetMinutes],
   );
 
   const {
@@ -581,10 +550,7 @@ export function DashboardPage({
     if (period === "total") return "month";
     return "day";
   }, [period]);
-  const detailsColumns = useMemo(
-    () => getDetailsSortColumns(detailsDateKey),
-    [detailsDateKey]
-  );
+  const detailsColumns = useMemo(() => getDetailsSortColumns(detailsDateKey), [detailsDateKey]);
   const [sort, setSort] = useState(() => ({ key: "day", dir: "desc" }));
   useEffect(() => {
     setSort((prev) => {
@@ -601,9 +567,7 @@ export function DashboardPage({
   }, [detailsDateKey, sort]);
   const detailsRows = useMemo(() => {
     if (period === "day") {
-      return Array.isArray(trendRows)
-        ? trendRows.filter((row) => row?.hour && !row?.future)
-        : [];
+      return Array.isArray(trendRows) ? trendRows.filter((row) => row?.hour && !row?.future) : [];
     }
     if (period === "total") {
       const rows = Array.isArray(trendRows)
@@ -615,11 +579,11 @@ export function DashboardPage({
   }, [period, trendRows, visibleDaily]);
   const sortedDetails = useMemo(
     () => sortDailyRows(detailsRows, effectiveSort),
-    [detailsRows, effectiveSort]
+    [detailsRows, effectiveSort],
   );
   const hasDetailsActual = useMemo(
     () => detailsRows.some((row) => !row?.missing && !row?.future),
-    [detailsRows]
+    [detailsRows],
   );
   const detailsPageCount = useMemo(() => {
     if (!DETAILS_PAGED_PERIODS.has(period)) return 1;
@@ -645,9 +609,7 @@ export function DashboardPage({
   const trendRowsForDisplay = useMemo(() => {
     if (useDailyTrend) return daily;
     if (period === "day") {
-      return Array.isArray(trendRows)
-        ? trendRows.filter((row) => row?.hour)
-        : [];
+      return Array.isArray(trendRows) ? trendRows.filter((row) => row?.hour) : [];
     }
     return trendRows;
   }, [daily, period, trendRows, useDailyTrend]);
@@ -678,8 +640,7 @@ export function DashboardPage({
 
   function toggleSort(key) {
     setSort((prev) => {
-      if (prev.key === key)
-        return { key, dir: prev.dir === "asc" ? "desc" : "asc" };
+      if (prev.key === key) return { key, dir: prev.dir === "asc" ? "desc" : "asc" };
       return { key, dir: "desc" };
     });
   }
@@ -733,26 +694,23 @@ export function DashboardPage({
     refreshModelBreakdown();
   }, [refreshHeatmap, refreshModelBreakdown, refreshTrend, refreshUsage]);
 
-  const usageLoadingState =
-    usageLoading || heatmapLoading || trendLoading || modelBreakdownLoading;
+  const usageLoadingState = usageLoading || heatmapLoading || trendLoading || modelBreakdownLoading;
   const usageSourceLabel = useMemo(
     () =>
       copy("shared.data_source", {
         source: String(usageSource || "edge").toUpperCase(),
       }),
-    [usageSource]
+    [usageSource],
   );
   const publicViewInvalid = useMemo(() => {
     if (!publicMode || !usageError) return false;
     const status =
       typeof usageError === "object" && usageError
-        ? usageError?.status ?? usageError?.statusCode
+        ? (usageError?.status ?? usageError?.statusCode)
         : null;
     if (status === 401) return true;
     const message =
-      typeof usageError === "string"
-        ? usageError
-        : String(usageError?.message || usageError || "");
+      typeof usageError === "string" ? usageError : String(usageError?.message || usageError || "");
     return /unauthorized|invalid|token|revoked|401/i.test(message);
   }, [publicMode, usageError]);
   const identityRawName = useMemo(() => {
@@ -822,8 +780,8 @@ export function DashboardPage({
           typeof row?.plan_type === "string"
             ? row.plan_type
             : typeof row?.planType === "string"
-            ? row.planType
-            : "";
+              ? row.planType
+              : "";
         const planType = planTypeRaw.trim();
         if (!tool || !planType) return null;
         return {
@@ -835,8 +793,8 @@ export function DashboardPage({
             typeof row?.rate_limit_tier === "string"
               ? row.rate_limit_tier.trim()
               : typeof row?.rateLimitTier === "string"
-              ? row.rateLimitTier.trim()
-              : "",
+                ? row.rateLimitTier.trim()
+                : "",
         };
       })
       .filter(Boolean);
@@ -900,15 +858,13 @@ export function DashboardPage({
   const screenshotTwitterHint = copy("dashboard.screenshot.twitter_hint");
   const placeholderShort = copy("shared.placeholder.short");
   const agentSummary = useMemo(() => {
-    const sources = Array.isArray(modelBreakdown?.sources)
-      ? modelBreakdown.sources
-      : [];
+    const sources = Array.isArray(modelBreakdown?.sources) ? modelBreakdown.sources : [];
     let topSource = null;
     let topSourceTokens = 0;
 
     for (const source of sources) {
       const tokens = toFiniteNumber(
-        source?.totals?.billable_total_tokens ?? source?.totals?.total_tokens
+        source?.totals?.billable_total_tokens ?? source?.totals?.total_tokens,
       );
       if (!Number.isFinite(tokens) || tokens <= 0) continue;
       if (tokens > topSourceTokens) {
@@ -922,14 +878,12 @@ export function DashboardPage({
     let modelPercent = "0.0";
 
     if (topSource && topSourceTokens > 0) {
-      agentName = topSource?.source
-        ? String(topSource.source).toUpperCase()
-        : placeholderShort;
+      agentName = topSource?.source ? String(topSource.source).toUpperCase() : placeholderShort;
       const models = Array.isArray(topSource?.models) ? topSource.models : [];
       let topModelTokens = 0;
       for (const model of models) {
         const tokens = toFiniteNumber(
-          model?.totals?.billable_total_tokens ?? model?.totals?.total_tokens
+          model?.totals?.billable_total_tokens ?? model?.totals?.total_tokens,
         );
         if (!Number.isFinite(tokens) || tokens <= 0) continue;
         if (tokens > topModelTokens) {
@@ -945,8 +899,7 @@ export function DashboardPage({
     return { agentName, modelName, modelPercent };
   }, [modelBreakdown, placeholderShort]);
   const displayTotalTokens = toDisplayNumber(summaryTotalTokens);
-  const twitterTotalTokens =
-    displayTotalTokens === "-" ? placeholderShort : displayTotalTokens;
+  const twitterTotalTokens = displayTotalTokens === "-" ? placeholderShort : displayTotalTokens;
   const screenshotTwitterText = copy("dashboard.screenshot.twitter_text", {
     total_tokens: twitterTotalTokens,
     agent_name: agentSummary.agentName,
@@ -991,8 +944,7 @@ export function DashboardPage({
           height: `${scrollHeight}px`,
         },
         filter: (node) =>
-          !(node instanceof HTMLElement) ||
-          node.dataset?.screenshotExclude !== "true",
+          !(node instanceof HTMLElement) || node.dataset?.screenshotExclude !== "true",
       });
       if (blob) return blob;
       const dataUrl = await toPng(root, {
@@ -1006,8 +958,7 @@ export function DashboardPage({
           height: `${scrollHeight}px`,
         },
         filter: (node) =>
-          !(node instanceof HTMLElement) ||
-          node.dataset?.screenshotExclude !== "true",
+          !(node instanceof HTMLElement) || node.dataset?.screenshotExclude !== "true",
       });
       if (!dataUrl) return null;
       const response = await fetch(dataUrl);
@@ -1055,12 +1006,9 @@ export function DashboardPage({
   const footerLeftContent = screenshotMode
     ? null
     : accessEnabled
-    ? copy("dashboard.footer.active", { range: timeZoneRangeLabel })
-    : copy("dashboard.footer.auth");
-  const periodsForDisplay = useMemo(
-    () => (screenshotMode ? [] : PERIODS),
-    [screenshotMode]
-  );
+      ? copy("dashboard.footer.active", { range: timeZoneRangeLabel })
+      : copy("dashboard.footer.auth");
+  const periodsForDisplay = useMemo(() => (screenshotMode ? [] : PERIODS), [screenshotMode]);
 
   const metricsRows = useMemo(
     () => [
@@ -1092,23 +1040,22 @@ export function DashboardPage({
       summary?.output_tokens,
       summary?.reasoning_output_tokens,
       summaryTotalTokens,
-    ]
+    ],
   );
 
   const summaryCostValue = useMemo(() => {
     const formatted = formatUsdCurrency(summary?.total_cost_usd);
-    if (!formatted || formatted === "-" || formatted.startsWith("$"))
-      return formatted;
+    if (!formatted || formatted === "-" || formatted.startsWith("$")) return formatted;
     return `$${formatted}`;
   }, [summary?.total_cost_usd]);
 
   const fleetData = useMemo(
     () => buildFleetData(modelBreakdown, { copyFn: copy }),
-    [modelBreakdown]
+    [modelBreakdown],
   );
   const topModels = useMemo(
     () => buildTopModels(modelBreakdown, { limit: 3, copyFn: copy }),
-    [modelBreakdown]
+    [modelBreakdown],
   );
   const projectUsageBlock = useMemo(
     () => (
@@ -1120,13 +1067,12 @@ export function DashboardPage({
         error={projectUsageError}
       />
     ),
-    [projectUsageEntries, projectUsageLimit, projectUsageLoading, projectUsageError]
+    [projectUsageEntries, projectUsageLimit, projectUsageLoading, projectUsageError],
   );
 
   const openCostModal = useCallback(() => setCostModalOpen(true), []);
   const closeCostModal = useCallback(() => setCostModalOpen(false), []);
-  const costInfoEnabled =
-    summaryCostValue && summaryCostValue !== "-" && fleetData.length > 0;
+  const costInfoEnabled = summaryCostValue && summaryCostValue !== "-" && fleetData.length > 0;
 
   const installInitCmdBase = copy("dashboard.install.cmd.init");
   const resolvedLinkCode = !linkCodeExpired ? linkCode : null;
@@ -1144,8 +1090,7 @@ export function DashboardPage({
   const sessionExpiredCopyLabel = copy("dashboard.session_expired.copy_label");
   const sessionExpiredCopiedLabel = copy("dashboard.session_expired.copied");
   const hasActiveDeviceToken = Boolean(
-    userStatus?.install?.has_active_device_token ??
-      userStatus?.install?.hasActiveDeviceToken
+    userStatus?.install?.has_active_device_token ?? userStatus?.install?.hasActiveDeviceToken,
   );
   const shouldShowInstall = shouldShowInstallCard({
     publicMode,
@@ -1175,12 +1120,8 @@ export function DashboardPage({
     const url = new URL(`/share/${publicViewToken}`, window.location.origin);
     return url.toString();
   }, [publicViewToken]);
-  const publicViewCopyButtonLabel = publicViewCopied
-    ? publicViewCopiedLabel
-    : publicViewCopyLabel;
-  const publicViewToggleLabel = publicViewEnabled
-    ? publicViewDisableLabel
-    : publicViewEnableLabel;
+  const publicViewCopyButtonLabel = publicViewCopied ? publicViewCopiedLabel : publicViewCopyLabel;
+  const publicViewToggleLabel = publicViewEnabled ? publicViewDisableLabel : publicViewEnableLabel;
 
   const handleCopyInstall = useCallback(async () => {
     if (!installInitCmdCopy) return;
@@ -1213,8 +1154,7 @@ export function DashboardPage({
           baseUrl,
           accessToken: resolvedToken,
         });
-        const token =
-          typeof data?.share_token === "string" ? data.share_token : null;
+        const token = typeof data?.share_token === "string" ? data.share_token : null;
         setPublicViewToken(token);
         if (token && typeof window !== "undefined") {
           const url = new URL(`/share/${token}`, window.location.origin);
@@ -1231,13 +1171,7 @@ export function DashboardPage({
     if (!didCopy) return;
     setPublicViewCopied(true);
     window.setTimeout(() => setPublicViewCopied(false), 2000);
-  }, [
-    effectiveAuthToken,
-    baseUrl,
-    publicViewActionLoading,
-    publicViewEnabled,
-    publicViewUrl,
-  ]);
+  }, [effectiveAuthToken, baseUrl, publicViewActionLoading, publicViewEnabled, publicViewUrl]);
 
   const handleTogglePublicView = useCallback(async () => {
     if (publicViewActionLoading) return;
@@ -1265,10 +1199,7 @@ export function DashboardPage({
     }
   }, [effectiveAuthToken, baseUrl, publicViewActionLoading, publicViewEnabled]);
 
-  const dailyEmptyTemplate = useMemo(
-    () => copy("dashboard.daily.empty", { cmd: "{{cmd}}" }),
-    []
-  );
+  const dailyEmptyTemplate = useMemo(() => copy("dashboard.daily.empty", { cmd: "{{cmd}}" }), []);
   const [dailyEmptyPrefix, dailyEmptySuffix] = useMemo(() => {
     const parts = dailyEmptyTemplate.split("{{cmd}}");
     if (parts.length === 1) return [dailyEmptyTemplate, ""];
@@ -1304,9 +1235,7 @@ export function DashboardPage({
           {copy("dashboard.sign_out")}
         </MatrixButton>
       ) : (
-        <span className="text-[10px] opacity-60">
-          {copy("dashboard.not_signed_in")}
-        </span>
+        <span className="text-[10px] opacity-60">{copy("dashboard.not_signed_in")}</span>
       )}
     </div>
   );

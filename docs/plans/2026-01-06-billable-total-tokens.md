@@ -15,24 +15,30 @@
 ### Task 1: Update CLI ingestion for Claude + OpenCode cache creation
 
 **Files:**
+
 - Modify: `src/lib/rollout.js`
 - Modify: `test/rollout-parser.test.js`
 
 **Step 1: Write the failing test**
 
 Add tests (or extend existing ones) to assert:
+
 - Claude `input_tokens` includes `cache_creation_input_tokens`.
 - OpenCode `input_tokens` includes `tokens.cache.write`.
 
 Example (Claude):
+
 ```js
 const line = buildClaudeUsageLine({ ts, input: 1, output: 1, cacheCreation: 3, cacheRead: 2 });
 // expect queued[0].input_tokens === 4 and cached_input_tokens === 2
 ```
 
 Example (OpenCode):
+
 ```js
-const message = buildOpencodeMessage({ tokens: { input: 1, output: 1, reasoning: 0, cached: 2, cacheWrite: 5 } });
+const message = buildOpencodeMessage({
+  tokens: { input: 1, output: 1, reasoning: 0, cached: 2, cacheWrite: 5 },
+});
 // expect queued[0].input_tokens === 6 and cached_input_tokens === 2
 ```
 
@@ -60,12 +66,14 @@ Hold until all tasks complete (per repo workflow).
 ### Task 2: Add shared billable total calculator (Insforge)
 
 **Files:**
+
 - Create: `insforge-src/shared/usage-billable.js`
 - Create: `test/usage-billable.test.js`
 
 **Step 1: Write the failing test**
 
 Add tests for source rules:
+
 - `codex/every-code`: billable = input + output + reasoning
 - `claude`: billable = input + cached + output + reasoning
 - `gemini`: billable = total
@@ -95,6 +103,7 @@ Hold until all tasks complete (per repo workflow).
 ### Task 3: Emit billable totals in usage endpoints
 
 **Files:**
+
 - Modify: `insforge-src/functions/vibescore-usage-summary.js`
 - Modify: `insforge-src/functions/vibescore-usage-daily.js`
 - Modify: `insforge-src/functions/vibescore-usage-hourly.js`
@@ -105,11 +114,12 @@ Hold until all tasks complete (per repo workflow).
 **Step 1: Write/extend failing tests**
 
 Extend `test/edge-functions.test.js` to assert `billable_total_tokens` appears in:
+
 - usage-summary `totals`
 - usage-daily `summary.totals`
 - usage-hourly rows
 - usage-model-breakdown rows
-(heatmap/monthly use shared totals but can be covered indirectly if they share helper paths)
+  (heatmap/monthly use shared totals but can be covered indirectly if they share helper paths)
 
 **Step 2: Run test to verify it fails**
 
@@ -135,6 +145,7 @@ Hold until all tasks complete (per repo workflow).
 ### Task 4: Update dashboard to prefer billable totals
 
 **Files:**
+
 - Modify: `dashboard/src/pages/DashboardPage.jsx`
 - Modify: `dashboard/src/pages/AnnualPosterPage.jsx`
 - Modify: `dashboard/src/lib/usage-aggregate.js`
@@ -172,6 +183,7 @@ Hold until all tasks complete (per repo workflow).
 ### Task 5: Rebuild Insforge functions bundle
 
 **Files:**
+
 - Modify (generated): `insforge-functions/*.js`
 
 **Step 1: Build**
@@ -193,6 +205,7 @@ Commit all changes.
 ## Final Verification
 
 Run:
+
 - `node --test test/rollout-parser.test.js`
 - `node --test test/usage-billable.test.js`
 - `node --test test/edge-functions.test.js`

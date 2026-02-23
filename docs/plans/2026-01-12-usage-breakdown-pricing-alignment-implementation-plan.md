@@ -15,99 +15,100 @@
 ### Task 1: Add failing test for per-alias pricing in model breakdown
 
 **Files:**
+
 - Modify: `test/edge-functions.test.js`
 
 **Step 1: 编写失败测试**
 
 ```js
-test('vibeusage-usage-model-breakdown prices per-alias effective_from when unfiltered', async () => {
-  const fn = require('../insforge-functions/vibeusage-usage-model-breakdown');
+test("vibeusage-usage-model-breakdown prices per-alias effective_from when unfiltered", async () => {
+  const fn = require("../insforge-functions/vibeusage-usage-model-breakdown");
 
-  const userId = '23232323-2323-2323-2323-232323232323';
-  const userJwt = 'user_jwt_test';
+  const userId = "23232323-2323-2323-2323-232323232323";
+  const userJwt = "user_jwt_test";
 
   const hourlyRows = [
     {
-      hour_start: '2025-01-15T00:00:00.000Z',
-      source: 'codex',
-      model: 'gpt-foo',
+      hour_start: "2025-01-15T00:00:00.000Z",
+      source: "codex",
+      model: "gpt-foo",
       total_tokens: 1000000,
       input_tokens: 1000000,
       cached_input_tokens: 0,
       output_tokens: 0,
-      reasoning_output_tokens: 0
+      reasoning_output_tokens: 0,
     },
     {
-      hour_start: '2025-02-15T00:00:00.000Z',
-      source: 'codex',
-      model: 'gpt-foo',
+      hour_start: "2025-02-15T00:00:00.000Z",
+      source: "codex",
+      model: "gpt-foo",
       total_tokens: 1000000,
       input_tokens: 1000000,
       cached_input_tokens: 0,
       output_tokens: 0,
-      reasoning_output_tokens: 0
-    }
+      reasoning_output_tokens: 0,
+    },
   ];
 
   const aliasRows = [
     {
-      usage_model: 'gpt-foo',
-      canonical_model: 'alpha',
-      display_name: 'Alpha',
-      effective_from: '2025-01-01',
-      active: true
+      usage_model: "gpt-foo",
+      canonical_model: "alpha",
+      display_name: "Alpha",
+      effective_from: "2025-01-01",
+      active: true,
     },
     {
-      usage_model: 'gpt-foo',
-      canonical_model: 'beta',
-      display_name: 'Beta',
-      effective_from: '2025-02-01',
-      active: true
-    }
+      usage_model: "gpt-foo",
+      canonical_model: "beta",
+      display_name: "Beta",
+      effective_from: "2025-02-01",
+      active: true,
+    },
   ];
 
   const pricingProfiles = {
     alpha: {
-      model: 'alpha',
-      source: 'openrouter',
-      effective_from: '2025-01-01',
+      model: "alpha",
+      source: "openrouter",
+      effective_from: "2025-01-01",
       input_rate_micro_per_million: 1000000,
       cached_input_rate_micro_per_million: 0,
       output_rate_micro_per_million: 0,
-      reasoning_output_rate_micro_per_million: 0
+      reasoning_output_rate_micro_per_million: 0,
     },
     beta: {
-      model: 'beta',
-      source: 'openrouter',
-      effective_from: '2025-02-01',
+      model: "beta",
+      source: "openrouter",
+      effective_from: "2025-02-01",
       input_rate_micro_per_million: 2000000,
       cached_input_rate_micro_per_million: 0,
       output_rate_micro_per_million: 0,
-      reasoning_output_rate_micro_per_million: 0
-    }
+      reasoning_output_rate_micro_per_million: 0,
+    },
   };
 
   globalThis.createClient = (args) => {
     if (args && args.edgeFunctionToken === userJwt) {
       return {
         auth: {
-          getCurrentUser: async () => ({ data: { user: { id: userId } }, error: null })
+          getCurrentUser: async () => ({ data: { user: { id: userId } }, error: null }),
         },
         database: {
           from: (table) => {
-            if (table === 'vibescore_tracker_hourly') {
+            if (table === "vibescore_tracker_hourly") {
               const query = createQueryMock({ rows: hourlyRows });
               return { select: () => query };
             }
-            if (table === 'vibescore_model_aliases') {
+            if (table === "vibescore_model_aliases") {
               return createQueryMock({ rows: aliasRows });
             }
-            if (table === 'vibescore_pricing_profiles') {
+            if (table === "vibescore_pricing_profiles") {
               const state = { model: null };
               const query = {
                 select: () => query,
                 eq: (col, value) => {
-                  if (col === 'model') state.model = value;
+                  if (col === "model") state.model = value;
                   return query;
                 },
                 lte: () => query,
@@ -120,38 +121,38 @@ test('vibeusage-usage-model-breakdown prices per-alias effective_from when unfil
                 limit: async () => {
                   const row = pricingProfiles[state.model];
                   return { data: row ? [row] : [], error: null };
-                }
+                },
               };
               return query;
             }
-            if (table === 'vibescore_pricing_model_aliases') {
+            if (table === "vibescore_pricing_model_aliases") {
               return createQueryMock({ rows: [] });
             }
             throw new Error(`Unexpected table ${table}`);
-          }
-        }
+          },
+        },
       };
     }
     throw new Error(`Unexpected createClient args: ${JSON.stringify(args)}`);
   };
 
   const req = new Request(
-    'http://localhost/functions/vibeusage-usage-model-breakdown?from=2025-01-01&to=2025-02-15',
+    "http://localhost/functions/vibeusage-usage-model-breakdown?from=2025-01-01&to=2025-02-15",
     {
-      method: 'GET',
-      headers: { Authorization: `Bearer ${userJwt}` }
-    }
+      method: "GET",
+      headers: { Authorization: `Bearer ${userJwt}` },
+    },
   );
 
   const res = await fn(req);
   assert.equal(res.status, 200);
   const body = await res.json();
-  const source = body.sources.find((entry) => entry.source === 'codex');
-  const alpha = source?.models?.find((entry) => entry.model_id === 'alpha');
-  const beta = source?.models?.find((entry) => entry.model_id === 'beta');
-  assert.equal(alpha?.totals?.total_cost_usd, '1.000000');
-  assert.equal(beta?.totals?.total_cost_usd, '2.000000');
-  assert.equal(source?.totals?.total_cost_usd, '3.000000');
+  const source = body.sources.find((entry) => entry.source === "codex");
+  const alpha = source?.models?.find((entry) => entry.model_id === "alpha");
+  const beta = source?.models?.find((entry) => entry.model_id === "beta");
+  assert.equal(alpha?.totals?.total_cost_usd, "1.000000");
+  assert.equal(beta?.totals?.total_cost_usd, "2.000000");
+  assert.equal(source?.totals?.total_cost_usd, "3.000000");
 });
 ```
 
@@ -166,6 +167,7 @@ Expected: FAIL with mismatch on `total_cost_usd` (breakdown still uses single pr
 ### Task 2: Align breakdown cost calculation with summary buckets
 
 **Files:**
+
 - Modify: `insforge-src/functions/vibescore-usage-model-breakdown.js`
 
 **Step 1: 编写最小实现**
@@ -183,6 +185,7 @@ Expected: FAIL with mismatch on `total_cost_usd` (breakdown still uses single pr
 ### Task 3: 生成函数构建产物
 
 **Files:**
+
 - Modify (generated): `insforge-functions/vibescore-usage-model-breakdown.js`
 - Modify (generated): `insforge-functions/vibeusage-usage-model-breakdown.js`
 
@@ -213,6 +216,7 @@ Expected: PASS (记录命令与结果到提交说明/说明文档)。
 ### Task 5: Canvas 同步
 
 **Files:**
+
 - Modify: `architecture.canvas`
 
 **Step 1: 将 Proposed 改为 Implemented**
@@ -235,4 +239,3 @@ Expected: No drift beyond known status/notes updates.
 git add test/edge-functions.test.js insforge-src/functions/vibescore-usage-model-breakdown.js insforge-functions/vibescore-usage-model-breakdown.js insforge-functions/vibeusage-usage-model-breakdown.js architecture.canvas
 git commit -m "fix: align usage model breakdown pricing"
 ```
-

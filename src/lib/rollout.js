@@ -1,14 +1,14 @@
-const fs = require('node:fs/promises');
-const fssync = require('node:fs');
-const path = require('node:path');
-const readline = require('node:readline');
+const fs = require("node:fs/promises");
+const fssync = require("node:fs");
+const path = require("node:path");
+const readline = require("node:readline");
 
-const { ensureDir } = require('./fs');
-const { hashRepoRoot, resolveGitHubPublicStatus } = require('./vibeusage-public-repo');
+const { ensureDir } = require("./fs");
+const { hashRepoRoot, resolveGitHubPublicStatus } = require("./vibeusage-public-repo");
 
-const DEFAULT_SOURCE = 'codex';
-const DEFAULT_MODEL = 'unknown';
-const BUCKET_SEPARATOR = '|';
+const DEFAULT_SOURCE = "codex";
+const DEFAULT_MODEL = "unknown";
+const BUCKET_SEPARATOR = "|";
 
 async function listRolloutFiles(sessionsDir) {
   const out = [];
@@ -27,7 +27,7 @@ async function listRolloutFiles(sessionsDir) {
         const files = await safeReadDir(dayDir);
         for (const f of files) {
           if (!f.isFile()) continue;
-          if (!f.name.startsWith('rollout-') || !f.name.endsWith('.jsonl')) continue;
+          if (!f.name.startsWith("rollout-") || !f.name.endsWith(".jsonl")) continue;
           out.push(path.join(dayDir, f.name));
         }
       }
@@ -50,11 +50,11 @@ async function listGeminiSessionFiles(tmpDir) {
   const roots = await safeReadDir(tmpDir);
   for (const root of roots) {
     if (!root.isDirectory()) continue;
-    const chatsDir = path.join(tmpDir, root.name, 'chats');
+    const chatsDir = path.join(tmpDir, root.name, "chats");
     const chats = await safeReadDir(chatsDir);
     for (const entry of chats) {
       if (!entry.isFile()) continue;
-      if (!entry.name.startsWith('session-') || !entry.name.endsWith('.json')) continue;
+      if (!entry.name.startsWith("session-") || !entry.name.endsWith(".json")) continue;
       out.push(path.join(chatsDir, entry.name));
     }
   }
@@ -64,7 +64,7 @@ async function listGeminiSessionFiles(tmpDir) {
 
 async function listOpencodeMessageFiles(storageDir) {
   const out = [];
-  const messageDir = path.join(storageDir, 'message');
+  const messageDir = path.join(storageDir, "message");
   await walkOpencodeMessages(messageDir, out);
   out.sort((a, b) => a.localeCompare(b));
   return out;
@@ -77,16 +77,16 @@ async function parseRolloutIncremental({
   projectQueuePath,
   onProgress,
   source,
-  publicRepoResolver
+  publicRepoResolver,
 }) {
   await ensureDir(path.dirname(queuePath));
   let filesProcessed = 0;
   let eventsAggregated = 0;
 
-  const cb = typeof onProgress === 'function' ? onProgress : null;
+  const cb = typeof onProgress === "function" ? onProgress : null;
   const totalFiles = Array.isArray(rolloutFiles) ? rolloutFiles.length : 0;
   const hourlyState = normalizeHourlyState(cursors?.hourly);
-  const projectEnabled = typeof projectQueuePath === 'string' && projectQueuePath.length > 0;
+  const projectEnabled = typeof projectQueuePath === "string" && projectQueuePath.length > 0;
   const projectState = projectEnabled ? normalizeProjectState(cursors?.projectHourly) : null;
   const projectTouchedBuckets = projectEnabled ? new Set() : null;
   const projectMetaCache = projectEnabled ? new Map() : null;
@@ -94,16 +94,18 @@ async function parseRolloutIncremental({
   const touchedBuckets = new Set();
   const defaultSource = normalizeSourceInput(source) || DEFAULT_SOURCE;
 
-  if (!cursors.files || typeof cursors.files !== 'object') {
+  if (!cursors.files || typeof cursors.files !== "object") {
     cursors.files = {};
   }
 
   for (let idx = 0; idx < rolloutFiles.length; idx++) {
     const entry = rolloutFiles[idx];
-    const filePath = typeof entry === 'string' ? entry : entry?.path;
+    const filePath = typeof entry === "string" ? entry : entry?.path;
     if (!filePath) continue;
     const fileSource =
-      typeof entry === 'string' ? defaultSource : normalizeSourceInput(entry?.source) || defaultSource;
+      typeof entry === "string"
+        ? defaultSource
+        : normalizeSourceInput(entry?.source) || defaultSource;
     const st = await fs.stat(filePath).catch(() => null);
     if (!st || !st.isFile()) continue;
 
@@ -120,7 +122,7 @@ async function parseRolloutIncremental({
           projectMetaCache,
           publicRepoCache,
           publicRepoResolver,
-          projectState
+          projectState,
         })
       : null;
     const projectRef = projectContext?.projectRef || null;
@@ -140,7 +142,7 @@ async function parseRolloutIncremental({
       projectKey,
       projectMetaCache,
       publicRepoCache,
-      publicRepoResolver
+      publicRepoResolver,
     });
 
     cursors.files[key] = {
@@ -148,7 +150,7 @@ async function parseRolloutIncremental({
       offset: result.endOffset,
       lastTotal: result.lastTotal,
       lastModel: result.lastModel,
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
     };
 
     filesProcessed += 1;
@@ -161,7 +163,7 @@ async function parseRolloutIncremental({
         filePath,
         filesProcessed,
         eventsAggregated,
-        bucketsQueued: touchedBuckets.size
+        bucketsQueued: touchedBuckets.size,
       });
     }
   }
@@ -187,34 +189,36 @@ async function parseClaudeIncremental({
   projectQueuePath,
   onProgress,
   source,
-  publicRepoResolver
+  publicRepoResolver,
 }) {
   await ensureDir(path.dirname(queuePath));
   let filesProcessed = 0;
   let eventsAggregated = 0;
 
-  const cb = typeof onProgress === 'function' ? onProgress : null;
+  const cb = typeof onProgress === "function" ? onProgress : null;
   const files = Array.isArray(projectFiles) ? projectFiles : [];
   const totalFiles = files.length;
   const hourlyState = normalizeHourlyState(cursors?.hourly);
-  const projectEnabled = typeof projectQueuePath === 'string' && projectQueuePath.length > 0;
+  const projectEnabled = typeof projectQueuePath === "string" && projectQueuePath.length > 0;
   const projectState = projectEnabled ? normalizeProjectState(cursors?.projectHourly) : null;
   const projectTouchedBuckets = projectEnabled ? new Set() : null;
   const projectMetaCache = projectEnabled ? new Map() : null;
   const publicRepoCache = projectEnabled ? new Map() : null;
   const touchedBuckets = new Set();
-  const defaultSource = normalizeSourceInput(source) || 'claude';
+  const defaultSource = normalizeSourceInput(source) || "claude";
 
-  if (!cursors.files || typeof cursors.files !== 'object') {
+  if (!cursors.files || typeof cursors.files !== "object") {
     cursors.files = {};
   }
 
   for (let idx = 0; idx < files.length; idx++) {
     const entry = files[idx];
-    const filePath = typeof entry === 'string' ? entry : entry?.path;
+    const filePath = typeof entry === "string" ? entry : entry?.path;
     if (!filePath) continue;
     const fileSource =
-      typeof entry === 'string' ? defaultSource : normalizeSourceInput(entry?.source) || defaultSource;
+      typeof entry === "string"
+        ? defaultSource
+        : normalizeSourceInput(entry?.source) || defaultSource;
     const st = await fs.stat(filePath).catch(() => null);
     if (!st || !st.isFile()) continue;
 
@@ -229,7 +233,7 @@ async function parseClaudeIncremental({
           projectMetaCache,
           publicRepoCache,
           publicRepoResolver,
-          projectState
+          projectState,
         })
       : null;
     const projectRef = projectContext?.projectRef || null;
@@ -244,13 +248,13 @@ async function parseClaudeIncremental({
       projectState,
       projectTouchedBuckets,
       projectRef,
-      projectKey
+      projectKey,
     });
 
     cursors.files[key] = {
       inode,
       offset: result.endOffset,
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
     };
 
     filesProcessed += 1;
@@ -263,7 +267,7 @@ async function parseClaudeIncremental({
         filePath,
         filesProcessed,
         eventsAggregated,
-        bucketsQueued: touchedBuckets.size
+        bucketsQueued: touchedBuckets.size,
       });
     }
   }
@@ -289,34 +293,36 @@ async function parseGeminiIncremental({
   projectQueuePath,
   onProgress,
   source,
-  publicRepoResolver
+  publicRepoResolver,
 }) {
   await ensureDir(path.dirname(queuePath));
   let filesProcessed = 0;
   let eventsAggregated = 0;
 
-  const cb = typeof onProgress === 'function' ? onProgress : null;
+  const cb = typeof onProgress === "function" ? onProgress : null;
   const files = Array.isArray(sessionFiles) ? sessionFiles : [];
   const totalFiles = files.length;
   const hourlyState = normalizeHourlyState(cursors?.hourly);
-  const projectEnabled = typeof projectQueuePath === 'string' && projectQueuePath.length > 0;
+  const projectEnabled = typeof projectQueuePath === "string" && projectQueuePath.length > 0;
   const projectState = projectEnabled ? normalizeProjectState(cursors?.projectHourly) : null;
   const projectTouchedBuckets = projectEnabled ? new Set() : null;
   const projectMetaCache = projectEnabled ? new Map() : null;
   const publicRepoCache = projectEnabled ? new Map() : null;
   const touchedBuckets = new Set();
-  const defaultSource = normalizeSourceInput(source) || 'gemini';
+  const defaultSource = normalizeSourceInput(source) || "gemini";
 
-  if (!cursors.files || typeof cursors.files !== 'object') {
+  if (!cursors.files || typeof cursors.files !== "object") {
     cursors.files = {};
   }
 
   for (let idx = 0; idx < files.length; idx++) {
     const entry = files[idx];
-    const filePath = typeof entry === 'string' ? entry : entry?.path;
+    const filePath = typeof entry === "string" ? entry : entry?.path;
     if (!filePath) continue;
     const fileSource =
-      typeof entry === 'string' ? defaultSource : normalizeSourceInput(entry?.source) || defaultSource;
+      typeof entry === "string"
+        ? defaultSource
+        : normalizeSourceInput(entry?.source) || defaultSource;
     const st = await fs.stat(filePath).catch(() => null);
     if (!st || !st.isFile()) continue;
 
@@ -333,7 +339,7 @@ async function parseGeminiIncremental({
           projectMetaCache,
           publicRepoCache,
           publicRepoResolver,
-          projectState
+          projectState,
         })
       : null;
     const projectRef = projectContext?.projectRef || null;
@@ -350,7 +356,7 @@ async function parseGeminiIncremental({
       projectState,
       projectTouchedBuckets,
       projectRef,
-      projectKey
+      projectKey,
     });
 
     cursors.files[key] = {
@@ -358,7 +364,7 @@ async function parseGeminiIncremental({
       lastIndex: result.lastIndex,
       lastTotals: result.lastTotals,
       lastModel: result.lastModel,
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
     };
 
     filesProcessed += 1;
@@ -371,7 +377,7 @@ async function parseGeminiIncremental({
         filePath,
         filesProcessed,
         eventsAggregated,
-        bucketsQueued: touchedBuckets.size
+        bucketsQueued: touchedBuckets.size,
       });
     }
   }
@@ -397,17 +403,17 @@ async function parseOpencodeIncremental({
   projectQueuePath,
   onProgress,
   source,
-  publicRepoResolver
+  publicRepoResolver,
 }) {
   await ensureDir(path.dirname(queuePath));
   let filesProcessed = 0;
   let eventsAggregated = 0;
 
-  const cb = typeof onProgress === 'function' ? onProgress : null;
+  const cb = typeof onProgress === "function" ? onProgress : null;
   const files = Array.isArray(messageFiles) ? messageFiles : [];
   const totalFiles = files.length;
   const hourlyState = normalizeHourlyState(cursors?.hourly);
-  const projectEnabled = typeof projectQueuePath === 'string' && projectQueuePath.length > 0;
+  const projectEnabled = typeof projectQueuePath === "string" && projectQueuePath.length > 0;
   const projectState = projectEnabled ? normalizeProjectState(cursors?.projectHourly) : null;
   const projectTouchedBuckets = projectEnabled ? new Set() : null;
   const projectMetaCache = projectEnabled ? new Map() : null;
@@ -415,18 +421,20 @@ async function parseOpencodeIncremental({
   const opencodeState = normalizeOpencodeState(cursors?.opencode);
   const messageIndex = opencodeState.messages;
   const touchedBuckets = new Set();
-  const defaultSource = normalizeSourceInput(source) || 'opencode';
+  const defaultSource = normalizeSourceInput(source) || "opencode";
 
-  if (!cursors.files || typeof cursors.files !== 'object') {
+  if (!cursors.files || typeof cursors.files !== "object") {
     cursors.files = {};
   }
 
   for (let idx = 0; idx < files.length; idx++) {
     const entry = files[idx];
-    const filePath = typeof entry === 'string' ? entry : entry?.path;
+    const filePath = typeof entry === "string" ? entry : entry?.path;
     if (!filePath) continue;
     const fileSource =
-      typeof entry === 'string' ? defaultSource : normalizeSourceInput(entry?.source) || defaultSource;
+      typeof entry === "string"
+        ? defaultSource
+        : normalizeSourceInput(entry?.source) || defaultSource;
     const st = await fs.stat(filePath).catch(() => null);
     if (!st || !st.isFile()) continue;
 
@@ -435,7 +443,8 @@ async function parseOpencodeIncremental({
     const inode = st.ino || 0;
     const size = Number.isFinite(st.size) ? st.size : 0;
     const mtimeMs = Number.isFinite(st.mtimeMs) ? st.mtimeMs : 0;
-    const unchanged = prev && prev.inode === inode && prev.size === size && prev.mtimeMs === mtimeMs;
+    const unchanged =
+      prev && prev.inode === inode && prev.size === size && prev.mtimeMs === mtimeMs;
     if (unchanged) {
       filesProcessed += 1;
       if (cb) {
@@ -445,22 +454,24 @@ async function parseOpencodeIncremental({
           filePath,
           filesProcessed,
           eventsAggregated,
-          bucketsQueued: touchedBuckets.size
+          bucketsQueued: touchedBuckets.size,
         });
       }
       continue;
     }
 
-    const fallbackTotals = prev && typeof prev.lastTotals === 'object' ? prev.lastTotals : null;
+    const fallbackTotals = prev && typeof prev.lastTotals === "object" ? prev.lastTotals : null;
     const fallbackMessageKey =
-      prev && typeof prev.messageKey === 'string' && prev.messageKey.trim() ? prev.messageKey.trim() : null;
+      prev && typeof prev.messageKey === "string" && prev.messageKey.trim()
+        ? prev.messageKey.trim()
+        : null;
     const projectContext = projectEnabled
       ? await resolveProjectContextForFile({
           filePath,
           projectMetaCache,
           publicRepoCache,
           publicRepoResolver,
-          projectState
+          projectState,
         })
       : null;
     const projectRef = projectContext?.projectRef || null;
@@ -477,7 +488,7 @@ async function parseOpencodeIncremental({
       projectState,
       projectTouchedBuckets,
       projectRef,
-      projectKey
+      projectKey,
     });
 
     cursors.files[key] = {
@@ -486,7 +497,7 @@ async function parseOpencodeIncremental({
       mtimeMs,
       lastTotals: result.lastTotals,
       messageKey: result.messageKey || null,
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
     };
 
     filesProcessed += 1;
@@ -495,7 +506,7 @@ async function parseOpencodeIncremental({
     if (result.messageKey && result.shouldUpdate) {
       messageIndex[result.messageKey] = {
         lastTotals: result.lastTotals,
-        updatedAt: new Date().toISOString()
+        updatedAt: new Date().toISOString(),
       };
     }
 
@@ -506,7 +517,7 @@ async function parseOpencodeIncremental({
         filePath,
         filesProcessed,
         eventsAggregated,
-        bucketsQueued: touchedBuckets.size
+        bucketsQueued: touchedBuckets.size,
       });
     }
   }
@@ -533,32 +544,34 @@ async function parseOpenclawIncremental({
   queuePath,
   projectQueuePath,
   onProgress,
-  source
+  source,
 }) {
   await ensureDir(path.dirname(queuePath));
   let filesProcessed = 0;
   let eventsAggregated = 0;
 
-  const cb = typeof onProgress === 'function' ? onProgress : null;
+  const cb = typeof onProgress === "function" ? onProgress : null;
   const files = Array.isArray(sessionFiles) ? sessionFiles : [];
   const totalFiles = files.length;
   const hourlyState = normalizeHourlyState(cursors?.hourly);
-  const projectEnabled = typeof projectQueuePath === 'string' && projectQueuePath.length > 0;
+  const projectEnabled = typeof projectQueuePath === "string" && projectQueuePath.length > 0;
   const projectState = projectEnabled ? normalizeProjectState(cursors?.projectHourly) : null;
   const projectTouchedBuckets = projectEnabled ? new Set() : null;
   const touchedBuckets = new Set();
-  const defaultSource = normalizeSourceInput(source) || 'openclaw';
+  const defaultSource = normalizeSourceInput(source) || "openclaw";
 
-  if (!cursors.files || typeof cursors.files !== 'object') {
+  if (!cursors.files || typeof cursors.files !== "object") {
     cursors.files = {};
   }
 
   for (let idx = 0; idx < files.length; idx++) {
     const entry = files[idx];
-    const filePath = typeof entry === 'string' ? entry : entry?.path;
+    const filePath = typeof entry === "string" ? entry : entry?.path;
     if (!filePath) continue;
     const fileSource =
-      typeof entry === 'string' ? defaultSource : normalizeSourceInput(entry?.source) || defaultSource;
+      typeof entry === "string"
+        ? defaultSource
+        : normalizeSourceInput(entry?.source) || defaultSource;
     const st = await fs.stat(filePath).catch(() => null);
     if (!st || !st.isFile()) continue;
 
@@ -574,13 +587,13 @@ async function parseOpenclawIncremental({
       touchedBuckets,
       source: fileSource,
       projectState,
-      projectTouchedBuckets
+      projectTouchedBuckets,
     });
 
     cursors.files[key] = {
       inode,
       offset: result.endOffset,
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
     };
 
     filesProcessed += 1;
@@ -593,7 +606,7 @@ async function parseOpenclawIncremental({
         filePath,
         filesProcessed,
         eventsAggregated,
-        bucketsQueued: touchedBuckets.size
+        bucketsQueued: touchedBuckets.size,
       });
     }
   }
@@ -619,20 +632,20 @@ async function parseOpenclawSessionFile({
   touchedBuckets,
   source,
   projectState,
-  projectTouchedBuckets
+  projectTouchedBuckets,
 }) {
   const st = await fs.stat(filePath);
   const endOffset = st.size;
   if (startOffset >= endOffset) return { endOffset, eventsAggregated: 0 };
 
-  const stream = fssync.createReadStream(filePath, { encoding: 'utf8', start: startOffset });
+  const stream = fssync.createReadStream(filePath, { encoding: "utf8", start: startOffset });
   const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
 
   let eventsAggregated = 0;
   for await (const line of rl) {
     if (!line) continue;
     // Fast-path filter: OpenClaw assistant messages include message.usage.totalTokens.
-    if (!line.includes('"usage"') || !line.includes('totalTokens')) continue;
+    if (!line.includes('"usage"') || !line.includes("totalTokens")) continue;
 
     let obj;
     try {
@@ -641,14 +654,14 @@ async function parseOpenclawSessionFile({
       continue;
     }
 
-    if (obj?.type !== 'message') continue;
+    if (obj?.type !== "message") continue;
     const msg = obj?.message;
-    if (!msg || typeof msg !== 'object') continue;
+    if (!msg || typeof msg !== "object") continue;
 
     const usage = msg.usage;
-    if (!usage || typeof usage !== 'object') continue;
+    if (!usage || typeof usage !== "object") continue;
 
-    const tokenTimestamp = typeof obj?.timestamp === 'string' ? obj.timestamp : null;
+    const tokenTimestamp = typeof obj?.timestamp === "string" ? obj.timestamp : null;
     if (!tokenTimestamp) continue;
 
     const model = normalizeModelInput(msg.model) || DEFAULT_MODEL;
@@ -658,7 +671,7 @@ async function parseOpenclawSessionFile({
       cached_input_tokens: Number((usage.cacheRead || 0) + (usage.cacheWrite || 0)),
       output_tokens: Number(usage.output || 0),
       reasoning_output_tokens: 0,
-      total_tokens: Number(usage.totalTokens || 0)
+      total_tokens: Number(usage.totalTokens || 0),
     };
 
     if (isAllZeroUsage(delta)) continue;
@@ -694,7 +707,7 @@ async function parseRolloutFile({
   projectKey,
   projectMetaCache,
   publicRepoCache,
-  publicRepoResolver
+  publicRepoResolver,
 }) {
   const st = await fs.stat(filePath);
   const endOffset = st.size;
@@ -702,11 +715,11 @@ async function parseRolloutFile({
     return { endOffset, lastTotal, lastModel, eventsAggregated: 0 };
   }
 
-  const stream = fssync.createReadStream(filePath, { encoding: 'utf8', start: startOffset });
+  const stream = fssync.createReadStream(filePath, { encoding: "utf8", start: startOffset });
   const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
 
-  let model = typeof lastModel === 'string' ? lastModel : null;
-  let totals = lastTotal && typeof lastTotal === 'object' ? lastTotal : null;
+  let model = typeof lastModel === "string" ? lastModel : null;
+  let totals = lastTotal && typeof lastTotal === "object" ? lastTotal : null;
   let currentCwd = null;
   let currentProjectRef = projectRef || null;
   let currentProjectKey = projectKey || null;
@@ -729,14 +742,14 @@ async function parseRolloutFile({
     }
 
     if (
-      (obj?.type === 'turn_context' || obj?.type === 'session_meta') &&
+      (obj?.type === "turn_context" || obj?.type === "session_meta") &&
       obj?.payload &&
-      typeof obj.payload === 'object'
+      typeof obj.payload === "object"
     ) {
-      if (typeof obj.payload.model === 'string') {
+      if (typeof obj.payload.model === "string") {
         model = obj.payload.model;
       }
-      if (projectState && typeof obj.payload.cwd === 'string') {
+      if (projectState && typeof obj.payload.cwd === "string") {
         const nextCwd = obj.payload.cwd.trim();
         if (nextCwd && nextCwd !== currentCwd) {
           const context = await resolveProjectContextForPath({
@@ -744,7 +757,7 @@ async function parseRolloutFile({
             projectMetaCache,
             publicRepoCache,
             publicRepoResolver,
-            projectState
+            projectState,
           });
           currentCwd = nextCwd;
           currentProjectRef = context?.projectRef || null;
@@ -758,9 +771,9 @@ async function parseRolloutFile({
     if (!token) continue;
 
     const info = token.info;
-    if (!info || typeof info !== 'object') continue;
+    if (!info || typeof info !== "object") continue;
 
-    const tokenTimestamp = typeof token.timestamp === 'string' ? token.timestamp : null;
+    const tokenTimestamp = typeof token.timestamp === "string" ? token.timestamp : null;
     if (!tokenTimestamp) continue;
 
     const lastUsage = info.last_token_usage;
@@ -769,7 +782,7 @@ async function parseRolloutFile({
     const delta = pickDelta(lastUsage, totalUsage, totals);
     if (!delta) continue;
 
-    if (totalUsage && typeof totalUsage === 'object') {
+    if (totalUsage && typeof totalUsage === "object") {
       totals = totalUsage;
     }
 
@@ -785,7 +798,7 @@ async function parseRolloutFile({
         currentProjectKey,
         source,
         bucketStart,
-        currentProjectRef
+        currentProjectRef,
       );
       addTotals(projectBucket.totals, delta);
       projectTouchedBuckets.add(projectBucketKey(currentProjectKey, source, bucketStart));
@@ -805,7 +818,7 @@ async function parseClaudeFile({
   projectState,
   projectTouchedBuckets,
   projectRef,
-  projectKey
+  projectKey,
 }) {
   const st = await fs.stat(filePath).catch(() => null);
   if (!st || !st.isFile()) return { endOffset: startOffset, eventsAggregated: 0 };
@@ -813,7 +826,7 @@ async function parseClaudeFile({
   const endOffset = st.size;
   if (startOffset >= endOffset) return { endOffset, eventsAggregated: 0 };
 
-  const stream = fssync.createReadStream(filePath, { encoding: 'utf8', start: startOffset });
+  const stream = fssync.createReadStream(filePath, { encoding: "utf8", start: startOffset });
   const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
 
   let eventsAggregated = 0;
@@ -827,10 +840,10 @@ async function parseClaudeFile({
     }
 
     const usage = obj?.message?.usage || obj?.usage;
-    if (!usage || typeof usage !== 'object') continue;
+    if (!usage || typeof usage !== "object") continue;
 
     const model = normalizeModelInput(obj?.message?.model || obj?.model) || DEFAULT_MODEL;
-    const tokenTimestamp = typeof obj?.timestamp === 'string' ? obj.timestamp : null;
+    const tokenTimestamp = typeof obj?.timestamp === "string" ? obj.timestamp : null;
     if (!tokenTimestamp) continue;
 
     const delta = normalizeClaudeUsage(usage);
@@ -843,7 +856,13 @@ async function parseClaudeFile({
     addTotals(bucket.totals, delta);
     touchedBuckets.add(bucketKey(source, model, bucketStart));
     if (projectKey && projectState && projectTouchedBuckets) {
-      const projectBucket = getProjectBucket(projectState, projectKey, source, bucketStart, projectRef);
+      const projectBucket = getProjectBucket(
+        projectState,
+        projectKey,
+        source,
+        bucketStart,
+        projectRef,
+      );
       addTotals(projectBucket.totals, delta);
       projectTouchedBuckets.add(projectBucketKey(projectKey, source, bucketStart));
     }
@@ -866,9 +885,9 @@ async function parseGeminiFile({
   projectState,
   projectTouchedBuckets,
   projectRef,
-  projectKey
+  projectKey,
 }) {
-  const raw = await fs.readFile(filePath, 'utf8').catch(() => '');
+  const raw = await fs.readFile(filePath, "utf8").catch(() => "");
   if (!raw.trim()) return { lastIndex: startIndex, lastTotals, lastModel, eventsAggregated: 0 };
 
   let session;
@@ -886,18 +905,18 @@ async function parseGeminiFile({
   }
 
   let eventsAggregated = 0;
-  let model = typeof lastModel === 'string' ? lastModel : null;
-  let totals = lastTotals && typeof lastTotals === 'object' ? lastTotals : null;
+  let model = typeof lastModel === "string" ? lastModel : null;
+  let totals = lastTotals && typeof lastTotals === "object" ? lastTotals : null;
   const begin = Number.isFinite(startIndex) ? startIndex + 1 : 0;
 
   for (let idx = begin; idx < messages.length; idx++) {
     const msg = messages[idx];
-    if (!msg || typeof msg !== 'object') continue;
+    if (!msg || typeof msg !== "object") continue;
 
     const normalizedModel = normalizeModelInput(msg.model);
     if (normalizedModel) model = normalizedModel;
 
-    const timestamp = typeof msg.timestamp === 'string' ? msg.timestamp : null;
+    const timestamp = typeof msg.timestamp === "string" ? msg.timestamp : null;
     const currentTotals = normalizeGeminiTokens(msg.tokens);
     if (!timestamp || !currentTotals) {
       totals = currentTotals || totals;
@@ -920,7 +939,13 @@ async function parseGeminiFile({
     addTotals(bucket.totals, delta);
     touchedBuckets.add(bucketKey(source, model, bucketStart));
     if (projectKey && projectState && projectTouchedBuckets) {
-      const projectBucket = getProjectBucket(projectState, projectKey, source, bucketStart, projectRef);
+      const projectBucket = getProjectBucket(
+        projectState,
+        projectKey,
+        source,
+        bucketStart,
+        projectRef,
+      );
       addTotals(projectBucket.totals, delta);
       projectTouchedBuckets.add(projectBucketKey(projectKey, source, bucketStart));
     }
@@ -932,7 +957,7 @@ async function parseGeminiFile({
     lastIndex: messages.length - 1,
     lastTotals: totals,
     lastModel: model,
-    eventsAggregated
+    eventsAggregated,
   };
 }
 
@@ -947,22 +972,26 @@ async function parseOpencodeMessageFile({
   projectState,
   projectTouchedBuckets,
   projectRef,
-  projectKey
+  projectKey,
 }) {
   const fallbackKey =
-    typeof fallbackMessageKey === 'string' && fallbackMessageKey.trim() ? fallbackMessageKey.trim() : null;
-  const legacyTotals = fallbackTotals && typeof fallbackTotals === 'object' ? fallbackTotals : null;
+    typeof fallbackMessageKey === "string" && fallbackMessageKey.trim()
+      ? fallbackMessageKey.trim()
+      : null;
+  const legacyTotals = fallbackTotals && typeof fallbackTotals === "object" ? fallbackTotals : null;
   const fallbackEntry = messageIndex && fallbackKey ? messageIndex[fallbackKey] : null;
   const fallbackLastTotals =
-    fallbackEntry && typeof fallbackEntry.lastTotals === 'object' ? fallbackEntry.lastTotals : legacyTotals;
+    fallbackEntry && typeof fallbackEntry.lastTotals === "object"
+      ? fallbackEntry.lastTotals
+      : legacyTotals;
 
-  const raw = await fs.readFile(filePath, 'utf8').catch(() => '');
+  const raw = await fs.readFile(filePath, "utf8").catch(() => "");
   if (!raw.trim()) {
     return {
       messageKey: fallbackKey,
       lastTotals: fallbackLastTotals,
       eventsAggregated: 0,
-      shouldUpdate: false
+      shouldUpdate: false,
     };
   }
 
@@ -974,13 +1003,13 @@ async function parseOpencodeMessageFile({
       messageKey: fallbackKey,
       lastTotals: fallbackLastTotals,
       eventsAggregated: 0,
-      shouldUpdate: false
+      shouldUpdate: false,
     };
   }
 
   const messageKey = deriveOpencodeMessageKey(msg, filePath);
   const prev = messageIndex && messageKey ? messageIndex[messageKey] : null;
-  const indexTotals = prev && typeof prev.lastTotals === 'object' ? prev.lastTotals : null;
+  const indexTotals = prev && typeof prev.lastTotals === "object" ? prev.lastTotals : null;
   const fallbackMatch = !fallbackKey || fallbackKey === messageKey;
   const lastTotals = indexTotals || (fallbackMatch ? fallbackLastTotals : null);
 
@@ -1000,7 +1029,7 @@ async function parseOpencodeMessageFile({
       messageKey,
       lastTotals,
       eventsAggregated: 0,
-      shouldUpdate: Boolean(lastTotals)
+      shouldUpdate: Boolean(lastTotals),
     };
   }
 
@@ -1011,7 +1040,7 @@ async function parseOpencodeMessageFile({
       messageKey,
       lastTotals,
       eventsAggregated: 0,
-      shouldUpdate: Boolean(lastTotals)
+      shouldUpdate: Boolean(lastTotals),
     };
   }
 
@@ -1020,7 +1049,13 @@ async function parseOpencodeMessageFile({
   addTotals(bucket.totals, delta);
   touchedBuckets.add(bucketKey(source, model, bucketStart));
   if (projectKey && projectState && projectTouchedBuckets) {
-    const projectBucket = getProjectBucket(projectState, projectKey, source, bucketStart, projectRef);
+    const projectBucket = getProjectBucket(
+      projectState,
+      projectKey,
+      source,
+      bucketStart,
+      projectRef,
+    );
     addTotals(projectBucket.totals, delta);
     projectTouchedBuckets.add(projectBucketKey(projectKey, source, bucketStart));
   }
@@ -1039,7 +1074,10 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
   }
   if (touchedGroups.size === 0) return 0;
 
-  const groupQueued = hourlyState.groupQueued && typeof hourlyState.groupQueued === 'object' ? hourlyState.groupQueued : {};
+  const groupQueued =
+    hourlyState.groupQueued && typeof hourlyState.groupQueued === "object"
+      ? hourlyState.groupQueued
+      : {};
   let codexTouched = false;
   const legacyGroups = new Set();
   for (const groupKey of touchedGroups) {
@@ -1068,7 +1106,7 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
       groupedBuckets.set(groupKey, group);
     }
 
-    if (bucket.queuedKey != null && typeof bucket.queuedKey !== 'string') {
+    if (bucket.queuedKey != null && typeof bucket.queuedKey !== "string") {
       bucket.queuedKey = null;
     }
     group.buckets.set(model, bucket);
@@ -1082,7 +1120,7 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
       const hourStart = parsed.hourStart;
       if (!hourStart) continue;
       const source = normalizeSourceInput(parsed.source) || DEFAULT_SOURCE;
-      if (source !== 'every-code') continue;
+      if (source !== "every-code") continue;
       const groupKey = groupBucketKey(source, hourStart);
       if (legacyGroups.has(groupKey) || groupedBuckets.has(groupKey)) continue;
       const model = normalizeModelInput(parsed.model) || DEFAULT_MODEL;
@@ -1104,7 +1142,7 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
           group = { source, hourStart, buckets: new Map() };
           groupedBuckets.set(groupKey, group);
         }
-        if (bucket.queuedKey != null && typeof bucket.queuedKey !== 'string') {
+        if (bucket.queuedKey != null && typeof bucket.queuedKey !== "string") {
           bucket.queuedKey = null;
         }
         const model = normalizeModelInput(parsed.model) || DEFAULT_MODEL;
@@ -1138,11 +1176,16 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
             cached_input_tokens: zeroTotals.cached_input_tokens,
             output_tokens: zeroTotals.output_tokens,
             reasoning_output_tokens: zeroTotals.reasoning_output_tokens,
-            total_tokens: zeroTotals.total_tokens
-          })
+            total_tokens: zeroTotals.total_tokens,
+          }),
         );
       }
-      if (unknownBucket && !alignedModel && unknownBucket.queuedKey && unknownBucket.queuedKey !== zeroKey) {
+      if (
+        unknownBucket &&
+        !alignedModel &&
+        unknownBucket.queuedKey &&
+        unknownBucket.queuedKey !== zeroKey
+      ) {
         if (unknownBucket.retractedUnknownKey !== zeroKey) {
           toAppend.push(
             JSON.stringify({
@@ -1153,8 +1196,8 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
               cached_input_tokens: zeroTotals.cached_input_tokens,
               output_tokens: zeroTotals.output_tokens,
               reasoning_output_tokens: zeroTotals.reasoning_output_tokens,
-              total_tokens: zeroTotals.total_tokens
-            })
+              total_tokens: zeroTotals.total_tokens,
+            }),
           );
           unknownBucket.retractedUnknownKey = zeroKey;
         }
@@ -1178,8 +1221,8 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
             cached_input_tokens: totals.cached_input_tokens,
             output_tokens: totals.output_tokens,
             reasoning_output_tokens: totals.reasoning_output_tokens,
-            total_tokens: totals.total_tokens
-          })
+            total_tokens: totals.total_tokens,
+          }),
         );
         bucket.queuedKey = key;
       }
@@ -1188,7 +1231,7 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
 
     if (!unknownBucket?.totals) continue;
     let outputModel = DEFAULT_MODEL;
-    if (group.source === 'every-code') {
+    if (group.source === "every-code") {
       const aligned = findNearestCodexModel(group.hourStart, codexDominants);
       if (aligned) outputModel = aligned;
     }
@@ -1203,11 +1246,16 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
           cached_input_tokens: zeroTotals.cached_input_tokens,
           output_tokens: zeroTotals.output_tokens,
           reasoning_output_tokens: zeroTotals.reasoning_output_tokens,
-          total_tokens: zeroTotals.total_tokens
-        })
+          total_tokens: zeroTotals.total_tokens,
+        }),
       );
     }
-    if (!alignedModel && nextAligned && unknownBucket.queuedKey && unknownBucket.queuedKey !== zeroKey) {
+    if (
+      !alignedModel &&
+      nextAligned &&
+      unknownBucket.queuedKey &&
+      unknownBucket.queuedKey !== zeroKey
+    ) {
       if (unknownBucket.retractedUnknownKey !== zeroKey) {
         toAppend.push(
           JSON.stringify({
@@ -1218,8 +1266,8 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
             cached_input_tokens: zeroTotals.cached_input_tokens,
             output_tokens: zeroTotals.output_tokens,
             reasoning_output_tokens: zeroTotals.reasoning_output_tokens,
-            total_tokens: zeroTotals.total_tokens
-          })
+            total_tokens: zeroTotals.total_tokens,
+          }),
         );
         unknownBucket.retractedUnknownKey = zeroKey;
       }
@@ -1237,8 +1285,8 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
         cached_input_tokens: unknownBucket.totals.cached_input_tokens,
         output_tokens: unknownBucket.totals.output_tokens,
         reasoning_output_tokens: unknownBucket.totals.reasoning_output_tokens,
-        total_tokens: unknownBucket.totals.total_tokens
-      })
+        total_tokens: unknownBucket.totals.total_tokens,
+      }),
     );
     unknownBucket.queuedKey = outputKey;
   }
@@ -1259,7 +1307,7 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
           source: normalizeSourceInput(parsed.source) || DEFAULT_SOURCE,
           hourStart,
           models: new Set(),
-          totals: initTotals()
+          totals: initTotals(),
         };
         grouped.set(groupKey, group);
       }
@@ -1281,8 +1329,8 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
           cached_input_tokens: group.totals.cached_input_tokens,
           output_tokens: group.totals.output_tokens,
           reasoning_output_tokens: group.totals.reasoning_output_tokens,
-          total_tokens: group.totals.total_tokens
-        })
+          total_tokens: group.totals.total_tokens,
+        }),
       );
       groupQueued[groupKey] = key;
     }
@@ -1291,14 +1339,24 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
   hourlyState.groupQueued = groupQueued;
 
   if (toAppend.length > 0) {
-    await fs.appendFile(queuePath, toAppend.join('\n') + '\n', 'utf8');
+    await fs.appendFile(queuePath, toAppend.join("\n") + "\n", "utf8");
   }
 
   return toAppend.length;
 }
 
-async function enqueueTouchedProjectBuckets({ projectQueuePath, projectState, projectTouchedBuckets }) {
-  if (!projectQueuePath || !projectState || !projectTouchedBuckets || projectTouchedBuckets.size === 0) return 0;
+async function enqueueTouchedProjectBuckets({
+  projectQueuePath,
+  projectState,
+  projectTouchedBuckets,
+}) {
+  if (
+    !projectQueuePath ||
+    !projectState ||
+    !projectTouchedBuckets ||
+    projectTouchedBuckets.size === 0
+  )
+    return 0;
 
   await ensureDir(path.dirname(projectQueuePath));
 
@@ -1309,8 +1367,8 @@ async function enqueueTouchedProjectBuckets({ projectQueuePath, projectState, pr
     const totals = bucket.totals;
     const queuedKey = totalsKey(totals);
     if (bucket.queuedKey === queuedKey) continue;
-    const projectRef = typeof bucket.project_ref === 'string' ? bucket.project_ref : null;
-    const projectKey = typeof bucket.project_key === 'string' ? bucket.project_key : null;
+    const projectRef = typeof bucket.project_ref === "string" ? bucket.project_ref : null;
+    const projectKey = typeof bucket.project_key === "string" ? bucket.project_key : null;
     if (!projectRef || !projectKey) continue;
 
     toAppend.push(
@@ -1323,14 +1381,14 @@ async function enqueueTouchedProjectBuckets({ projectQueuePath, projectState, pr
         cached_input_tokens: totals.cached_input_tokens,
         output_tokens: totals.output_tokens,
         reasoning_output_tokens: totals.reasoning_output_tokens,
-        total_tokens: totals.total_tokens
-      })
+        total_tokens: totals.total_tokens,
+      }),
     );
     bucket.queuedKey = queuedKey;
   }
 
   if (toAppend.length > 0) {
-    await fs.appendFile(projectQueuePath, toAppend.join('\n') + '\n', 'utf8');
+    await fs.appendFile(projectQueuePath, toAppend.join("\n") + "\n", "utf8");
   }
 
   return toAppend.length;
@@ -1422,9 +1480,9 @@ function findNearestCodexModel(hourStart, dominants) {
 }
 
 function normalizeHourlyState(raw) {
-  const state = raw && typeof raw === 'object' ? raw : {};
+  const state = raw && typeof raw === "object" ? raw : {};
   const version = Number(state.version || 1);
-  const rawBuckets = state.buckets && typeof state.buckets === 'object' ? state.buckets : {};
+  const rawBuckets = state.buckets && typeof state.buckets === "object" ? state.buckets : {};
   const buckets = {};
   const groupQueued = {};
 
@@ -1444,7 +1502,7 @@ function normalizeHourlyState(raw) {
       version: 3,
       buckets,
       groupQueued,
-      updatedAt: typeof state.updatedAt === 'string' ? state.updatedAt : null
+      updatedAt: typeof state.updatedAt === "string" ? state.updatedAt : null,
     };
   }
 
@@ -1457,21 +1515,21 @@ function normalizeHourlyState(raw) {
   }
 
   const existingGroupQueued =
-    state.groupQueued && typeof state.groupQueued === 'object' ? state.groupQueued : {};
+    state.groupQueued && typeof state.groupQueued === "object" ? state.groupQueued : {};
 
   return {
     version: 3,
     buckets,
     groupQueued: version >= 3 ? existingGroupQueued : {},
-    updatedAt: typeof state.updatedAt === 'string' ? state.updatedAt : null
+    updatedAt: typeof state.updatedAt === "string" ? state.updatedAt : null,
   };
 }
 
 function normalizeProjectState(raw) {
-  const state = raw && typeof raw === 'object' ? raw : {};
-  const rawBuckets = state.buckets && typeof state.buckets === 'object' ? state.buckets : {};
+  const state = raw && typeof raw === "object" ? raw : {};
+  const rawBuckets = state.buckets && typeof state.buckets === "object" ? state.buckets : {};
   const buckets = {};
-  const rawProjects = state.projects && typeof state.projects === 'object' ? state.projects : {};
+  const rawProjects = state.projects && typeof state.projects === "object" ? state.projects : {};
   const projects = {};
 
   for (const [key, value] of Object.entries(rawBuckets)) {
@@ -1480,7 +1538,7 @@ function normalizeProjectState(raw) {
   }
 
   for (const [key, value] of Object.entries(rawProjects)) {
-    if (!key || !value || typeof value !== 'object') continue;
+    if (!key || !value || typeof value !== "object") continue;
     projects[key] = { ...value };
   }
 
@@ -1488,21 +1546,21 @@ function normalizeProjectState(raw) {
     version: 2,
     buckets,
     projects,
-    updatedAt: typeof state.updatedAt === 'string' ? state.updatedAt : null
+    updatedAt: typeof state.updatedAt === "string" ? state.updatedAt : null,
   };
 }
 
 function normalizeOpencodeState(raw) {
-  const state = raw && typeof raw === 'object' ? raw : {};
-  const messages = state.messages && typeof state.messages === 'object' ? state.messages : {};
+  const state = raw && typeof raw === "object" ? raw : {};
+  const messages = state.messages && typeof state.messages === "object" ? state.messages : {};
   return {
     messages,
-    updatedAt: typeof state.updatedAt === 'string' ? state.updatedAt : null
+    updatedAt: typeof state.updatedAt === "string" ? state.updatedAt : null,
   };
 }
 
 function normalizeMessageKeyPart(value) {
-  if (typeof value !== 'string') return '';
+  if (typeof value !== "string") return "";
   return value.trim();
 }
 
@@ -1519,17 +1577,17 @@ function getHourlyBucket(state, source, model, hourStart) {
   const normalizedModel = normalizeModelInput(model) || DEFAULT_MODEL;
   const key = bucketKey(normalizedSource, normalizedModel, hourStart);
   let bucket = buckets[key];
-  if (!bucket || typeof bucket !== 'object') {
+  if (!bucket || typeof bucket !== "object") {
     bucket = { totals: initTotals(), queuedKey: null };
     buckets[key] = bucket;
     return bucket;
   }
 
-  if (!bucket.totals || typeof bucket.totals !== 'object') {
+  if (!bucket.totals || typeof bucket.totals !== "object") {
     bucket.totals = initTotals();
   }
 
-  if (bucket.queuedKey != null && typeof bucket.queuedKey !== 'string') {
+  if (bucket.queuedKey != null && typeof bucket.queuedKey !== "string") {
     bucket.queuedKey = null;
   }
 
@@ -1541,24 +1599,24 @@ function getProjectBucket(state, projectKey, source, hourStart, projectRef) {
   const normalizedSource = normalizeSourceInput(source) || DEFAULT_SOURCE;
   const key = projectBucketKey(projectKey, normalizedSource, hourStart);
   let bucket = buckets[key];
-  if (!bucket || typeof bucket !== 'object') {
+  if (!bucket || typeof bucket !== "object") {
     bucket = {
       totals: initTotals(),
       queuedKey: null,
       project_key: projectKey,
       project_ref: projectRef,
       source: normalizedSource,
-      hour_start: hourStart
+      hour_start: hourStart,
     };
     buckets[key] = bucket;
     return bucket;
   }
 
-  if (!bucket.totals || typeof bucket.totals !== 'object') {
+  if (!bucket.totals || typeof bucket.totals !== "object") {
     bucket.totals = initTotals();
   }
 
-  if (bucket.queuedKey != null && typeof bucket.queuedKey !== 'string') {
+  if (bucket.queuedKey != null && typeof bucket.queuedKey !== "string") {
     bucket.queuedKey = null;
   }
 
@@ -1576,7 +1634,7 @@ function initTotals() {
     cached_input_tokens: 0,
     output_tokens: 0,
     reasoning_output_tokens: 0,
-    total_tokens: 0
+    total_tokens: 0,
   };
 }
 
@@ -1594,8 +1652,8 @@ function totalsKey(totals) {
     totals.cached_input_tokens || 0,
     totals.output_tokens || 0,
     totals.reasoning_output_tokens || 0,
-    totals.total_tokens || 0
-  ].join('|');
+    totals.total_tokens || 0,
+  ].join("|");
 }
 
 function toUtcHalfHourStart(ts) {
@@ -1611,8 +1669,8 @@ function toUtcHalfHourStart(ts) {
       dt.getUTCHours(),
       halfMinute,
       0,
-      0
-    )
+      0,
+    ),
   );
   return bucketStart.toISOString();
 }
@@ -1634,7 +1692,8 @@ function groupBucketKey(source, hourStart) {
 }
 
 function parseBucketKey(key) {
-  if (typeof key !== 'string') return { source: DEFAULT_SOURCE, model: DEFAULT_MODEL, hourStart: '' };
+  if (typeof key !== "string")
+    return { source: DEFAULT_SOURCE, model: DEFAULT_MODEL, hourStart: "" };
   const first = key.indexOf(BUCKET_SEPARATOR);
   if (first <= 0) return { source: DEFAULT_SOURCE, model: DEFAULT_MODEL, hourStart: key };
   const second = key.indexOf(BUCKET_SEPARATOR, first + 1);
@@ -1644,24 +1703,24 @@ function parseBucketKey(key) {
   return {
     source: key.slice(0, first),
     model: key.slice(first + 1, second),
-    hourStart: key.slice(second + 1)
+    hourStart: key.slice(second + 1),
   };
 }
 
 function normalizeSourceInput(value) {
-  if (typeof value !== 'string') return null;
+  if (typeof value !== "string") return null;
   const trimmed = value.trim().toLowerCase();
   return trimmed.length > 0 ? trimmed : null;
 }
 
 function normalizeModelInput(value) {
-  if (typeof value !== 'string') return null;
+  if (typeof value !== "string") return null;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
 }
 
 async function resolveProjectMetaForPath(startDir, cache) {
-  if (!startDir || typeof startDir !== 'string') return null;
+  if (!startDir || typeof startDir !== "string") return null;
   if (cache && cache.has(startDir)) return cache.get(startDir);
 
   const visited = [];
@@ -1701,11 +1760,11 @@ async function resolveProjectMetaForPath(startDir, cache) {
 async function defaultPublicRepoResolver({ projectRef, repoRoot, cache }) {
   if (!projectRef) {
     return {
-      status: 'blocked',
+      status: "blocked",
       projectKey: null,
       projectRef: null,
       repoRootHash: repoRoot ? hashRepoRoot(repoRoot) : null,
-      reason: 'missing_ref'
+      reason: "missing_ref",
     };
   }
 
@@ -1714,15 +1773,20 @@ async function defaultPublicRepoResolver({ projectRef, repoRoot, cache }) {
   if (cache && !cached) cache.set(projectRef, base);
   return {
     ...base,
-    repoRootHash: repoRoot ? hashRepoRoot(repoRoot) : null
+    repoRootHash: repoRoot ? hashRepoRoot(repoRoot) : null,
   };
 }
 
 function recordProjectMeta(projectState, meta) {
-  if (!projectState || !meta || typeof meta !== 'object') return;
-  const repoRootHash = typeof meta.repoRootHash === 'string' ? meta.repoRootHash : null;
-  let projectKey = typeof meta.projectKey === 'string' ? meta.projectKey : null;
-  if (!projectKey && repoRootHash && projectState.projects && typeof projectState.projects === 'object') {
+  if (!projectState || !meta || typeof meta !== "object") return;
+  const repoRootHash = typeof meta.repoRootHash === "string" ? meta.repoRootHash : null;
+  let projectKey = typeof meta.projectKey === "string" ? meta.projectKey : null;
+  if (
+    !projectKey &&
+    repoRootHash &&
+    projectState.projects &&
+    typeof projectState.projects === "object"
+  ) {
     for (const [key, entry] of Object.entries(projectState.projects)) {
       if (entry && entry.repo_root_hash === repoRootHash) {
         projectKey = key;
@@ -1731,22 +1795,22 @@ function recordProjectMeta(projectState, meta) {
     }
   }
   if (!projectKey) return;
-  if (!projectState.projects || typeof projectState.projects !== 'object') {
+  if (!projectState.projects || typeof projectState.projects !== "object") {
     projectState.projects = {};
   }
   const prev = projectState.projects[projectKey] || {};
-  const status = typeof meta.status === 'string' ? meta.status : null;
-  const projectRef = typeof meta.projectRef === 'string' ? meta.projectRef : null;
+  const status = typeof meta.status === "string" ? meta.status : null;
+  const projectRef = typeof meta.projectRef === "string" ? meta.projectRef : null;
   const next = {
     ...prev,
     project_ref: projectRef || prev.project_ref || null,
     status: status || prev.status || null,
     repo_root_hash: repoRootHash || prev.repo_root_hash || null,
-    updated_at: new Date().toISOString()
+    updated_at: new Date().toISOString(),
   };
-  if (status === 'blocked' && prev.status !== 'blocked') {
+  if (status === "blocked" && prev.status !== "blocked") {
     next.purge_pending = true;
-  } else if (status && status !== 'blocked') {
+  } else if (status && status !== "blocked") {
     next.purge_pending = false;
   }
   projectState.projects[projectKey] = next;
@@ -1757,7 +1821,7 @@ async function resolveProjectContextForFile({
   projectMetaCache,
   publicRepoCache,
   publicRepoResolver,
-  projectState
+  projectState,
 }) {
   if (!filePath) return null;
   return resolveProjectContextForPath({
@@ -1765,7 +1829,7 @@ async function resolveProjectContextForFile({
     projectMetaCache,
     publicRepoCache,
     publicRepoResolver,
-    projectState
+    projectState,
   });
 }
 
@@ -1774,43 +1838,48 @@ async function resolveProjectContextForPath({
   projectMetaCache,
   publicRepoCache,
   publicRepoResolver,
-  projectState
+  projectState,
 }) {
   if (!startDir) return null;
   const projectMeta = await resolveProjectMetaForPath(startDir, projectMetaCache);
   if (!projectMeta) return null;
-  const resolver = typeof publicRepoResolver === 'function' ? publicRepoResolver : defaultPublicRepoResolver;
+  const resolver =
+    typeof publicRepoResolver === "function" ? publicRepoResolver : defaultPublicRepoResolver;
   const meta = await resolver({
     projectRef: projectMeta.projectRef,
     repoRoot: projectMeta.repoRoot,
-    cache: publicRepoCache
+    cache: publicRepoCache,
   });
   const repoRootHash = projectMeta.repoRoot ? hashRepoRoot(projectMeta.repoRoot) : null;
   const normalized = {
     ...(meta || {}),
     projectRef: meta?.projectRef || projectMeta.projectRef,
     projectKey: meta?.projectKey || null,
-    status: meta?.status || 'blocked',
-    repoRootHash: meta?.repoRootHash || repoRootHash
+    status: meta?.status || "blocked",
+    repoRootHash: meta?.repoRootHash || repoRootHash,
   };
   recordProjectMeta(projectState, normalized);
-  if (normalized.status !== 'public_verified') {
+  if (normalized.status !== "public_verified") {
     return { projectRef: normalized.projectRef, projectKey: null, status: normalized.status };
   }
-  return { projectRef: normalized.projectRef, projectKey: normalized.projectKey, status: normalized.status };
+  return {
+    projectRef: normalized.projectRef,
+    projectKey: normalized.projectKey,
+    status: normalized.status,
+  };
 }
 
 async function resolveGitConfigPath(rootDir) {
-  const gitPath = path.join(rootDir, '.git');
+  const gitPath = path.join(rootDir, ".git");
   const st = await fs.stat(gitPath).catch(() => null);
   if (!st) return null;
   if (st.isDirectory()) {
-    const configPath = path.join(gitPath, 'config');
+    const configPath = path.join(gitPath, "config");
     const cfg = await fs.stat(configPath).catch(() => null);
     return cfg && cfg.isFile() ? configPath : null;
   }
   if (st.isFile()) {
-    const content = await fs.readFile(gitPath, 'utf8').catch(() => '');
+    const content = await fs.readFile(gitPath, "utf8").catch(() => "");
     const match = content.match(/gitdir:\s*(.+)/i);
     if (!match) return null;
     let gitDir = match[1].trim();
@@ -1818,18 +1887,18 @@ async function resolveGitConfigPath(rootDir) {
     if (!path.isAbsolute(gitDir)) {
       gitDir = path.resolve(rootDir, gitDir);
     }
-    const configPath = path.join(gitDir, 'config');
+    const configPath = path.join(gitDir, "config");
     const cfg = await fs.stat(configPath).catch(() => null);
     if (cfg && cfg.isFile()) return configPath;
 
-    const commonDirRaw = await fs.readFile(path.join(gitDir, 'commondir'), 'utf8').catch(() => '');
+    const commonDirRaw = await fs.readFile(path.join(gitDir, "commondir"), "utf8").catch(() => "");
     const commonDirRel = commonDirRaw.trim();
     if (!commonDirRel) return null;
     let commonDir = commonDirRel;
     if (!path.isAbsolute(commonDir)) {
       commonDir = path.resolve(gitDir, commonDir);
     }
-    const commonConfigPath = path.join(commonDir, 'config');
+    const commonConfigPath = path.join(commonDir, "config");
     const commonCfg = await fs.stat(commonConfigPath).catch(() => null);
     return commonCfg && commonCfg.isFile() ? commonConfigPath : null;
   }
@@ -1837,7 +1906,7 @@ async function resolveGitConfigPath(rootDir) {
 }
 
 async function readGitRemoteUrl(configPath) {
-  const raw = await fs.readFile(configPath, 'utf8').catch(() => '');
+  const raw = await fs.readFile(configPath, "utf8").catch(() => "");
   if (!raw.trim()) return null;
 
   const remotes = new Map();
@@ -1856,34 +1925,34 @@ async function readGitRemoteUrl(configPath) {
     }
   }
 
-  if (remotes.has('origin')) return remotes.get('origin');
+  if (remotes.has("origin")) return remotes.get("origin");
   const first = remotes.values().next();
   return first.done ? null : first.value;
 }
 
 function canonicalizeProjectRef(remoteUrl) {
-  if (typeof remoteUrl !== 'string') return null;
+  if (typeof remoteUrl !== "string") return null;
   let ref = remoteUrl.trim();
   if (!ref) return null;
 
-  if (ref.startsWith('file://')) return null;
+  if (ref.startsWith("file://")) return null;
   if (path.isAbsolute(ref) || path.win32.isAbsolute(ref)) return null;
 
   const gitAtMatch = ref.match(/^git@([^:]+):(.+)$/i);
   if (gitAtMatch) {
     ref = `https://${gitAtMatch[1]}/${gitAtMatch[2]}`;
-  } else if (ref.startsWith('ssh://')) {
+  } else if (ref.startsWith("ssh://")) {
     try {
       const parsed = new URL(ref);
       ref = `https://${parsed.hostname}${parsed.pathname}`;
     } catch (_e) {
       return null;
     }
-  } else if (ref.startsWith('git://')) {
-    ref = `https://${ref.slice('git://'.length)}`;
-  } else if (ref.startsWith('http://')) {
-    ref = `https://${ref.slice('http://'.length)}`;
-  } else if (!ref.startsWith('https://')) {
+  } else if (ref.startsWith("git://")) {
+    ref = `https://${ref.slice("git://".length)}`;
+  } else if (ref.startsWith("http://")) {
+    ref = `https://${ref.slice("http://".length)}`;
+  } else if (!ref.startsWith("https://")) {
     return null;
   }
 
@@ -1895,13 +1964,13 @@ function canonicalizeProjectRef(remoteUrl) {
     return null;
   }
 
-  ref = ref.replace(/\.git$/i, '');
-  ref = ref.replace(/\/+$/, '');
+  ref = ref.replace(/\.git$/i, "");
+  ref = ref.replace(/\/+$/, "");
   return ref || null;
 }
 
 function normalizeGeminiTokens(tokens) {
-  if (!tokens || typeof tokens !== 'object') return null;
+  if (!tokens || typeof tokens !== "object") return null;
   const input = toNonNegativeInt(tokens.input);
   const cached = toNonNegativeInt(tokens.cached);
   const output = toNonNegativeInt(tokens.output);
@@ -1914,12 +1983,12 @@ function normalizeGeminiTokens(tokens) {
     cached_input_tokens: cached,
     output_tokens: output + tool,
     reasoning_output_tokens: thoughts,
-    total_tokens: total
+    total_tokens: total,
   };
 }
 
 function normalizeOpencodeTokens(tokens) {
-  if (!tokens || typeof tokens !== 'object') return null;
+  if (!tokens || typeof tokens !== "object") return null;
   const input = toNonNegativeInt(tokens.input);
   const output = toNonNegativeInt(tokens.output);
   const reasoning = toNonNegativeInt(tokens.reasoning);
@@ -1933,7 +2002,7 @@ function normalizeOpencodeTokens(tokens) {
     cached_input_tokens: cached,
     output_tokens: output,
     reasoning_output_tokens: reasoning,
-    total_tokens: total
+    total_tokens: total,
   };
 }
 
@@ -1949,8 +2018,8 @@ function sameGeminiTotals(a, b) {
 }
 
 function diffGeminiTotals(current, previous) {
-  if (!current || typeof current !== 'object') return null;
-  if (!previous || typeof previous !== 'object') return current;
+  if (!current || typeof current !== "object") return null;
+  if (!previous || typeof previous !== "object") return current;
   if (sameGeminiTotals(current, previous)) return null;
 
   const totalReset = (current.total_tokens || 0) < (previous.total_tokens || 0);
@@ -1958,10 +2027,16 @@ function diffGeminiTotals(current, previous) {
 
   const delta = {
     input_tokens: Math.max(0, (current.input_tokens || 0) - (previous.input_tokens || 0)),
-    cached_input_tokens: Math.max(0, (current.cached_input_tokens || 0) - (previous.cached_input_tokens || 0)),
+    cached_input_tokens: Math.max(
+      0,
+      (current.cached_input_tokens || 0) - (previous.cached_input_tokens || 0),
+    ),
     output_tokens: Math.max(0, (current.output_tokens || 0) - (previous.output_tokens || 0)),
-    reasoning_output_tokens: Math.max(0, (current.reasoning_output_tokens || 0) - (previous.reasoning_output_tokens || 0)),
-    total_tokens: Math.max(0, (current.total_tokens || 0) - (previous.total_tokens || 0))
+    reasoning_output_tokens: Math.max(
+      0,
+      (current.reasoning_output_tokens || 0) - (previous.reasoning_output_tokens || 0),
+    ),
+    total_tokens: Math.max(0, (current.total_tokens || 0) - (previous.total_tokens || 0)),
   };
 
   return isAllZeroUsage(delta) ? null : delta;
@@ -1970,11 +2045,11 @@ function diffGeminiTotals(current, previous) {
 function extractTokenCount(obj) {
   const payload = obj?.payload;
   if (!payload) return null;
-  if (payload.type === 'token_count') {
+  if (payload.type === "token_count") {
     return { info: payload.info, timestamp: obj?.timestamp || null };
   }
   const msg = payload.msg;
-  if (msg && msg.type === 'token_count') {
+  if (msg && msg.type === "token_count") {
     return { info: msg.info, timestamp: obj?.timestamp || null };
   }
   return null;
@@ -2002,7 +2077,13 @@ function pickDelta(lastUsage, totalUsage, prevTotals) {
 
   if (hasTotal && hasPrevTotals) {
     const delta = {};
-    for (const k of ['input_tokens', 'cached_input_tokens', 'output_tokens', 'reasoning_output_tokens', 'total_tokens']) {
+    for (const k of [
+      "input_tokens",
+      "cached_input_tokens",
+      "output_tokens",
+      "reasoning_output_tokens",
+      "total_tokens",
+    ]) {
       const a = Number(totalUsage[k]);
       const b = Number(prevTotals[k]);
       if (Number.isFinite(a) && Number.isFinite(b)) delta[k] = Math.max(0, a - b);
@@ -2021,7 +2102,13 @@ function pickDelta(lastUsage, totalUsage, prevTotals) {
 
 function normalizeUsage(u) {
   const out = {};
-  for (const k of ['input_tokens', 'cached_input_tokens', 'output_tokens', 'reasoning_output_tokens', 'total_tokens']) {
+  for (const k of [
+    "input_tokens",
+    "cached_input_tokens",
+    "output_tokens",
+    "reasoning_output_tokens",
+    "total_tokens",
+  ]) {
     const n = Number(u[k] || 0);
     out[k] = Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;
   }
@@ -2029,33 +2116,46 @@ function normalizeUsage(u) {
 }
 
 function normalizeClaudeUsage(u) {
-  const inputTokens = toNonNegativeInt(u?.input_tokens) + toNonNegativeInt(u?.cache_creation_input_tokens);
+  const inputTokens =
+    toNonNegativeInt(u?.input_tokens) + toNonNegativeInt(u?.cache_creation_input_tokens);
   const outputTokens = toNonNegativeInt(u?.output_tokens);
-  const hasTotal = u && Object.prototype.hasOwnProperty.call(u, 'total_tokens');
+  const hasTotal = u && Object.prototype.hasOwnProperty.call(u, "total_tokens");
   const totalTokens = hasTotal ? toNonNegativeInt(u?.total_tokens) : inputTokens + outputTokens;
   return {
     input_tokens: inputTokens,
     cached_input_tokens: toNonNegativeInt(u?.cache_read_input_tokens),
     output_tokens: outputTokens,
     reasoning_output_tokens: 0,
-    total_tokens: totalTokens
+    total_tokens: totalTokens,
   };
 }
 
 function isNonEmptyObject(v) {
-  return Boolean(v && typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length > 0);
+  return Boolean(v && typeof v === "object" && !Array.isArray(v) && Object.keys(v).length > 0);
 }
 
 function isAllZeroUsage(u) {
-  if (!u || typeof u !== 'object') return true;
-  for (const k of ['input_tokens', 'cached_input_tokens', 'output_tokens', 'reasoning_output_tokens', 'total_tokens']) {
+  if (!u || typeof u !== "object") return true;
+  for (const k of [
+    "input_tokens",
+    "cached_input_tokens",
+    "output_tokens",
+    "reasoning_output_tokens",
+    "total_tokens",
+  ]) {
     if (Number(u[k] || 0) !== 0) return false;
   }
   return true;
 }
 
 function sameUsage(a, b) {
-  for (const k of ['input_tokens', 'cached_input_tokens', 'output_tokens', 'reasoning_output_tokens', 'total_tokens']) {
+  for (const k of [
+    "input_tokens",
+    "cached_input_tokens",
+    "output_tokens",
+    "reasoning_output_tokens",
+    "total_tokens",
+  ]) {
     if (toNonNegativeInt(a?.[k]) !== toNonNegativeInt(b?.[k])) return false;
   }
   return true;
@@ -2069,7 +2169,7 @@ function totalsReset(curr, prev) {
 }
 
 function isFiniteNumber(v) {
-  return typeof v === 'number' && Number.isFinite(v);
+  return typeof v === "number" && Number.isFinite(v);
 }
 
 function toNonNegativeInt(v) {
@@ -2101,7 +2201,7 @@ async function walkClaudeProjects(dir, out) {
       await walkClaudeProjects(fullPath, out);
       continue;
     }
-    if (entry.isFile() && entry.name.endsWith('.jsonl')) out.push(fullPath);
+    if (entry.isFile() && entry.name.endsWith(".jsonl")) out.push(fullPath);
   }
 }
 
@@ -2113,7 +2213,8 @@ async function walkOpencodeMessages(dir, out) {
       await walkOpencodeMessages(fullPath, out);
       continue;
     }
-    if (entry.isFile() && entry.name.startsWith('msg_') && entry.name.endsWith('.json')) out.push(fullPath);
+    if (entry.isFile() && entry.name.startsWith("msg_") && entry.name.endsWith(".json"))
+      out.push(fullPath);
   }
 }
 
@@ -2126,5 +2227,5 @@ module.exports = {
   parseClaudeIncremental,
   parseGeminiIncremental,
   parseOpencodeIncremental,
-  parseOpenclawIncremental
+  parseOpenclawIncremental,
 };

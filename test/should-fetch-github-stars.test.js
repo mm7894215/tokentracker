@@ -4,7 +4,7 @@ const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 
 const modulePath = pathToFileURL(
-  path.resolve("dashboard/src/ui/matrix-a/util/should-fetch-github-stars.js")
+  path.resolve("dashboard/src/ui/matrix-a/util/should-fetch-github-stars.js"),
 ).href;
 
 test("shouldFetchGithubStars skips in reduced motion or screenshot capture", async () => {
@@ -15,7 +15,7 @@ test("shouldFetchGithubStars skips in reduced motion or screenshot capture", asy
       prefersReducedMotion: true,
       screenshotCapture: false,
     }),
-    false
+    false,
   );
 
   assert.equal(
@@ -23,7 +23,7 @@ test("shouldFetchGithubStars skips in reduced motion or screenshot capture", asy
       prefersReducedMotion: false,
       screenshotCapture: true,
     }),
-    false
+    false,
   );
 
   assert.equal(
@@ -31,6 +31,6 @@ test("shouldFetchGithubStars skips in reduced motion or screenshot capture", asy
       prefersReducedMotion: false,
       screenshotCapture: false,
     }),
-    true
+    true,
   );
 });

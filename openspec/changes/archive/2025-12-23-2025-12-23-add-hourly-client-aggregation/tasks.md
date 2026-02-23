@@ -1,9 +1,11 @@
 ## 1. Proposal & Design
+
 - [x] 1.1 明确兼容策略：是否支持旧客户端事件上传（窗口期与淘汰计划）
 - [x] 1.2 定义小时桶 payload（字段、类型、UTC 口径、幂等键）
 - [x] 1.3 选择 upsert 语义（replace / max / monotonic）并记录理由
 
 ## 2. Client Aggregation
+
 - [x] 2.1 本地按 UTC 半小时聚合 token_count（保证幂等与可重放）
 - [x] 2.2 本地队列存储聚合桶（替换现有事件队列）
 - [x] 2.3 上传策略：仅上传已完成半小时或支持同半小时覆盖
@@ -11,6 +13,7 @@
 - [x] 2.5 `init` 结束后触发一次同步（手动 sync 仍立即上传）
 
 ## 3. Backend Ingest & Storage
+
 - [x] 3.1 新增半小时聚合存储（表/视图）与唯一键（user_id + device_id + hour_start）
   - 2025-12-23: `vibescore_tracker_hourly` created (see `openspec/changes/2025-12-23-add-hourly-client-aggregation/sql/001_create_hourly.sql`)
 - [x] 3.2 Ingest 接口支持 half-hour payload 并幂等 upsert
@@ -34,11 +37,13 @@
   - Secrets: `INSFORGE_BASE_URL`, `INSFORGE_SERVICE_ROLE_KEY` / `INSFORGE_API_KEY`（需在 GitHub 仓库配置）
 
 ## 4. Query Path Update
+
 - [x] 4.1 日/月/汇总查询基于 half-hour 聚合
 - [x] 4.2 heatmap/leaderboard 若依赖事件，切换到聚合表
 - [x] 4.3 回归测试与验收脚本更新
 
 ## 5. Verification
+
 - [x] 5.1 单元测试：小时聚合一致性与幂等
 - [x] 5.2 接口测试：重复上传同桶不双计
 - [x] 5.3 端到端：Dashboard 与 CLI 路径回归（`npm test` + acceptance）

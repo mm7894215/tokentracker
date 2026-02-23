@@ -16,21 +16,15 @@ export function resolveProbeCadenceConfig({
   backoffStepMs,
 }: ProbeCadenceConfig = {}) {
   const baseIntervalMs = normalizePositiveInt(intervalMs, DEFAULT_PROBE_INTERVAL_MS);
-  const maxIntervalCandidate = normalizePositiveInt(
-    maxIntervalMs,
-    DEFAULT_PROBE_MAX_INTERVAL_MS
-  );
+  const maxIntervalCandidate = normalizePositiveInt(maxIntervalMs, DEFAULT_PROBE_MAX_INTERVAL_MS);
   const resolvedMaxIntervalMs = Math.max(baseIntervalMs, maxIntervalCandidate);
   const defaultBackoffStepMs = Math.max(1000, Math.round(baseIntervalMs * 0.5));
   const resolvedBackoffStepMs = normalizePositiveInt(backoffStepMs, defaultBackoffStepMs);
   const failureRetryCandidate = normalizePositiveInt(
     failureRetryMs,
-    DEFAULT_PROBE_FAILURE_RETRY_MS
+    DEFAULT_PROBE_FAILURE_RETRY_MS,
   );
-  const resolvedFailureRetryMs = Math.min(
-    baseIntervalMs,
-    Math.max(1000, failureRetryCandidate)
-  );
+  const resolvedFailureRetryMs = Math.min(baseIntervalMs, Math.max(1000, failureRetryCandidate));
 
   return {
     baseIntervalMs,
@@ -51,18 +45,14 @@ export function createProbeCadence(config: ProbeCadenceConfig = {}) {
     nextDelayMs = clampDelay(
       resolved.baseIntervalMs + resolved.backoffStepMs * steps,
       resolved.baseIntervalMs,
-      resolved.maxIntervalMs
+      resolved.maxIntervalMs,
     );
     return nextDelayMs;
   };
 
   const onFailure = () => {
     successStreak = 0;
-    nextDelayMs = clampDelay(
-      resolved.failureRetryMs,
-      1000,
-      resolved.maxIntervalMs
-    );
+    nextDelayMs = clampDelay(resolved.failureRetryMs, 1000, resolved.maxIntervalMs);
     return nextDelayMs;
   };
 
@@ -71,7 +61,7 @@ export function createProbeCadence(config: ProbeCadenceConfig = {}) {
     nextDelayMs = clampDelay(
       resolved.baseIntervalMs,
       resolved.baseIntervalMs,
-      resolved.maxIntervalMs
+      resolved.maxIntervalMs,
     );
     return nextDelayMs;
   };

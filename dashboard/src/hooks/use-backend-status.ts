@@ -1,12 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-
-import { probeBackend } from "../lib/vibeusage-api";
 import type { AuthTokenProvider } from "../lib/auth-token";
 import { resolveAuthAccessToken } from "../lib/auth-token";
-import {
-  createProbeCadence,
-  DEFAULT_PROBE_INTERVAL_MS,
-} from "../lib/backend-probe-scheduler";
+import { createProbeCadence, DEFAULT_PROBE_INTERVAL_MS } from "../lib/backend-probe-scheduler";
+import { probeBackend } from "../lib/vibeusage-api";
 
 type UseBackendStatusOptions = {
   baseUrl?: string;
@@ -17,9 +13,7 @@ type UseBackendStatusOptions = {
   failureThreshold?: number;
 };
 
-type ProbeResult =
-  | { ok: true; status?: number }
-  | { ok: false; error: any };
+type ProbeResult = { ok: true; status?: number } | { ok: false; error: any };
 
 export function useBackendStatus({
   baseUrl,
@@ -68,116 +62,114 @@ export function useBackendStatus({
     return nextDelayRef.current;
   }, []);
 
-  const refresh = useCallback(async ({ reschedule = true }: { reschedule?: boolean } = {}) => {
-    let outcome = "error";
-    if (!baseUrl) {
-      setStatus("error");
-      setChecking(false);
-      setHttpStatus(null);
-      setLastCheckedAt(new Date().toISOString());
-      setError("Missing baseUrl");
-      applyCadence(outcome);
-      if (reschedule && scheduleNextRef.current) {
-        scheduleNextRef.current(nextDelayRef.current);
-      }
-      return;
-    }
-
-    try {
-      new URL(baseUrl);
-    } catch (_e) {
-      setStatus("error");
-      setChecking(false);
-      setHttpStatus(null);
-      setLastCheckedAt(new Date().toISOString());
-      setError("Invalid baseUrl");
-      applyCadence(outcome);
-      if (reschedule && scheduleNextRef.current) {
-        scheduleNextRef.current(nextDelayRef.current);
-      }
-      return;
-    }
-
-    const resolvedToken = await resolveAuthAccessToken(accessToken);
-    if (!resolvedToken) {
-      setStatus("unknown");
-      setChecking(false);
-      setHttpStatus(null);
-      setLastCheckedAt(new Date().toISOString());
-      setError(null);
-      applyCadence(outcome);
-      if (reschedule && scheduleNextRef.current) {
-        scheduleNextRef.current(nextDelayRef.current);
-      }
-      return;
-    }
-
-    if (inFlightRef.current) {
-      if (reschedule && scheduleNextRef.current) {
-        scheduleNextRef.current(nextDelayRef.current);
-      }
-      return;
-    }
-    inFlightRef.current = true;
-    setChecking(true);
-    setError(null);
-
-    try {
-      const result = await probeWithRetry({
-        baseUrl,
-        accessToken: resolvedToken,
-        timeoutMs,
-        retryDelayMs,
-      });
-
-      if (!result.ok) {
-        throw result.error;
-      }
-
-      outcome = "success";
-      failureCountRef.current = 0;
-      setHttpStatus(result.status ?? 200);
-      const now = new Date().toISOString();
-      setLastCheckedAt(now);
-      setStatus("active");
-      setError(null);
-      setLastOkAt(now);
-    } catch (e) {
-      const statusCode = (e as any)?.status ?? (e as any)?.statusCode;
-      setHttpStatus(Number.isFinite(statusCode) ? statusCode : null);
-      setLastCheckedAt(new Date().toISOString());
-
-      if (statusCode === 401 || statusCode === 403) {
-        failureCountRef.current = 0;
+  const refresh = useCallback(
+    async ({ reschedule = true }: { reschedule?: boolean } = {}) => {
+      let outcome = "error";
+      if (!baseUrl) {
         setStatus("error");
-        setError("Unauthorized");
-      } else if (typeof statusCode === "number" && statusCode < 500) {
-        failureCountRef.current = 0;
+        setChecking(false);
+        setHttpStatus(null);
+        setLastCheckedAt(new Date().toISOString());
+        setError("Missing baseUrl");
+        applyCadence(outcome);
+        if (reschedule && scheduleNextRef.current) {
+          scheduleNextRef.current(nextDelayRef.current);
+        }
+        return;
+      }
+
+      try {
+        new URL(baseUrl);
+      } catch (_e) {
         setStatus("error");
-        setError(`HTTP ${statusCode}`);
-      } else {
-        outcome = "failure";
-        failureCountRef.current += 1;
-        const nextStatus = failureCountRef.current >= threshold ? "down" : "error";
-        setStatus(nextStatus);
-        setError((e as any)?.name === "AbortError" ? "Timeout" : (e as any)?.message || "Fetch failed");
+        setChecking(false);
+        setHttpStatus(null);
+        setLastCheckedAt(new Date().toISOString());
+        setError("Invalid baseUrl");
+        applyCadence(outcome);
+        if (reschedule && scheduleNextRef.current) {
+          scheduleNextRef.current(nextDelayRef.current);
+        }
+        return;
       }
-    } finally {
-      inFlightRef.current = false;
-      setChecking(false);
-      applyCadence(outcome);
-      if (reschedule && scheduleNextRef.current) {
-        scheduleNextRef.current(nextDelayRef.current);
+
+      const resolvedToken = await resolveAuthAccessToken(accessToken);
+      if (!resolvedToken) {
+        setStatus("unknown");
+        setChecking(false);
+        setHttpStatus(null);
+        setLastCheckedAt(new Date().toISOString());
+        setError(null);
+        applyCadence(outcome);
+        if (reschedule && scheduleNextRef.current) {
+          scheduleNextRef.current(nextDelayRef.current);
+        }
+        return;
       }
-    }
-  }, [
-    accessToken,
-    applyCadence,
-    baseUrl,
-    retryDelayMs,
-    threshold,
-    timeoutMs,
-  ]);
+
+      if (inFlightRef.current) {
+        if (reschedule && scheduleNextRef.current) {
+          scheduleNextRef.current(nextDelayRef.current);
+        }
+        return;
+      }
+      inFlightRef.current = true;
+      setChecking(true);
+      setError(null);
+
+      try {
+        const result = await probeWithRetry({
+          baseUrl,
+          accessToken: resolvedToken,
+          timeoutMs,
+          retryDelayMs,
+        });
+
+        if (!result.ok) {
+          throw result.error;
+        }
+
+        outcome = "success";
+        failureCountRef.current = 0;
+        setHttpStatus(result.status ?? 200);
+        const now = new Date().toISOString();
+        setLastCheckedAt(now);
+        setStatus("active");
+        setError(null);
+        setLastOkAt(now);
+      } catch (e) {
+        const statusCode = (e as any)?.status ?? (e as any)?.statusCode;
+        setHttpStatus(Number.isFinite(statusCode) ? statusCode : null);
+        setLastCheckedAt(new Date().toISOString());
+
+        if (statusCode === 401 || statusCode === 403) {
+          failureCountRef.current = 0;
+          setStatus("error");
+          setError("Unauthorized");
+        } else if (typeof statusCode === "number" && statusCode < 500) {
+          failureCountRef.current = 0;
+          setStatus("error");
+          setError(`HTTP ${statusCode}`);
+        } else {
+          outcome = "failure";
+          failureCountRef.current += 1;
+          const nextStatus = failureCountRef.current >= threshold ? "down" : "error";
+          setStatus(nextStatus);
+          setError(
+            (e as any)?.name === "AbortError" ? "Timeout" : (e as any)?.message || "Fetch failed",
+          );
+        }
+      } finally {
+        inFlightRef.current = false;
+        setChecking(false);
+        applyCadence(outcome);
+        if (reschedule && scheduleNextRef.current) {
+          scheduleNextRef.current(nextDelayRef.current);
+        }
+      }
+    },
+    [accessToken, applyCadence, baseUrl, retryDelayMs, threshold, timeoutMs],
+  );
 
   useEffect(() => {
     let id: number | null = null;

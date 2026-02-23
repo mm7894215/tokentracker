@@ -1,6 +1,7 @@
 # Milestones
 
 ## M1 - Requirements & Acceptance
+
 - Entry criteria:
   - 设计确认完成。
 - Exit criteria:
@@ -9,6 +10,7 @@
   - Requirements + Acceptance 文档。
 
 ## M2 - OpenSpec Proposal (if applicable)
+
 - Entry criteria:
   - M1 完成。
 - Exit criteria:
@@ -17,6 +19,7 @@
   - OpenSpec 变更目录完整。
 
 ## M3 - Unit Test Coverage
+
 - Entry criteria:
   - M2 批准。
 - Exit criteria:
@@ -25,6 +28,7 @@
   - 新增/更新的单元测试。
 
 ## M4 - Regression & Integration
+
 - Entry criteria:
   - M3 通过。
 - Exit criteria:
@@ -33,6 +37,7 @@
   - 迁移脚本 + 验证记录。
 
 ## M5 - Release & Monitoring
+
 - Entry criteria:
   - M4 通过。
 - Exit criteria:

@@ -21,11 +21,11 @@ test("dashboard package defines lint script", async () => {
   assert.ok(pkg.scripts, "expected dashboard package.json scripts to exist");
   assert.ok(
     typeof pkg.scripts.lint === "string" && pkg.scripts.lint.length > 0,
-    "expected dashboard package.json to define a lint script"
+    "expected dashboard package.json to define a lint script",
   );
   assert.ok(
     pkg.scripts.lint.includes("src/**/*.{js,jsx,ts,tsx}"),
-    "expected dashboard lint script to target src/**/*.{js,jsx,ts,tsx}"
+    "expected dashboard lint script to target src/**/*.{js,jsx,ts,tsx}",
   );
 });
 
@@ -34,15 +34,15 @@ test("dashboard package includes eslint devDependencies", async () => {
   const devDeps = pkg.devDependencies ?? {};
   assert.ok(
     typeof devDeps.eslint === "string",
-    "expected eslint to be listed in dashboard devDependencies"
+    "expected eslint to be listed in dashboard devDependencies",
   );
   assert.ok(
     typeof devDeps["eslint-plugin-react"] === "string",
-    "expected eslint-plugin-react to be listed in dashboard devDependencies"
+    "expected eslint-plugin-react to be listed in dashboard devDependencies",
   );
   assert.ok(
     typeof devDeps["eslint-plugin-react-hooks"] === "string",
-    "expected eslint-plugin-react-hooks to be listed in dashboard devDependencies"
+    "expected eslint-plugin-react-hooks to be listed in dashboard devDependencies",
   );
 });
 
@@ -50,10 +50,10 @@ test("dashboard eslint config exists and enables recommended rules", async () =>
   const config = await readEslintConfig();
   assert.ok(
     config.includes("eslint:recommended"),
-    "expected eslint config to extend eslint:recommended"
+    "expected eslint config to extend eslint:recommended",
   );
   assert.ok(
     config.includes("plugin:react-hooks/recommended"),
-    "expected eslint config to extend react hooks recommended rules"
+    "expected eslint config to extend react hooks recommended rules",
   );
 });

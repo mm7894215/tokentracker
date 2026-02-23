@@ -83,6 +83,7 @@ npx --yes vibeusage init
 4. **访问令牌** - 用于 CI/自动化环境
 
 **CLI 选项：**
+
 - `--yes` - 非交互环境跳过确认提示
 - `--dry-run` - 仅预览变更，不写入文件
 - `--link-code <code>` - 使用控制台的链接码认证
@@ -90,13 +91,13 @@ npx --yes vibeusage init
 
 **支持的 CLI 工具自动配置：**
 
-| 工具 | 配置位置 | 方式 |
-|------|---------|------|
-| Codex CLI | `~/.codex/config.toml` | `notify` hook |
-| Every Code | `~/.code/config.toml`（或 `CODE_HOME`） | `notify` hook |
-| Gemini CLI | `~/.gemini/settings.json`（或 `GEMINI_HOME`） | `SessionEnd` hook |
-| Opencode | 全局插件 | 消息解析插件 |
-| Claude Code | `~/.claude/hooks/` | Hook 配置 |
+| 工具        | 配置位置                                      | 方式              |
+| ----------- | --------------------------------------------- | ----------------- |
+| Codex CLI   | `~/.codex/config.toml`                        | `notify` hook     |
+| Every Code  | `~/.code/config.toml`（或 `CODE_HOME`）       | `notify` hook     |
+| Gemini CLI  | `~/.gemini/settings.json`（或 `GEMINI_HOME`） | `SessionEnd` hook |
+| Opencode    | 全局插件                                      | 消息解析插件      |
+| Claude Code | `~/.claude/hooks/`                            | Hook 配置         |
 
 `init` 完成后，所有支持的 CLI 工具将自动配置数据同步，无需额外操作。
 
@@ -137,33 +138,33 @@ npx --yes vibeusage uninstall --purge
 
 ### 日志来源
 
-| 工具 | 日志位置 | 覆盖环境变量 |
-|------|---------|-------------|
-| Codex CLI | `~/.codex/sessions/**/rollout-*.jsonl` | `CODEX_HOME` |
-| Every Code | `~/.code/sessions/**/rollout-*.jsonl` | `CODE_HOME` |
-| Gemini CLI | `~/.gemini/tmp/**/chats/session-*.json` | `GEMINI_HOME` |
-| Opencode | `~/.opencode/messages/*.json` | - |
-| Claude Code | 从 hook 输出解析 | - |
+| 工具        | 日志位置                                | 覆盖环境变量  |
+| ----------- | --------------------------------------- | ------------- |
+| Codex CLI   | `~/.codex/sessions/**/rollout-*.jsonl`  | `CODEX_HOME`  |
+| Every Code  | `~/.code/sessions/**/rollout-*.jsonl`   | `CODE_HOME`   |
+| Gemini CLI  | `~/.gemini/tmp/**/chats/session-*.json` | `GEMINI_HOME` |
+| Opencode    | `~/.opencode/messages/*.json`           | -             |
+| Claude Code | 从 hook 输出解析                        | -             |
 
 ## 🔧 环境变量
 
 ### 核心设置
 
-| 变量 | 说明 | 默认值 |
-|------|------|--------|
-| `VIBEUSAGE_HTTP_TIMEOUT_MS` | CLI HTTP 超时（毫秒，`0` 表示关闭，范围 `1000..120000`） | `20000` |
-| `VITE_VIBEUSAGE_HTTP_TIMEOUT_MS` | Dashboard 请求超时（毫秒，`0` 表示关闭，范围 `1000..30000`） | `15000` |
-| `VIBEUSAGE_DEBUG` | 启用调试输出（`1` 或 `true` 开启） | - |
-| `VIBEUSAGE_DASHBOARD_URL` | 自定义 Dashboard URL | `https://www.vibeusage.cc` |
-| `VIBEUSAGE_INSFORGE_BASE_URL` | 自定义 API 基础 URL | `https://5tmappuk.us-east.insforge.app` |
-| `VIBEUSAGE_DEVICE_TOKEN` | 预配置设备令牌（用于 CI） | - |
+| 变量                             | 说明                                                         | 默认值                                  |
+| -------------------------------- | ------------------------------------------------------------ | --------------------------------------- |
+| `VIBEUSAGE_HTTP_TIMEOUT_MS`      | CLI HTTP 超时（毫秒，`0` 表示关闭，范围 `1000..120000`）     | `20000`                                 |
+| `VITE_VIBEUSAGE_HTTP_TIMEOUT_MS` | Dashboard 请求超时（毫秒，`0` 表示关闭，范围 `1000..30000`） | `15000`                                 |
+| `VIBEUSAGE_DEBUG`                | 启用调试输出（`1` 或 `true` 开启）                           | -                                       |
+| `VIBEUSAGE_DASHBOARD_URL`        | 自定义 Dashboard URL                                         | `https://www.vibeusage.cc`              |
+| `VIBEUSAGE_INSFORGE_BASE_URL`    | 自定义 API 基础 URL                                          | `https://5tmappuk.us-east.insforge.app` |
+| `VIBEUSAGE_DEVICE_TOKEN`         | 预配置设备令牌（用于 CI）                                    | -                                       |
 
 ### CLI 工具覆盖
 
-| 变量 | 说明 | 默认值 |
-|------|------|--------|
-| `CODEX_HOME` | Codex CLI 目录覆盖 | `~/.codex` |
-| `CODE_HOME` | Every Code 目录覆盖 | `~/.code` |
+| 变量          | 说明                | 默认值      |
+| ------------- | ------------------- | ----------- |
+| `CODEX_HOME`  | Codex CLI 目录覆盖  | `~/.codex`  |
+| `CODE_HOME`   | Every Code 目录覆盖 | `~/.code`   |
 | `GEMINI_HOME` | Gemini CLI 目录覆盖 | `~/.gemini` |
 
 ### 已废弃
@@ -276,18 +277,18 @@ npm run dev
 const res = await fetch(
   `${baseUrl}/functions/vibeusage-usage-summary?from=2025-12-30&to=2025-12-30&debug=1`,
   {
-    headers: { Authorization: `Bearer ${userJwt}` }
-  }
+    headers: { Authorization: `Bearer ${userJwt}` },
+  },
 );
 const data = await res.json();
 
 if (data.debug) {
-  console.debug('usage debug', {
+  console.debug("usage debug", {
     requestId: data.debug.request_id,
     status: data.debug.status,
     queryMs: data.debug.query_ms,
     slowThresholdMs: data.debug.slow_threshold_ms,
-    slowQuery: data.debug.slow_query
+    slowQuery: data.debug.slow_query,
   });
 }
 ```

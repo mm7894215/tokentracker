@@ -1,11 +1,13 @@
 # Verification Report
 
 ## Scope
+
 - Local unit/regression tests for InsForge usage guardrails and logging.
 - Remote acceptance checks for oversized ranges and slow-query logs on production InsForge.
 
 ## Tests Run
-- `npm test` (node --test test/*.test.js)
+
+- `npm test` (node --test test/\*.test.js)
 - `npm run build:insforge`
 - Oversized range calls:
   - `GET /functions/vibescore-usage-summary?from=2024-01-01&to=2025-12-31`
@@ -20,6 +22,7 @@
   - `insforge.logs`
 
 ## Results
+
 - `npm test` passed (131 tests).
 - Oversized range acceptance passed on production after deployment:
   - `vibescore-usage-summary` → `400`
@@ -30,9 +33,11 @@
 - Restored default slow-query threshold to `2000ms` and redeployed usage functions.
 
 ## Evidence
+
 - Terminal output captured in CLI session (2025-12-30, 2025-12-31).
 - InsForge MCP log snapshots captured (2025-12-31).
 
 ## Remaining Risks
+
 - Guardrail thresholds may be incorrect until validated in staging.
 - Slow-query logs not observed in available MCP log sources even with 1ms threshold; log sink visibility may be limited or needs alternate capture.

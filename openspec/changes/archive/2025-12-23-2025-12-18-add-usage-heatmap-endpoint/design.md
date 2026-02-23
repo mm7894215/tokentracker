@@ -5,11 +5,13 @@
 ### Scope
 
 IN:
+
 - 新增 `GET /functions/vibescore-usage-heatmap`（server-side 派生 heatmap）
 - 统一 heatmap 的“口径/算法/阈值映射/对齐规则”，并以 JSON contract 输出
 - 前端通过 hook 使用该 contract（可回退旧方案）
 
 OUT:
+
 - 不改动 ingest、device token、聚合视图结构
 - 不引入真实“网络状态/节点状态”等不可靠数据
 - 不做可视化配置面板（对比度、阈值档位等先不做）
@@ -17,10 +19,12 @@ OUT:
 ### Interfaces
 
 Endpoint:
+
 - `GET /functions/vibescore-usage-heatmap?weeks=52&to=YYYY-MM-DD&week_starts_on=sun|mon`
 - Headers: `Authorization: Bearer <user_jwt>`
 
 Response (draft):
+
 ```json
 {
   "from": "2025-01-01",
@@ -67,10 +71,10 @@ Response (draft):
 
 ### Milestones
 
-1) Contract freeze：确定 request/response 字段与限制（输出一份样例 JSON）
-2) Edge function MVP：实现 endpoint + 基本算法 + 约束校验
-3) Dashboard hook 切换：优先新 endpoint，保留 404 回退
-4) Verification：单测 + smoke + 手工回归步骤齐备
+1. Contract freeze：确定 request/response 字段与限制（输出一份样例 JSON）
+2. Edge function MVP：实现 endpoint + 基本算法 + 约束校验
+3. Dashboard hook 切换：优先新 endpoint，保留 404 回退
+4. Verification：单测 + smoke + 手工回归步骤齐备
 
 ### Plan B triggers
 
@@ -94,13 +98,13 @@ Response (draft):
 
 输入：daily totals（`total_tokens`）
 
-1) 收集所有 `value > 0` 的集合 `nz`
-2) 若 `nz` 为空：全为 level 0
-3) 计算分位数阈值（默认）：
+1. 收集所有 `value > 0` 的集合 `nz`
+2. 若 `nz` 为空：全为 level 0
+3. 计算分位数阈值（默认）：
    - `t1 = p50(nz)`
    - `t2 = p75(nz)`
    - `t3 = p90(nz)`
-4) 映射：
+4. 映射：
    - `0`：`value == 0`
    - `1`：`0 < value <= t1`
    - `2`：`t1 < value <= t2`

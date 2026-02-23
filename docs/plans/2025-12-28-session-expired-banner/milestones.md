@@ -1,6 +1,7 @@
 # Milestones
 
 ## M1 - Requirements & Acceptance
+
 - Entry criteria:
   - 目标与范围确认
 - Exit criteria:
@@ -11,6 +12,7 @@
   - `docs/plans/2025-12-28-session-expired-banner/acceptance-criteria.md`
 
 ## M2 - OpenSpec Proposal (if applicable)
+
 - Entry criteria:
   - M1 完成
 - Exit criteria:
@@ -21,6 +23,7 @@
   - `openspec/changes/2025-12-28-update-session-expired-banner/specs/vibeusage-tracker/spec.md`
 
 ## M3 - Unit Test Coverage
+
 - Entry criteria:
   - M2 完成且获批准
 - Exit criteria:
@@ -29,6 +32,7 @@
   - `test/dashboard-session-expired-banner.test.js`
 
 ## M4 - Regression & Integration
+
 - Entry criteria:
   - M3 完成
 - Exit criteria:
@@ -38,6 +42,7 @@
   - 测试输出记录
 
 ## M5 - Release & Monitoring
+
 - Entry criteria:
   - M4 完成
 - Exit criteria:

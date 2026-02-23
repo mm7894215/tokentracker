@@ -1,5 +1,4 @@
 import React, { useMemo } from "react";
-
 import { copy } from "../../lib/copy";
 
 function hashCode(value) {
@@ -30,8 +29,8 @@ export function MatrixAvatar({
   const glowFilter = isAnon
     ? "none"
     : isTheOne
-    ? "drop-shadow(0 0 8px rgba(255, 215, 0, 0.8)) drop-shadow(0 0 15px rgba(255, 255, 255, 0.5))"
-    : "drop-shadow(0 0 4px rgba(0, 255, 65, 0.6))";
+      ? "drop-shadow(0 0 8px rgba(255, 215, 0, 0.8)) drop-shadow(0 0 15px rgba(255, 255, 255, 0.5))"
+      : "drop-shadow(0 0 4px rgba(0, 255, 65, 0.6))";
 
   if (isAnon) {
     return (
@@ -59,11 +58,7 @@ export function MatrixAvatar({
         <div className="absolute inset-0 bg-white opacity-10 animate-pulse mix-blend-overlay"></div>
       ) : null}
 
-      <svg
-        viewBox="0 0 5 5"
-        className="w-full h-full"
-        style={{ filter: glowFilter }}
-      >
+      <svg viewBox="0 0 5 5" className="w-full h-full" style={{ filter: glowFilter }}>
         {grid.map((filled, i) => {
           if (!filled) return null;
           const r = Math.floor(i / 3);
@@ -71,9 +66,7 @@ export function MatrixAvatar({
           return (
             <React.Fragment key={i}>
               <rect x={c} y={r} width="1" height="1" fill={color} />
-              {c < 2 ? (
-                <rect x={4 - c} y={r} width="1" height="1" fill={color} />
-              ) : null}
+              {c < 2 ? <rect x={4 - c} y={r} width="1" height="1" fill={color} /> : null}
             </React.Fragment>
           );
         })}

@@ -1,4 +1,5 @@
 ## 1. Implementation
+
 - [x] 1.1 Add pricing model alias table + policies.
 - [x] 1.2 Update pricing resolver to use alias mapping.
 - [x] 1.3 Extend pricing sync to generate alias rows via vendor rules.

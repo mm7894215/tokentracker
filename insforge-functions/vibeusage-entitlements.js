@@ -301,7 +301,11 @@ var require_auth = __commonJS({
     }
     async function getEdgeClientAndUserIdFast({ baseUrl, bearer }) {
       const anonKey = getAnonKey2();
-      const edgeClient = createClient({ baseUrl, anonKey: anonKey || void 0, edgeFunctionToken: bearer });
+      const edgeClient = createClient({
+        baseUrl,
+        anonKey: anonKey || void 0,
+        edgeFunctionToken: bearer
+      });
       const local = await verifyUserJwtHs256({ token: bearer });
       const allowRemoteOnly = !local.ok && local?.code === "missing_jwt_secret";
       if (!local.ok && !allowRemoteOnly) {
@@ -410,7 +414,14 @@ var require_auth = __commonJS({
       }
       const publicView = await resolvePublicView({ baseUrl, shareToken: bearer });
       if (!publicView.ok) {
-        return { ok: false, edgeClient: null, userId: null, accessType: null, status: 401, error: "Unauthorized" };
+        return {
+          ok: false,
+          edgeClient: null,
+          userId: null,
+          accessType: null,
+          status: 401,
+          error: "Unauthorized"
+        };
       }
       return {
         ok: true,
@@ -759,8 +770,10 @@ function matchesEntitlementPayload(row, payload) {
   if (!rowUserId || !payloadUserId || rowUserId !== payloadUserId) return false;
   const rowSource = typeof row.source === "string" ? row.source.trim().toLowerCase() : "";
   if (rowSource !== payload.source) return false;
-  if (normalizeIsoMillis(row.effective_from) !== normalizeIsoMillis(payload.effectiveFrom)) return false;
-  if (normalizeIsoMillis(row.effective_to) !== normalizeIsoMillis(payload.effectiveTo)) return false;
+  if (normalizeIsoMillis(row.effective_from) !== normalizeIsoMillis(payload.effectiveFrom))
+    return false;
+  if (normalizeIsoMillis(row.effective_to) !== normalizeIsoMillis(payload.effectiveTo))
+    return false;
   if (normalizeNote(row.note) !== payload.note) return false;
   if (row.revoked_at != null) return false;
   return true;

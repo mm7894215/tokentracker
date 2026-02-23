@@ -82,7 +82,11 @@ const CATEGORY_DEFINITIONS = [
     description: "Configuration module.",
     group: "infra",
     color: "2",
-    match: (p) => p.includes("/config/") || p.includes(".config.") || p.includes("settings") || p.endsWith(".env"),
+    match: (p) =>
+      p.includes("/config/") ||
+      p.includes(".config.") ||
+      p.includes("settings") ||
+      p.endsWith(".env"),
   },
   {
     name: "entry",
@@ -105,7 +109,12 @@ const CATEGORY_DEFINITIONS = [
     description: "UI component layer.",
     group: "frontend",
     color: "6",
-    match: (p) => p.includes("/components/") || p.endsWith(".vue") || p.endsWith(".jsx") || p.endsWith(".tsx") || p.includes(".component."),
+    match: (p) =>
+      p.includes("/components/") ||
+      p.endsWith(".vue") ||
+      p.endsWith(".jsx") ||
+      p.endsWith(".tsx") ||
+      p.includes(".component."),
   },
   {
     name: "state",
@@ -119,7 +128,8 @@ const CATEGORY_DEFINITIONS = [
     description: "Routing layer.",
     group: "routing",
     color: "3",
-    match: (p, c) => p.includes("/routes/") || p.includes("/api/") || /@app\.route|express\.Router/i.test(c || ""),
+    match: (p, c) =>
+      p.includes("/routes/") || p.includes("/api/") || /@app\.route|express\.Router/i.test(c || ""),
   },
   {
     name: "edge-function",
@@ -133,49 +143,62 @@ const CATEGORY_DEFINITIONS = [
     description: "Request handling layer.",
     group: "controller",
     color: "3",
-    match: (p) => p.includes("/functions/") && (p.includes("/server/") || p.includes("/api/") || p.includes("/insforge-")),
+    match: (p) =>
+      p.includes("/functions/") &&
+      (p.includes("/server/") || p.includes("/api/") || p.includes("/insforge-")),
   },
   {
     name: "controller",
     description: "Request handling layer.",
     group: "controller",
     color: "3",
-    match: (p, c) => p.includes("/controllers/") || p.includes("/handlers/") || /class\s+\w*Controller\b/i.test(c || ""),
+    match: (p, c) =>
+      p.includes("/controllers/") ||
+      p.includes("/handlers/") ||
+      /class\s+\w*Controller\b/i.test(c || ""),
   },
   {
     name: "middleware",
     description: "Middleware layer.",
     group: "controller",
     color: "3",
-    match: (p, c) => p.includes("/middleware/") || p.includes("/interceptors/") || /@middleware\b/i.test(c || ""),
+    match: (p, c) =>
+      p.includes("/middleware/") || p.includes("/interceptors/") || /@middleware\b/i.test(c || ""),
   },
   {
     name: "service",
     description: "Business logic layer.",
     group: "service",
     color: "3",
-    match: (p, c) => p.includes("/services/") || p.includes("/business/") || /class\s+\w*Service\b/i.test(c || ""),
+    match: (p, c) =>
+      p.includes("/services/") || p.includes("/business/") || /class\s+\w*Service\b/i.test(c || ""),
   },
   {
     name: "model",
     description: "Data model layer.",
     group: "data",
     color: "5",
-    match: (p, c) => p.includes("/models/") || p.includes("/entities/") || p.includes("/schemas/") || /class\s+\w*Model\b/i.test(c || ""),
+    match: (p, c) =>
+      p.includes("/models/") ||
+      p.includes("/entities/") ||
+      p.includes("/schemas/") ||
+      /class\s+\w*Model\b/i.test(c || ""),
   },
   {
     name: "data-access",
     description: "Data access layer.",
     group: "data",
     color: "5",
-    match: (p, c) => p.includes("/dao/") || p.includes("/repositories/") || /\.query\(|\.execute\(/i.test(c || ""),
+    match: (p, c) =>
+      p.includes("/dao/") || p.includes("/repositories/") || /\.query\(|\.execute\(/i.test(c || ""),
   },
   {
     name: "integration",
     description: "External integration layer.",
     group: "infra",
     color: "4",
-    match: (p) => p.includes("/integrations/") || p.includes("/clients/") || p.includes("/adapters/"),
+    match: (p) =>
+      p.includes("/integrations/") || p.includes("/clients/") || p.includes("/adapters/"),
   },
   {
     name: "utils",
@@ -239,7 +262,7 @@ function printHelp() {
       "  --list-modules   List available module keys for --focus",
       "  --help          Show help",
       "",
-    ].join("\n")
+    ].join("\n"),
   );
 }
 
@@ -484,10 +507,7 @@ function resolvePythonImport(importPath, fromDir, fileIndex) {
     baseDir = path.dirname(baseDir);
   }
   const targetBase = modulePath ? path.join(baseDir, modulePath) : baseDir;
-  const candidates = [
-    `${targetBase}.py`,
-    path.join(targetBase, "__init__.py"),
-  ];
+  const candidates = [`${targetBase}.py`, path.join(targetBase, "__init__.py")];
   for (const candidate of candidates) {
     if (fileIndex.has(candidate)) return candidate;
   }
@@ -555,7 +575,9 @@ function detectArchitecture({ rootDir, topDirs, configHits, fileInfos }) {
 
 function isFrontSide(relPath) {
   const parts = toPosixPath(relPath).toLowerCase().split("/");
-  return parts.some((part) => FRONT_DIR_HINTS.includes(part)) || /\.jsx$|\.tsx$|\.vue$/i.test(relPath);
+  return (
+    parts.some((part) => FRONT_DIR_HINTS.includes(part)) || /\.jsx$|\.tsx$|\.vue$/i.test(relPath)
+  );
 }
 
 function isBackSide(relPath) {
@@ -605,7 +627,10 @@ function countParams(paramsText) {
   if (!paramsText) return 0;
   const trimmed = paramsText.trim();
   if (!trimmed) return 0;
-  return trimmed.split(",").map((p) => p.trim()).filter(Boolean).length;
+  return trimmed
+    .split(",")
+    .map((p) => p.trim())
+    .filter(Boolean).length;
 }
 
 function buildAggregatedText(group) {
@@ -642,7 +667,12 @@ function mergeSmallCategories(fileInfos, minCount, options = {}) {
   const counts = groupByCategory(fileInfos);
   for (const info of fileInfos) {
     const count = counts.get(info.category) || 0;
-    if (info.category !== "external" && count > 0 && count < minCount && !keepCategories.has(info.category)) {
+    if (
+      info.category !== "external" &&
+      count > 0 &&
+      count < minCount &&
+      !keepCategories.has(info.category)
+    ) {
       info.category = "misc";
       info.group = "misc";
       info.color = DEFAULT_CATEGORY.color;
@@ -794,11 +824,13 @@ function determineLayerOrder(nodes) {
 function layoutNodes(nodes, edges, architecture, options = {}) {
   if (nodes.length === 0) return;
 
-  const getModuleKey = options.getModuleKey || ((node) => {
-    const rel = node.meta?.relPath || "";
-    const top = toPosixPath(rel).split("/")[0] || "root";
-    return top || "root";
-  });
+  const getModuleKey =
+    options.getModuleKey ||
+    ((node) => {
+      const rel = node.meta?.relPath || "";
+      const top = toPosixPath(rel).split("/")[0] || "root";
+      return top || "root";
+    });
 
   const groups = new Map();
   for (const node of nodes) {
@@ -995,7 +1027,7 @@ function pruneEdges(rawEdges, options = {}) {
       let externalCount = 0;
       const maxExternalEdges = Math.max(
         options.maxExternalEdges ?? Math.min(maxEdges, 12),
-        edgesByService.size
+        edgesByService.size,
       );
       for (const groupEdges of edgesByService.values()) {
         for (const edge of groupEdges) {
@@ -1057,7 +1089,12 @@ function applyIsolatedGrouping(nodes, edges) {
     const groupedNode = {
       id: groupedId,
       type: "text",
-      text: `**工具模块**\n\`grouped\`\n\nGrouped isolated modules.\n\n包含：\n- ${isolated.length} files (grouped)\n- samples: ${isolated.slice(0, 3).map((n) => n.meta.relPath).join(", ") || "n/a"}\n\n依赖：0 个模块\n被依赖：0 次`,
+      text: `**工具模块**\n\`grouped\`\n\nGrouped isolated modules.\n\n包含：\n- ${isolated.length} files (grouped)\n- samples: ${
+        isolated
+          .slice(0, 3)
+          .map((n) => n.meta.relPath)
+          .join(", ") || "n/a"
+      }\n\n依赖：0 个模块\n被依赖：0 次`,
       x: 0,
       y: 0,
       width: 280,
@@ -1072,7 +1109,9 @@ function applyIsolatedGrouping(nodes, edges) {
     };
     const isolatedIds = new Set(isolated.map((n) => n.id));
     const remainingNodes = nodes.filter((n) => !isolatedIds.has(n.id));
-    const remainingEdges = edges.filter((edge) => !isolatedIds.has(edge.from) && !isolatedIds.has(edge.to));
+    const remainingEdges = edges.filter(
+      (edge) => !isolatedIds.has(edge.from) && !isolatedIds.has(edge.to),
+    );
     remainingNodes.push(groupedNode);
     return { nodes: remainingNodes, edges: remainingEdges };
   }
@@ -1080,7 +1119,12 @@ function applyIsolatedGrouping(nodes, edges) {
   const groupedNode = {
     id: `utilities_${hashString("isolated")}`,
     type: "text",
-    text: `**工具模块**\n\`grouped\`\n\nGrouped isolated modules.\n\n包含：\n- ${isolated.length} files (grouped)\n- samples: ${isolated.slice(0, 3).map((n) => n.meta.relPath).join(", ") || "n/a"}\n\n依赖：0 个模块\n被依赖：0 次`,
+    text: `**工具模块**\n\`grouped\`\n\nGrouped isolated modules.\n\n包含：\n- ${isolated.length} files (grouped)\n- samples: ${
+      isolated
+        .slice(0, 3)
+        .map((n) => n.meta.relPath)
+        .join(", ") || "n/a"
+    }\n\n依赖：0 个模块\n被依赖：0 次`,
     x: 0,
     y: 0,
     width: 280,
@@ -1139,7 +1183,9 @@ function filterNodesByFocus(nodes, edges, focusModule) {
 
   if (focusIds.size === 0) {
     const availableList = Array.from(available).sort().join(", ") || "n/a";
-    throw new Error(`Unknown focus module: ${focusKeys.join(", ")}. Available modules: ${availableList}`);
+    throw new Error(
+      `Unknown focus module: ${focusKeys.join(", ")}. Available modules: ${availableList}`,
+    );
   }
 
   const included = new Set(focusIds);
@@ -1211,7 +1257,7 @@ function buildModuleGroups(nodes, options = {}) {
       minX: bounds.minX + dx - modulePadding,
       minY: bounds.minY + dy - modulePadding,
       width: bounds.width + modulePadding * 2,
-      height: bounds.height + modulePadding * 2
+      height: bounds.height + modulePadding * 2,
     };
 
     groupNodes.push({
@@ -1221,7 +1267,7 @@ function buildModuleGroups(nodes, options = {}) {
       y: Math.round(padded.minY),
       width: Math.max(240, Math.round(padded.width)),
       height: Math.max(240, Math.round(padded.height)),
-      label: moduleKey
+      label: moduleKey,
     });
 
     cursorY = padded.minY + padded.height + moduleGap;
@@ -1282,7 +1328,7 @@ function layoutModulesAsGrid(nodes, options = {}) {
       y: Math.round(bounds.minY - modulePadding),
       width: Math.max(240, Math.round(bounds.width + modulePadding * 2)),
       height: Math.max(240, Math.round(bounds.height + modulePadding * 2)),
-      label: moduleKey
+      label: moduleKey,
     });
 
     cursorY = bounds.maxY + modulePadding + moduleGap;
@@ -1316,7 +1362,9 @@ function aggregateNodesIfNeeded(nodes, edges, maxNodes = 300) {
   for (const group of groups.values()) {
     const sample = group.nodes[0];
     const samplePath = sample.meta.relPath || "group";
-    const sampleNames = group.nodes.slice(0, 3).map((n) => path.posix.basename(toPosixPath(n.meta.relPath)));
+    const sampleNames = group.nodes
+      .slice(0, 3)
+      .map((n) => path.posix.basename(toPosixPath(n.meta.relPath)));
     const id = `group_${hashString(group.key)}`;
     const groupNode = {
       id,
@@ -1499,7 +1547,13 @@ async function buildCanvasModel({ rootDir, focusModule }) {
     ({ nodes: allNodes, edges } = applyIsolatedGrouping(allNodes, edges));
   }
 
-  edges = pruneEdges(edges, { maxEdges: 50, maxOut: 5, keepExternal: true, maxExternalEdges: 12, nodes: allNodes });
+  edges = pruneEdges(edges, {
+    maxEdges: 50,
+    maxOut: 5,
+    keepExternal: true,
+    maxExternalEdges: 12,
+    nodes: allNodes,
+  });
   allNodes = ensureMinimumNodes(allNodes);
 
   const depCounts = assignDependencyCounts(allNodes, edges);
@@ -1536,7 +1590,12 @@ async function buildCanvasModel({ rootDir, focusModule }) {
 
   annotateLayers(allNodes);
   if (ENABLE_MODULE_GROUPS) {
-    const grouped = layoutModulesAsGrid(allNodes, { modulePadding: 80, moduleGap: 220, startX: 100, startY: 100 });
+    const grouped = layoutModulesAsGrid(allNodes, {
+      modulePadding: 80,
+      moduleGap: 220,
+      startX: 100,
+      startY: 100,
+    });
     allNodes = grouped.groupNodes.concat(grouped.nodes);
   } else {
     layoutNodes(allNodes, edges, architecture);
@@ -1560,7 +1619,7 @@ async function writeCanvasFile(outputPath, canvas) {
 
 function outputSummary({ outputPath, nodes, edges, architecture }) {
   process.stdout.write(
-    `✓ 架构图已生成：${outputPath}\n  节点数量：${nodes.length}\n  连接数量：${edges.length}\n  识别的架构模式：${architecture}\n`
+    `✓ 架构图已生成：${outputPath}\n  节点数量：${nodes.length}\n  连接数量：${edges.length}\n  识别的架构模式：${architecture}\n`,
   );
 }
 
@@ -1573,7 +1632,9 @@ async function main() {
 
   const rootDir = path.resolve(opts.root || process.cwd());
   const projectName = path.basename(rootDir);
-  const preferredOut = opts.out ? path.resolve(opts.out) : path.join(rootDir, "architecture.canvas");
+  const preferredOut = opts.out
+    ? path.resolve(opts.out)
+    : path.join(rootDir, "architecture.canvas");
   let outputPath = preferredOut;
 
   let canvas;
@@ -1619,7 +1680,11 @@ async function main() {
     if (canvas) {
       const partialPath = `${fallbackBase}.partial.json`;
       await fs
-        .writeFile(partialPath, JSON.stringify({ nodes: canvas.nodes, edges: canvas.edges }, null, 2) + "\n", "utf8")
+        .writeFile(
+          partialPath,
+          JSON.stringify({ nodes: canvas.nodes, edges: canvas.edges }, null, 2) + "\n",
+          "utf8",
+        )
         .catch(() => null);
     }
     process.stderr.write(`Failed to generate architecture canvas. See ${errorPath}\n`);

@@ -13,6 +13,7 @@
 ### Task 1: Add canonical visibility shared service
 
 **Files:**
+
 - Create: `insforge-src/shared/public-visibility.js`
 - Test: `test/public-visibility-state.test.js`
 
@@ -20,8 +21,8 @@
 
 ```js
 // test/public-visibility-state.test.js
-import test from 'node:test';
-import assert from 'node:assert/strict';
+import test from "node:test";
+import assert from "node:assert/strict";
 
 // cases:
 // - enable => revoked_at null + share_token pv1-<uuid>
@@ -62,6 +63,7 @@ git commit -m "refactor(visibility): add canonical public visibility service"
 ### Task 2: Add new `vibeusage-public-visibility` endpoint
 
 **Files:**
+
 - Create: `insforge-src/functions/vibeusage-public-visibility.js`
 - Generated: `insforge-functions/vibeusage-public-visibility.js` (via build)
 - Test: `test/edge-functions.test.js` (new tests block)
@@ -69,6 +71,7 @@ git commit -m "refactor(visibility): add canonical public visibility service"
 **Step 1: Write the failing tests**
 
 Add tests:
+
 - `GET /functions/vibeusage-public-visibility` returns `{ enabled, updated_at, share_token }`
 - `POST { enabled: true }` activates row and returns enabled true
 - `POST { enabled: false }` revokes row and returns enabled false
@@ -89,10 +92,12 @@ Expected: FAIL (function missing).
 **Step 4: Build generated edge functions + rerun tests**
 
 Run:
+
 ```bash
 npm run build:insforge
 node --test test/edge-functions.test.js --test-name-pattern "vibeusage-public-visibility"
 ```
+
 Expected: PASS.
 
 **Step 5: Commit**
@@ -107,6 +112,7 @@ git commit -m "feat(visibility): add unified public visibility endpoint"
 ### Task 3: Hard-retire legacy visibility endpoints (410 Gone)
 
 **Files:**
+
 - Modify: `insforge-src/functions/vibeusage-leaderboard-settings.js`
 - Modify: `insforge-src/functions/vibeusage-public-view-status.js`
 - Modify: `insforge-src/functions/vibeusage-public-view-issue.js`
@@ -117,6 +123,7 @@ git commit -m "feat(visibility): add unified public visibility endpoint"
 **Step 1: Write failing tests**
 
 Add tests that each legacy endpoint returns:
+
 - HTTP 410
 - stable error payload like `{ error: "Endpoint retired" }`
 
@@ -132,10 +139,12 @@ Replace handler internals with immediate `410 Gone` response. No compatibility b
 **Step 4: Build + rerun**
 
 Run:
+
 ```bash
 npm run build:insforge
 node --test test/edge-functions.test.js --test-name-pattern "retired|410|public-view|leaderboard-settings"
 ```
+
 Expected: PASS.
 
 **Step 5: Commit**
@@ -150,6 +159,7 @@ git commit -m "refactor(visibility): retire legacy public-view endpoints with 41
 ### Task 4: Rework leaderboard read path to canonical read-time gating + optional auth
 
 **Files:**
+
 - Modify: `insforge-src/functions/vibeusage-leaderboard.js`
 - Generated: `insforge-functions/vibeusage-leaderboard.js`
 - Test: `test/edge-functions.test.js`
@@ -157,6 +167,7 @@ git commit -m "refactor(visibility): retire legacy public-view endpoints with 41
 **Step 1: Write failing tests**
 
 Add/adjust tests:
+
 - Anonymous request succeeds and returns only public rows.
 - Private rows never expose `user_id`.
 - Authenticated request still returns `me`.
@@ -176,10 +187,12 @@ Expected: FAIL.
 **Step 4: Build + rerun**
 
 Run:
+
 ```bash
 npm run build:insforge
 node --test test/edge-functions.test.js --test-name-pattern "leaderboard.*anonymous|leaderboard.*is_public|read-time"
 ```
+
 Expected: PASS.
 
 **Step 5: Commit**
@@ -194,6 +207,7 @@ git commit -m "refactor(leaderboard): read-time canonical visibility with guest 
 ### Task 5: Rework leaderboard profile endpoint for canonical visibility + guest access
 
 **Files:**
+
 - Modify: `insforge-src/functions/vibeusage-leaderboard-profile.js`
 - Generated: `insforge-functions/vibeusage-leaderboard-profile.js`
 - Test: `test/edge-functions.test.js`
@@ -201,6 +215,7 @@ git commit -m "refactor(leaderboard): read-time canonical visibility with guest 
 **Step 1: Write failing tests**
 
 Add tests:
+
 - Anonymous can read public profile rows.
 - Anonymous/non-self cannot read non-public rows.
 - Authenticated self can still read own row.
@@ -220,10 +235,12 @@ Expected: FAIL.
 **Step 4: Build + rerun**
 
 Run:
+
 ```bash
 npm run build:insforge
 node --test test/edge-functions.test.js --test-name-pattern "leaderboard-profile.*anonymous|leaderboard-profile.*self|leaderboard-profile.*public"
 ```
+
 Expected: PASS.
 
 **Step 5: Commit**
@@ -238,6 +255,7 @@ git commit -m "refactor(profile): canonical public visibility with guest reads"
 ### Task 6: Switch frontend to new hard-cut visibility contract
 
 **Files:**
+
 - Modify: `dashboard/src/lib/vibeusage-api.ts`
 - Modify: `dashboard/src/pages/DashboardPage.jsx`
 - Modify: `dashboard/src/pages/LeaderboardPage.jsx`
@@ -246,6 +264,7 @@ git commit -m "refactor(profile): canonical public visibility with guest reads"
 **Step 1: Write failing frontend behavior tests (or source assertions)**
 
 Add tests/assertions for:
+
 - usage of `vibeusage-public-visibility` instead of retired endpoints
 - guest leaderboard load path
 - no dependency on `leaderboard_public` old field
@@ -265,10 +284,12 @@ Expected: FAIL.
 **Step 4: Verify frontend + regression tests**
 
 Run:
+
 ```bash
 node --test test/*.test.js
 npm run validate:ui-hardcode
 ```
+
 Expected: PASS.
 
 **Step 5: Commit**
@@ -283,6 +304,7 @@ git commit -m "feat(frontend): adopt hard-cut public visibility contract"
 ### Task 7: Docs + final verification gate
 
 **Files:**
+
 - Modify: `BACKEND_API.md`
 - Modify: `docs/plans/2026-02-20-public-visibility-hard-cut-design.md` (if needed from implementation deltas)
 
@@ -295,11 +317,13 @@ git commit -m "feat(frontend): adopt hard-cut public visibility contract"
 **Step 2: Run full verification**
 
 Run:
+
 ```bash
 npm run build:insforge:check
 node --test test/*.test.js
 npm run ci:local
 ```
+
 Expected: all PASS.
 
 **Step 3: Capture manual acceptance checks**
@@ -318,6 +342,7 @@ git commit -m "docs(api): document hard-cut public visibility contracts"
 ---
 
 ## Notes for Executor
+
 - Keep changes small and commit at each task boundary.
 - Do not push; local commits only unless explicitly requested.
 - No compatibility code paths.

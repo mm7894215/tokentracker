@@ -1,5 +1,4 @@
 import React from "react";
-
 import { copy } from "../../../lib/copy";
 import { AsciiBox } from "../../foundation/AsciiBox.jsx";
 import { NeuralAdaptiveFleet } from "./NeuralAdaptiveFleet.jsx";
@@ -12,8 +11,7 @@ export const NeuralDivergenceMap = React.memo(function NeuralDivergenceMap({
 }) {
   const count = fleetData.length;
   // 单个时全宽(cols-1)，多个时双列(cols-2)
-  const gridClass =
-    count === 1 ? "grid grid-cols-1" : "grid grid-cols-1 md:grid-cols-2";
+  const gridClass = count === 1 ? "grid grid-cols-1" : "grid grid-cols-1 md:grid-cols-2";
 
   return (
     <AsciiBox title={title} className={className}>

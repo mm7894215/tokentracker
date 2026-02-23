@@ -11,13 +11,14 @@
 ### Task 1: Add failing edge function tests for link code init/exchange
 
 **Files:**
+
 - Modify: `test/edge-functions.test.js`
 
 **Step 1: Write the failing test**
 
 ```js
-const linkCode = 'link_code_test';
-const requestId = 'req_123';
+const linkCode = "link_code_test";
+const requestId = "req_123";
 // Test: init returns link_code + expires_at
 // Test: exchange returns device token and marks used
 ```
@@ -46,6 +47,7 @@ git commit -m "test: add link code edge function tests"
 ### Task 2: Add link code schema + exchange RPC
 
 **Files:**
+
 - Create: `openspec/changes/2025-12-28-add-one-login-link-code/sql/001_create_link_codes.sql`
 - Create: `openspec/changes/2025-12-28-add-one-login-link-code/sql/002_link_code_exchange_rpc.sql`
 
@@ -87,6 +89,7 @@ git commit -m "feat: add link code schema and exchange rpc"
 ### Task 3: Implement edge functions (init + exchange)
 
 **Files:**
+
 - Create: `insforge-src/functions/vibescore-link-code-init.js`
 - Create: `insforge-src/functions/vibescore-link-code-exchange.js`
 - Modify (build output): `insforge-functions/vibescore-link-code-init.js`
@@ -131,6 +134,7 @@ git commit -m "feat: add link code init and exchange functions"
 ### Task 4: CLI `--link-code` support
 
 **Files:**
+
 - Modify: `src/commands/init.js`
 - Modify: `src/lib/vibescore-api.js`
 - Modify: `src/lib/insforge.js`
@@ -176,6 +180,7 @@ git commit -m "feat: support link code in cli init"
 ### Task 5: Dashboard UI + copy registry
 
 **Files:**
+
 - Modify: `dashboard/src/pages/DashboardPage.jsx`
 - Modify: `dashboard/src/content/copy.csv`
 - Test: `test/dashboard-render-order.test.js` or new `test/dashboard-link-code-install.test.js`
@@ -215,12 +220,14 @@ git commit -m "feat: add install command copy flow"
 ### Task 6: Regression + verification record
 
 **Files:**
+
 - Modify: `docs/plans/2025-12-28-one-login-link-code/verification-report.md`
 - Create (optional): `scripts/acceptance/link-code-exchange.cjs`
 
 **Step 1: Run regression tests**
 
 Run:
+
 - `node --test test/edge-functions.test.js`
 - `node --test test/init-uninstall.test.js`
 - `node --test test/dashboard-render-order.test.js`

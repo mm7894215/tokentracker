@@ -29,8 +29,9 @@ body {
   margin: 0;
   background: var(--matrix-bg);
   color: var(--matrix-ink);
-  font-family: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco,
-    Consolas, "Liberation Mono", "Courier New", monospace;
+  font-family:
+    "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+    "Courier New", monospace;
   font-size: var(--matrix-body-size);
   line-height: 1.5;
 }
@@ -41,7 +42,8 @@ body {
     border: 1px solid var(--matrix-panel-border);
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
-    box-shadow: 0 0 0 1px rgba(0, 255, 65, 0.08),
+    box-shadow:
+      0 0 0 1px rgba(0, 255, 65, 0.08),
       0 18px 40px rgba(0, 0, 0, 0.45);
   }
 
@@ -69,7 +71,11 @@ body {
       linear-gradient(var(--matrix-header-corner) 0 0),
       linear-gradient(var(--matrix-header-corner) 0 0);
     background-repeat: no-repeat;
-    background-size: 10px 1px, 1px 10px, 10px 1px, 1px 10px;
+    background-size:
+      10px 1px,
+      1px 10px,
+      10px 1px,
+      1px 10px;
     background-position:
       top 6px left 6px,
       top 6px left 6px,
@@ -115,7 +121,9 @@ body {
     );
     transform: translateX(-120%);
     opacity: 0;
-    transition: transform 300ms ease, opacity 200ms ease;
+    transition:
+      transform 300ms ease,
+      opacity 200ms ease;
     pointer-events: none;
   }
 
@@ -139,7 +147,11 @@ body {
       height: 36px;
       padding: 0 10px;
       gap: 8px;
-      background-size: 8px 1px, 1px 8px, 8px 1px, 1px 8px;
+      background-size:
+        8px 1px,
+        1px 8px,
+        8px 1px,
+        1px 8px;
       background-position:
         top 5px left 5px,
         top 5px left 5px,
@@ -219,11 +231,7 @@ body {
   }
 
   .matrix-scanlines {
-    background-image: linear-gradient(
-      to bottom,
-      rgba(0, 255, 65, 0.12) 1px,
-      rgba(0, 0, 0, 0) 1px
-    );
+    background-image: linear-gradient(to bottom, rgba(0, 255, 65, 0.12) 1px, rgba(0, 0, 0, 0) 1px);
     background-size: 100% 4px;
     animation: matrix-scan 6s linear infinite;
   }
@@ -237,7 +245,6 @@ body {
     );
     animation: matrix-sweep 4s ease-in-out infinite;
   }
-
 }
 
 .screenshot-mode .matrix-rain {

@@ -2,21 +2,21 @@ name: Purge Legacy Tracker Events
 
 on:
   schedule:
-    - cron: '30 2 * * *'
+    - cron: "30 2 * * *"
   workflow_dispatch:
     inputs:
       days:
-        description: 'Retention window in days'
+        description: "Retention window in days"
         required: false
-        default: '30'
+        default: "30"
       dry_run:
-        description: 'Dry run (true/false)'
+        description: "Dry run (true/false)"
         required: false
-        default: 'false'
+        default: "false"
       include_ingest_batches:
-        description: 'Purge ingest batch metrics (true/false)'
+        description: "Purge ingest batch metrics (true/false)"
         required: false
-        default: 'true'
+        default: "true"
 
 jobs:
   purge:

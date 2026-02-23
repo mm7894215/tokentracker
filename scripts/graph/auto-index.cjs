@@ -1,16 +1,16 @@
-const path = require('node:path');
-const fs = require('node:fs');
-const { execFileSync } = require('node:child_process');
-const { scip } = require('@sourcegraph/scip-typescript/dist/src/scip');
+const path = require("node:path");
+const fs = require("node:fs");
+const { execFileSync } = require("node:child_process");
+const { scip } = require("@sourcegraph/scip-typescript/dist/src/scip");
 
-const { loadGraphConfig } = require('./lib/config.cjs');
-const { discoverDomains } = require('./lib/domain-discovery.cjs');
-const { scanDomainMetrics } = require('./lib/metrics.cjs');
-const { decideSplit } = require('./lib/split-decision.cjs');
-const { writePlan } = require('./lib/plan-writer.cjs');
-const { runScipForPlan } = require('./lib/scip-runner.cjs');
-const { importScip } = require('./lib/importer.cjs');
-const { validateScipCoverage } = require('./lib/validate.cjs');
+const { loadGraphConfig } = require("./lib/config.cjs");
+const { discoverDomains } = require("./lib/domain-discovery.cjs");
+const { scanDomainMetrics } = require("./lib/metrics.cjs");
+const { decideSplit } = require("./lib/split-decision.cjs");
+const { writePlan } = require("./lib/plan-writer.cjs");
+const { runScipForPlan } = require("./lib/scip-runner.cjs");
+const { importScip } = require("./lib/importer.cjs");
+const { validateScipCoverage } = require("./lib/validate.cjs");
 
 function buildPlan({ rootDir, deps = {} }) {
   const fsDep = deps.fs || fs;
@@ -20,32 +20,33 @@ function buildPlan({ rootDir, deps = {} }) {
   const metrics = scanDomainMetrics({ rootDir, domains, fs: fsDep, path: pathDep });
   const decision = decideSplit({ metrics, thresholds: config.thresholds });
 
-  const selectedDomains = decision.decision === 'split' && domains.length > 0
-    ? domains
-    : [{ name: 'root', paths: ['.'] }];
+  const selectedDomains =
+    decision.decision === "split" && domains.length > 0
+      ? domains
+      : [{ name: "root", paths: ["."] }];
 
   return {
     decision: decision.decision,
     domains: selectedDomains,
-    metrics
+    metrics,
   };
 }
 
 function buildFallbackPlan({ rootDir, plan, deps = {} }) {
   const fsDep = deps.fs || fs;
   const pathDep = deps.path || path;
-  if (plan.decision === 'single') {
+  if (plan.decision === "single") {
     const domains = discoverDomains({ rootDir, fs: fsDep, path: pathDep });
     return {
-      decision: domains.length > 0 ? 'split' : 'single',
-      domains: domains.length > 0 ? domains : [{ name: 'root', paths: ['.'] }],
-      fallbackFrom: 'single'
+      decision: domains.length > 0 ? "split" : "single",
+      domains: domains.length > 0 ? domains : [{ name: "root", paths: ["."] }],
+      fallbackFrom: "single",
     };
   }
   return {
-    decision: 'single',
-    domains: [{ name: 'root', paths: ['.'] }],
-    fallbackFrom: 'split'
+    decision: "single",
+    domains: [{ name: "root", paths: ["."] }],
+    fallbackFrom: "split",
   };
 }
 
@@ -56,11 +57,11 @@ function parseScipFile(scipPath) {
 
 function main() {
   const rootDir = process.cwd();
-  const apply = process.argv.includes('--apply');
+  const apply = process.argv.includes("--apply");
   const config = loadGraphConfig({ rootDir, fs, path });
 
   const plan = buildPlan({ rootDir });
-  const planRecord = { ...plan, fallbackDecision: 'none' };
+  const planRecord = { ...plan, fallbackDecision: "none" };
   writePlan({ rootDir, plan: planRecord, fs });
 
   if (!apply) {
@@ -70,21 +71,21 @@ function main() {
   let scipOutputs = runScipForPlan({
     rootDir,
     plan,
-    deps: { fs, path, execFileSync }
+    deps: { fs, path, execFileSync },
   });
 
   for (const output of scipOutputs) {
     importScip({
       rootDir,
       scipPath: output.scipPath,
-      deps: { fs, path, execFileSync }
+      deps: { fs, path, execFileSync },
     });
   }
 
   let validation = validateScipCoverage({
     scipOutputs,
     thresholds: { maxNoiseRatio: config.thresholds.maxNoiseRatio },
-    deps: { parseScipFile }
+    deps: { parseScipFile },
   });
 
   if (!validation.ok) {
@@ -95,21 +96,21 @@ function main() {
     scipOutputs = runScipForPlan({
       rootDir,
       plan: fallbackPlan,
-      deps: { fs, path, execFileSync }
+      deps: { fs, path, execFileSync },
     });
 
     for (const output of scipOutputs) {
       importScip({
         rootDir,
         scipPath: output.scipPath,
-        deps: { fs, path, execFileSync }
+        deps: { fs, path, execFileSync },
       });
     }
 
     validation = validateScipCoverage({
       scipOutputs,
       thresholds: { maxNoiseRatio: config.thresholds.maxNoiseRatio },
-      deps: { parseScipFile }
+      deps: { parseScipFile },
     });
 
     if (!validation.ok) {

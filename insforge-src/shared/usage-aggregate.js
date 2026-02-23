@@ -1,13 +1,24 @@
-'use strict';
+"use strict";
 
-const { toBigInt } = require('./numbers');
-const { computeBillableTotalTokens } = require('./usage-billable');
-const { addRowTotals } = require('./usage-rollup');
+const { toBigInt } = require("./numbers");
+const { computeBillableTotalTokens } = require("./usage-billable");
+const { addRowTotals } = require("./usage-rollup");
 
-function resolveBillableTotals({ row, source, totals, billableField = 'billable_total_tokens', hasStoredBillable } = {}) {
-  const stored = typeof hasStoredBillable === 'boolean'
-    ? hasStoredBillable
-    : Boolean(row && Object.prototype.hasOwnProperty.call(row, billableField) && row[billableField] != null);
+function resolveBillableTotals({
+  row,
+  source,
+  totals,
+  billableField = "billable_total_tokens",
+  hasStoredBillable,
+} = {}) {
+  const stored =
+    typeof hasStoredBillable === "boolean"
+      ? hasStoredBillable
+      : Boolean(
+          row &&
+          Object.prototype.hasOwnProperty.call(row, billableField) &&
+          row[billableField] != null,
+        );
   const resolvedTotals = totals || row;
   const billable = stored
     ? toBigInt(row?.[billableField])
@@ -25,5 +36,5 @@ function applyTotalsAndBillable({ totals, row, billable, hasStoredBillable } = {
 
 module.exports = {
   resolveBillableTotals,
-  applyTotalsAndBillable
+  applyTotalsAndBillable,
 };

@@ -1,9 +1,9 @@
 #!/usr/bin/env node
-'use strict';
+"use strict";
 
-const fs = require('node:fs');
-const path = require('node:path');
-const { spawnSync } = require('node:child_process');
+const fs = require("node:fs");
+const path = require("node:path");
+const { spawnSync } = require("node:child_process");
 
 const ROOT = path.join(__dirname);
 const SELF = path.basename(__filename);
@@ -14,32 +14,32 @@ function parseArgs(argv) {
     pretty: false,
     only: [],
     exclude: [],
-    filter: []
+    filter: [],
   };
 
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
-    if (arg === '--list') {
+    if (arg === "--list") {
       opts.list = true;
       continue;
     }
-    if (arg === '--pretty' || arg === '--json-pretty') {
+    if (arg === "--pretty" || arg === "--json-pretty") {
       opts.pretty = true;
       continue;
     }
-    if (arg.startsWith('--only')) {
+    if (arg.startsWith("--only")) {
       const value = readValue(arg, argv, i);
       if (value.usedNext) i += 1;
       opts.only.push(...splitList(value.value));
       continue;
     }
-    if (arg.startsWith('--exclude')) {
+    if (arg.startsWith("--exclude")) {
       const value = readValue(arg, argv, i);
       if (value.usedNext) i += 1;
       opts.exclude.push(...splitList(value.value));
       continue;
     }
-    if (arg.startsWith('--filter')) {
+    if (arg.startsWith("--filter")) {
       const value = readValue(arg, argv, i);
       if (value.usedNext) i += 1;
       opts.filter.push(...splitList(value.value));
@@ -51,21 +51,21 @@ function parseArgs(argv) {
 }
 
 function readValue(arg, argv, idx) {
-  const eq = arg.indexOf('=');
+  const eq = arg.indexOf("=");
   if (eq !== -1) {
     return { value: arg.slice(eq + 1), usedNext: false };
   }
   const next = argv[idx + 1];
-  if (next && !next.startsWith('--')) {
+  if (next && !next.startsWith("--")) {
     return { value: next, usedNext: true };
   }
-  return { value: '', usedNext: false };
+  return { value: "", usedNext: false };
 }
 
 function splitList(value) {
   if (!value) return [];
   return String(value)
-    .split(',')
+    .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
 }
@@ -73,11 +73,11 @@ function splitList(value) {
 function listTests() {
   return fs
     .readdirSync(ROOT)
-    .filter((file) => file.endsWith('.cjs'))
+    .filter((file) => file.endsWith(".cjs"))
     .filter((file) => file !== SELF)
     .map((file) => ({
-      id: path.basename(file, '.cjs'),
-      file
+      id: path.basename(file, ".cjs"),
+      file,
     }))
     .sort((a, b) => a.id.localeCompare(b.id));
 }
@@ -109,7 +109,7 @@ function filterTests(tests, opts) {
 }
 
 function truncate(value, max = 4000) {
-  const text = String(value || '');
+  const text = String(value || "");
   if (text.length <= max) return text;
   return `${text.slice(0, max)}\n...truncated ${text.length - max} chars`;
 }
@@ -117,9 +117,9 @@ function truncate(value, max = 4000) {
 function runTest(test) {
   const start = Date.now();
   const result = spawnSync(process.execPath, [path.join(ROOT, test.file)], {
-    encoding: 'utf8',
-    stdio: 'pipe',
-    env: process.env
+    encoding: "utf8",
+    stdio: "pipe",
+    env: process.env,
   });
   const durationMs = Date.now() - start;
 
@@ -130,23 +130,23 @@ function runTest(test) {
     status: result.status,
     duration_ms: durationMs,
     stdout: truncate(result.stdout),
-    stderr: truncate(result.stderr)
+    stderr: truncate(result.stderr),
   };
 }
 
 function printUsage() {
   process.stdout.write(
     [
-      'Usage: node scripts/acceptance/run-acceptance.cjs [options]',
-      '',
-      'Options:',
-      '  --list                List available acceptance tests',
-      '  --only a,b            Run only the given test ids',
-      '  --filter substring    Run tests matching substring',
-      '  --exclude a,b         Exclude the given test ids',
-      '  --pretty              Pretty-print JSON output',
-      ''
-    ].join('\n') + '\n'
+      "Usage: node scripts/acceptance/run-acceptance.cjs [options]",
+      "",
+      "Options:",
+      "  --list                List available acceptance tests",
+      "  --only a,b            Run only the given test ids",
+      "  --filter substring    Run tests matching substring",
+      "  --exclude a,b         Exclude the given test ids",
+      "  --pretty              Pretty-print JSON output",
+      "",
+    ].join("\n") + "\n",
   );
 }
 
@@ -155,14 +155,14 @@ async function main() {
   const tests = listTests();
 
   if (opts.list) {
-    process.stdout.write(`${tests.map((t) => t.id).join('\n')}\n`);
+    process.stdout.write(`${tests.map((t) => t.id).join("\n")}\n`);
     return;
   }
 
   const selected = filterTests(tests, opts);
   if (!selected.length) {
     printUsage();
-    process.stderr.write('No matching acceptance tests.\n');
+    process.stderr.write("No matching acceptance tests.\n");
     process.exit(1);
     return;
   }
@@ -180,7 +180,7 @@ async function main() {
     passed,
     failed,
     duration_ms: durationMs,
-    results
+    results,
   };
 
   const json = JSON.stringify(summary, null, opts.pretty ? 2 : 0);

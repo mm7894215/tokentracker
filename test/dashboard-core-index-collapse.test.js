@@ -30,6 +30,6 @@ test("DashboardPage wires CORE_INDEX collapse state", () => {
   assert.match(pageSrc, /coreIndexCollapsed=\{coreIndexCollapsed\}/);
   assert.match(
     viewSrc,
-    /breakdownCollapsed=\{\s*allowBreakdownToggle\s*\?\s*coreIndexCollapsed\s*:\s*true\s*\}/
+    /breakdownCollapsed=\{\s*allowBreakdownToggle\s*\?\s*coreIndexCollapsed\s*:\s*true\s*\}/,
   );
 });

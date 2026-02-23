@@ -35,4 +35,3 @@ Dashboard 移除 `From/To` 自定义日期输入，改为仅支持固定的 `day
 
 - 不修改既有后端接口的能力边界（即使后端仍支持 `from/to`，Dashboard 也不再暴露）
 - 不引入自定义日期筛选 UI（包括 querystring 驱动）
-

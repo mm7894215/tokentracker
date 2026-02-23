@@ -32,9 +32,7 @@ function parseDateString(yyyyMmDd: any) {
 }
 
 function addUtcDays(date: Date, days: number) {
-  return new Date(
-    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() + days)
-  );
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() + days));
 }
 
 function diffUtcDays(a: Date, b: Date) {
@@ -70,13 +68,7 @@ export function getHeatmapRangeLocal({
   const to = formatDateLocal(baseDate);
   const end =
     parseDateString(to) ||
-    new Date(
-      Date.UTC(
-        baseDate.getFullYear(),
-        baseDate.getMonth(),
-        baseDate.getDate()
-      )
-    );
+    new Date(Date.UTC(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate()));
 
   const desired = weekStartsOn === "mon" ? 1 : 0;
   const endDow = end.getUTCDay();
@@ -93,13 +85,7 @@ export function buildActivityHeatmap({
 }: BuildHeatmapOptions = {}) {
   const end =
     parseDateString(to) ||
-    new Date(
-      Date.UTC(
-        new Date().getFullYear(),
-        new Date().getMonth(),
-        new Date().getDate()
-      )
-    );
+    new Date(Date.UTC(new Date().getFullYear(), new Date().getMonth(), new Date().getDate()));
   const { from } = getHeatmapRangeLocal({
     weeks,
     now: end,
@@ -118,9 +104,7 @@ export function buildActivityHeatmap({
   for (const row of Array.isArray(dailyRows) ? dailyRows : []) {
     const day = typeof row?.day === "string" ? row.day : null;
     if (!day) continue;
-    const value = toFiniteNumber(
-      row?.billable_total_tokens ?? row?.total_tokens
-    ) ?? 0;
+    const value = toFiniteNumber(row?.billable_total_tokens ?? row?.total_tokens) ?? 0;
     valuesByDay.set(day, Math.max(0, value));
   }
 
@@ -169,8 +153,7 @@ export function buildActivityHeatmap({
     weeksOut.push(week);
   }
 
-  const trimmed =
-    weeksOut.length > weeks ? weeksOut.slice(weeksOut.length - weeks) : weeksOut;
+  const trimmed = weeksOut.length > weeks ? weeksOut.slice(weeksOut.length - weeks) : weeksOut;
 
   return {
     from,
@@ -180,26 +163,15 @@ export function buildActivityHeatmap({
   };
 }
 
-export function computeActiveStreakDays({
-  dailyRows,
-  to,
-}: ActiveStreakOptions = {}) {
+export function computeActiveStreakDays({ dailyRows, to }: ActiveStreakOptions = {}) {
   const end =
     parseDateString(to) ||
-    new Date(
-      Date.UTC(
-        new Date().getFullYear(),
-        new Date().getMonth(),
-        new Date().getDate()
-      )
-    );
+    new Date(Date.UTC(new Date().getFullYear(), new Date().getMonth(), new Date().getDate()));
   const valuesByDay = new Map();
   for (const row of Array.isArray(dailyRows) ? dailyRows : []) {
     const day = typeof row?.day === "string" ? row.day : null;
     if (!day) continue;
-    const value = toFiniteNumber(
-      row?.billable_total_tokens ?? row?.total_tokens
-    ) ?? 0;
+    const value = toFiniteNumber(row?.billable_total_tokens ?? row?.total_tokens) ?? 0;
     valuesByDay.set(day, Math.max(0, value));
   }
 

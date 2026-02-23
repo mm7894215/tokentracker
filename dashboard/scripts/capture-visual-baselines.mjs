@@ -1,7 +1,6 @@
-import path from "node:path";
 import { execFile } from "node:child_process";
+import path from "node:path";
 import { promisify } from "node:util";
-
 import { createBaselineJobs } from "./visual-baseline-config.js";
 
 const exec = promisify(execFile);

@@ -301,7 +301,11 @@ var require_auth = __commonJS({
     }
     async function getEdgeClientAndUserIdFast({ baseUrl, bearer }) {
       const anonKey = getAnonKey();
-      const edgeClient = createClient({ baseUrl, anonKey: anonKey || void 0, edgeFunctionToken: bearer });
+      const edgeClient = createClient({
+        baseUrl,
+        anonKey: anonKey || void 0,
+        edgeFunctionToken: bearer
+      });
       const local = await verifyUserJwtHs256({ token: bearer });
       const allowRemoteOnly = !local.ok && local?.code === "missing_jwt_secret";
       if (!local.ok && !allowRemoteOnly) {
@@ -410,7 +414,14 @@ var require_auth = __commonJS({
       }
       const publicView = await resolvePublicView({ baseUrl, shareToken: bearer });
       if (!publicView.ok) {
-        return { ok: false, edgeClient: null, userId: null, accessType: null, status: 401, error: "Unauthorized" };
+        return {
+          ok: false,
+          edgeClient: null,
+          userId: null,
+          accessType: null,
+          status: 401,
+          error: "Unauthorized"
+        };
       }
       return {
         ok: true,
@@ -870,7 +881,14 @@ var require_date = __commonJS({
     }
     function getTimeZoneOffsetMinutes(date, timeZone) {
       const parts = getTimeZoneParts(date, timeZone);
-      const asUtc = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second);
+      const asUtc = Date.UTC(
+        parts.year,
+        parts.month - 1,
+        parts.day,
+        parts.hour,
+        parts.minute,
+        parts.second
+      );
       return Math.round((asUtc - date.getTime()) / 6e4);
     }
     function getLocalParts(date, tzContext) {
@@ -1276,7 +1294,9 @@ var require_usage_rollup = __commonJS({
       const rows = [];
       const { error } = await forEachPage2({
         createQuery: () => {
-          let query = edgeClient.database.from("vibeusage_tracker_daily_rollup").select("day,source,model,total_tokens,billable_total_tokens,input_tokens,cached_input_tokens,output_tokens,reasoning_output_tokens").eq("user_id", userId).gte("day", fromDay).lte("day", toDay);
+          let query = edgeClient.database.from("vibeusage_tracker_daily_rollup").select(
+            "day,source,model,total_tokens,billable_total_tokens,input_tokens,cached_input_tokens,output_tokens,reasoning_output_tokens"
+          ).eq("user_id", userId).gte("day", fromDay).lte("day", toDay);
           if (source) query = query.eq("source", source);
           if (model) query = query.eq("model", model);
           query = applyCanaryFilter2(query, { source, model });
@@ -1614,8 +1634,16 @@ var require_usage_aggregate = __commonJS({
     var { toBigInt } = require_numbers();
     var { computeBillableTotalTokens } = require_usage_billable();
     var { addRowTotals: addRowTotals2 } = require_usage_rollup();
-    function resolveBillableTotals2({ row, source, totals, billableField = "billable_total_tokens", hasStoredBillable } = {}) {
-      const stored = typeof hasStoredBillable === "boolean" ? hasStoredBillable : Boolean(row && Object.prototype.hasOwnProperty.call(row, billableField) && row[billableField] != null);
+    function resolveBillableTotals2({
+      row,
+      source,
+      totals,
+      billableField = "billable_total_tokens",
+      hasStoredBillable
+    } = {}) {
+      const stored = typeof hasStoredBillable === "boolean" ? hasStoredBillable : Boolean(
+        row && Object.prototype.hasOwnProperty.call(row, billableField) && row[billableField] != null
+      );
       const resolvedTotals = totals || row;
       const billable = stored ? toBigInt(row?.[billableField]) : computeBillableTotalTokens({ source, totals: resolvedTotals });
       return { billable, hasStoredBillable: stored };
@@ -1974,7 +2002,9 @@ module.exports = withRequestLogging("vibeusage-usage-daily", async function(requ
   const sumHourlyRange = async () => {
     const { error } = await forEachPage({
       createQuery: () => {
-        let query = auth.edgeClient.database.from("vibeusage_tracker_hourly").select("hour_start,source,model,billable_total_tokens,total_tokens,input_tokens,cached_input_tokens,output_tokens,reasoning_output_tokens").eq("user_id", auth.userId);
+        let query = auth.edgeClient.database.from("vibeusage_tracker_hourly").select(
+          "hour_start,source,model,billable_total_tokens,total_tokens,input_tokens,cached_input_tokens,output_tokens,reasoning_output_tokens"
+        ).eq("user_id", auth.userId);
         if (source) query = query.eq("source", source);
         if (hasModelFilter) query = applyUsageModelFilter(query, usageModels);
         query = applyCanaryFilter(query, { source, model: canonicalModel });
@@ -1988,7 +2018,8 @@ module.exports = withRequestLogging("vibeusage-usage-daily", async function(requ
           if (!ts) continue;
           const dt = new Date(ts);
           if (!Number.isFinite(dt.getTime())) continue;
-          if (!shouldIncludeUsageRow({ row, canonicalModel, hasModelFilter, aliasTimeline, to })) continue;
+          if (!shouldIncludeUsageRow({ row, canonicalModel, hasModelFilter, aliasTimeline, to }))
+            continue;
           const billable = ingestRow(row);
           applyDailyBucket({ buckets, row, tzContext, billable });
         }
@@ -2023,7 +2054,8 @@ module.exports = withRequestLogging("vibeusage-usage-daily", async function(requ
         const day = row?.day;
         const bucket = buckets.get(day);
         if (!bucket) continue;
-        if (!shouldIncludeUsageRow({ row, canonicalModel, hasModelFilter, aliasTimeline, to })) continue;
+        if (!shouldIncludeUsageRow({ row, canonicalModel, hasModelFilter, aliasTimeline, to }))
+          continue;
         const dayValue = row?.day;
         const rowForBucket = row?.hour_start || !dayValue ? row : { ...row, hour_start: `${dayValue}T00:00:00.000Z` };
         const billable = ingestRow(row);

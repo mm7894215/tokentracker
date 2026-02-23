@@ -9,10 +9,5 @@
     "esModuleInterop": true,
     "resolveJsonModule": true
   },
-  "include": [
-    "src/**/*.js",
-    "bin/**/*.js",
-    "scripts/**/*.js",
-    "scripts/**/*.cjs"
-  ]
+  "include": ["src/**/*.js", "bin/**/*.js", "scripts/**/*.js", "scripts/**/*.cjs"]
 }

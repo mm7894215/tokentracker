@@ -16,9 +16,7 @@ export function getAccessTokenExpiryMs(token) {
       .replace(/_/g, "/")
       .padEnd(payloadPart.length + ((4 - (payloadPart.length % 4)) % 4), "=");
     const decoded =
-      typeof atob === "function"
-        ? atob(padded)
-        : Buffer.from(padded, "base64").toString("utf8");
+      typeof atob === "function" ? atob(padded) : Buffer.from(padded, "base64").toString("utf8");
     const payload = JSON.parse(decoded);
     const exp = payload?.exp;
     if (typeof exp !== "number" || !Number.isFinite(exp) || exp <= 0) return null;

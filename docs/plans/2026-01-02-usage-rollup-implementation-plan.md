@@ -15,6 +15,7 @@
 ### Task 1: Add failing acceptance tests
 
 **Files:**
+
 - Create: `scripts/acceptance/usage-summary-hourly.cjs`
 - Create: `scripts/acceptance/usage-daily-summary.cjs`
 
@@ -22,21 +23,21 @@
 
 ```js
 #!/usr/bin/env node
-'use strict';
+"use strict";
 
-const assert = require('node:assert/strict');
+const assert = require("node:assert/strict");
 
 const ROLLUP_ROWS = [
   {
-    day: '2025-12-01',
-    source: 'codex',
-    model: 'gpt-5.2-codex',
-    total_tokens: '500',
-    input_tokens: '200',
-    cached_input_tokens: '50',
-    output_tokens: '300',
-    reasoning_output_tokens: '30'
-  }
+    day: "2025-12-01",
+    source: "codex",
+    model: "gpt-5.2-codex",
+    total_tokens: "500",
+    input_tokens: "200",
+    cached_input_tokens: "50",
+    output_tokens: "300",
+    reasoning_output_tokens: "30",
+  },
 ];
 
 class DatabaseStub {
@@ -44,50 +45,68 @@ class DatabaseStub {
     this._table = table;
     return this;
   }
-  select() { return this; }
-  eq() { return this; }
-  gte() { return this; }
-  lt() { return this; }
-  order() { return this; }
+  select() {
+    return this;
+  }
+  eq() {
+    return this;
+  }
+  gte() {
+    return this;
+  }
+  lt() {
+    return this;
+  }
+  order() {
+    return this;
+  }
   range() {
-    if (this._table === 'vibescore_tracker_daily_rollup') {
+    if (this._table === "vibescore_tracker_daily_rollup") {
       return { data: ROLLUP_ROWS, error: null };
     }
-    if (this._table === 'vibescore_tracker_hourly') {
+    if (this._table === "vibescore_tracker_hourly") {
       return { data: [], error: null };
     }
     return { data: [], error: null };
   }
-  limit() { return { data: [], error: null }; }
+  limit() {
+    return { data: [], error: null };
+  }
 }
 
 function createClientStub() {
   return {
-    auth: { async getCurrentUser() { return { data: { user: { id: 'user-id' } }, error: null }; } },
-    database: new DatabaseStub()
+    auth: {
+      async getCurrentUser() {
+        return { data: { user: { id: "user-id" } }, error: null };
+      },
+    },
+    database: new DatabaseStub(),
   };
 }
 
 async function main() {
-  process.env.INSFORGE_INTERNAL_URL = 'http://insforge:7130';
-  process.env.INSFORGE_ANON_KEY = 'anon';
+  process.env.INSFORGE_INTERNAL_URL = "http://insforge:7130";
+  process.env.INSFORGE_ANON_KEY = "anon";
   global.Deno = { env: { get: (k) => process.env[k] || null } };
   global.createClient = createClientStub;
 
-  const usageSummary = require('../../insforge-src/functions/vibescore-usage-summary.js');
-  const res = await usageSummary(new Request(
-    'http://local/functions/vibescore-usage-summary?from=2025-12-01&to=2025-12-01',
-    { method: 'GET', headers: { Authorization: 'Bearer user-jwt' } }
-  ));
+  const usageSummary = require("../../insforge-src/functions/vibescore-usage-summary.js");
+  const res = await usageSummary(
+    new Request("http://local/functions/vibescore-usage-summary?from=2025-12-01&to=2025-12-01", {
+      method: "GET",
+      headers: { Authorization: "Bearer user-jwt" },
+    }),
+  );
   const body = await res.json();
 
   assert.equal(res.status, 200);
-  assert.equal(body.totals.total_tokens, '500');
-  assert.equal(body.totals.input_tokens, '200');
-  assert.equal(body.totals.cached_input_tokens, '50');
-  assert.equal(body.totals.output_tokens, '300');
-  assert.equal(body.totals.reasoning_output_tokens, '30');
-  process.stdout.write(JSON.stringify({ ok: true }) + '\n');
+  assert.equal(body.totals.total_tokens, "500");
+  assert.equal(body.totals.input_tokens, "200");
+  assert.equal(body.totals.cached_input_tokens, "50");
+  assert.equal(body.totals.output_tokens, "300");
+  assert.equal(body.totals.reasoning_output_tokens, "30");
+  process.stdout.write(JSON.stringify({ ok: true }) + "\n");
 }
 
 main().catch((err) => {
@@ -106,61 +125,82 @@ Expected: FAIL because summary ignores rollup table (totals are `0`).
 
 ```js
 #!/usr/bin/env node
-'use strict';
+"use strict";
 
-const assert = require('node:assert/strict');
+const assert = require("node:assert/strict");
 
 const HOURLY_ROWS = [
   {
-    hour_start: '2025-12-01T00:00:00.000Z',
-    total_tokens: '10',
-    input_tokens: '4',
-    cached_input_tokens: '1',
-    output_tokens: '5',
-    reasoning_output_tokens: '0'
-  }
+    hour_start: "2025-12-01T00:00:00.000Z",
+    total_tokens: "10",
+    input_tokens: "4",
+    cached_input_tokens: "1",
+    output_tokens: "5",
+    reasoning_output_tokens: "0",
+  },
 ];
 
 class DatabaseStub {
-  from(table) { this._table = table; return this; }
-  select() { return this; }
-  eq() { return this; }
-  gte() { return this; }
-  lt() { return this; }
-  order() { return this; }
+  from(table) {
+    this._table = table;
+    return this;
+  }
+  select() {
+    return this;
+  }
+  eq() {
+    return this;
+  }
+  gte() {
+    return this;
+  }
+  lt() {
+    return this;
+  }
+  order() {
+    return this;
+  }
   range() {
-    if (this._table === 'vibescore_tracker_hourly') {
+    if (this._table === "vibescore_tracker_hourly") {
       return { data: HOURLY_ROWS, error: null };
     }
     return { data: [], error: null };
   }
-  limit() { return { data: [], error: null }; }
+  limit() {
+    return { data: [], error: null };
+  }
 }
 
 function createClientStub() {
   return {
-    auth: { async getCurrentUser() { return { data: { user: { id: 'user-id' } }, error: null }; } },
-    database: new DatabaseStub()
+    auth: {
+      async getCurrentUser() {
+        return { data: { user: { id: "user-id" } }, error: null };
+      },
+    },
+    database: new DatabaseStub(),
   };
 }
 
 async function main() {
-  process.env.INSFORGE_INTERNAL_URL = 'http://insforge:7130';
-  process.env.INSFORGE_ANON_KEY = 'anon';
+  process.env.INSFORGE_INTERNAL_URL = "http://insforge:7130";
+  process.env.INSFORGE_ANON_KEY = "anon";
   global.Deno = { env: { get: (k) => process.env[k] || null } };
   global.createClient = createClientStub;
 
-  const usageDaily = require('../../insforge-src/functions/vibescore-usage-daily.js');
-  const res = await usageDaily(new Request(
-    'http://local/functions/vibescore-usage-daily?from=2025-12-01&to=2025-12-01',
-    { method: 'GET', headers: { Authorization: 'Bearer user-jwt' } }
-  ));
+  const usageDaily = require("../../insforge-src/functions/vibescore-usage-daily.js");
+  const res = await usageDaily(
+    new Request("http://local/functions/vibescore-usage-daily?from=2025-12-01&to=2025-12-01", {
+      method: "GET",
+      headers: { Authorization: "Bearer user-jwt" },
+    }),
+  );
   const body = await res.json();
 
   assert.equal(res.status, 200);
-  assert.ok(body.summary, 'summary missing');
-  assert.equal(body.summary.totals.total_tokens, '10');
-  process.stdout.write(JSON.stringify({ ok: true }) + '\n');
+  assert.ok(body.summary, "summary missing");
+  assert.equal(body.summary.totals.total_tokens, "10");
+  process.stdout.write(JSON.stringify({ ok: true }) + "\n");
 }
 
 main().catch((err) => {
@@ -180,6 +220,7 @@ Expected: FAIL because `summary` is missing.
 ### Task 2: Add schema SQL (rollup table + trigger + backfill)
 
 **Files:**
+
 - Create: `scripts/ops/usage-daily-rollup.sql`
 - Create: `scripts/ops/usage-daily-rollup-backfill.sql`
 - Create: `scripts/ops/usage-daily-rollup-rollback.sql`
@@ -324,6 +365,7 @@ drop table if exists public.vibescore_tracker_daily_rollup;
 **Step 4: Execute SQL (manual)**
 
 Run in InsForge SQL console or via MCP raw SQL tool:
+
 - `scripts/ops/usage-daily-rollup.sql`
 - Optional backfill: `select public.vibescore_rebuild_daily_rollup(current_date - 365, current_date);`
 
@@ -332,14 +374,15 @@ Run in InsForge SQL console or via MCP raw SQL tool:
 ### Task 3: Implement rollup query helpers
 
 **Files:**
+
 - Create: `insforge-src/shared/usage-rollup.js`
 
 **Step 1: Write helper module**
 
 ```js
-'use strict';
+"use strict";
 
-const { toBigInt } = require('./numbers');
+const { toBigInt } = require("./numbers");
 
 function createTotals() {
   return {
@@ -347,7 +390,7 @@ function createTotals() {
     input_tokens: 0n,
     cached_input_tokens: 0n,
     output_tokens: 0n,
-    reasoning_output_tokens: 0n
+    reasoning_output_tokens: 0n,
   };
 }
 
@@ -362,14 +405,16 @@ function addRowTotals(target, row) {
 
 async function fetchRollupRows({ edgeClient, userId, fromDay, toDay, source, model }) {
   let query = edgeClient.database
-    .from('vibescore_tracker_daily_rollup')
-    .select('day,source,model,total_tokens,input_tokens,cached_input_tokens,output_tokens,reasoning_output_tokens')
-    .eq('user_id', userId)
-    .gte('day', fromDay)
-    .lte('day', toDay);
-  if (source) query = query.eq('source', source);
-  if (model) query = query.eq('model', model);
-  const { data, error } = await query.order('day', { ascending: true });
+    .from("vibescore_tracker_daily_rollup")
+    .select(
+      "day,source,model,total_tokens,input_tokens,cached_input_tokens,output_tokens,reasoning_output_tokens",
+    )
+    .eq("user_id", userId)
+    .gte("day", fromDay)
+    .lte("day", toDay);
+  if (source) query = query.eq("source", source);
+  if (model) query = query.eq("model", model);
+  const { data, error } = await query.order("day", { ascending: true });
   if (error) return { ok: false, error };
   return { ok: true, rows: Array.isArray(data) ? data : [] };
 }
@@ -386,7 +431,7 @@ module.exports = {
   createTotals,
   addRowTotals,
   fetchRollupRows,
-  sumRollupRows
+  sumRollupRows,
 };
 ```
 
@@ -395,11 +440,13 @@ module.exports = {
 ### Task 4: Update usage summary to use rollup + boundary hours
 
 **Files:**
+
 - Modify: `insforge-src/functions/vibescore-usage-summary.js`
 
 **Step 1: Add rollup helpers and boundary summing**
 
 Implement:
+
 - Compute `startIso` / `endIso` as today.
 - If same UTC day: sum hourly directly.
 - Else:
@@ -419,6 +466,7 @@ Expected: PASS.
 ### Task 5: Update usage daily to include backend summary
 
 **Files:**
+
 - Modify: `insforge-src/functions/vibescore-usage-daily.js`
 
 **Step 1: Add backend summary**
@@ -446,6 +494,7 @@ Expected: PASS.
 ### Task 6: Update dashboard to rely on backend summary
 
 **Files:**
+
 - Modify: `dashboard/src/hooks/use-usage-data.js`
 
 **Step 1: Remove local aggregation**
@@ -459,6 +508,7 @@ Expected: PASS.
 ### Task 7: Update docs & specs
 
 **Files:**
+
 - Modify: `docs/dashboard/api.md`
 - Modify: `BACKEND_API.md`
 - Modify: `openspec/specs/vibeusage-tracker/spec.md`
@@ -477,6 +527,7 @@ Expected: PASS.
 ### Task 8: Regression & evidence
 
 **Steps:**
+
 - Run acceptance scripts.
 - Record command outputs in response.
 - Run any existing regression relevant to usage endpoints.

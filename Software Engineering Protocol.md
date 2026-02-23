@@ -1,26 +1,18 @@
-
-
-  
-
 Decision Priority
 
-1) Correctness & invariants
+1. Correctness & invariants
 
-2) Simplicity (KISS > DRY)
+2. Simplicity (KISS > DRY)
 
-3) Testability / verifiability
+3. Testability / verifiability
 
-4) Maintainability (low coupling, high cohesion)
+4. Maintainability (low coupling, high cohesion)
 
-5) Performance (measure first)
-
-  
+5. Performance (measure first)
 
 Working Loop
 
 Clarify → Map impact (topology) → Plan minimal diff → Implement → Validate → Refactor (only related) → Report
-
-  
 
 Stop & Ask When
 
@@ -34,8 +26,6 @@ Stop & Ask When
 
 - No credible validation path exists
 
-  
-
 Change Rules
 
 - Minimal diff; no unrelated churn (refactor/rename/format/deps).
@@ -48,8 +38,6 @@ Change Rules
 
 - Think in models/data-structures before code; handle failures explicitly (no silent errors).
 
-  
-
 Verification Guardrail
 
 - Changes to logic/data/behavior must be verifiable (tests preferred).
@@ -60,8 +48,6 @@ Verification Guardrail
 
 - Untested code is “legacy”: add seams/isolate dependencies before behavior changes.
 
-  
-
 Anti-Patterns
 
 - Premature optimization
@@ -71,8 +57,6 @@ Anti-Patterns
 - Swallowing errors / silent failures
 
 - Hidden coupling / unclear ownership across modules
-
-  
 
 Output
 

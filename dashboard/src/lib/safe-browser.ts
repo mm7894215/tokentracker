@@ -28,11 +28,7 @@ export function safeGetItem(key: any, { storage }: SafeBrowserOptions = {}) {
   }
 }
 
-export function safeSetItem(
-  key: any,
-  value: any,
-  { storage }: SafeBrowserOptions = {}
-) {
+export function safeSetItem(key: any, value: any, { storage }: SafeBrowserOptions = {}) {
   const target = storage ?? getLocalStorage();
   if (!target || typeof target.setItem !== "function") return false;
   try {
@@ -54,10 +50,7 @@ export function safeRemoveItem(key: any, { storage }: SafeBrowserOptions = {}) {
   }
 }
 
-export async function safeWriteClipboard(
-  text: any,
-  { clipboard }: SafeBrowserOptions = {}
-) {
+export async function safeWriteClipboard(text: any, { clipboard }: SafeBrowserOptions = {}) {
   const target = clipboard ?? getClipboard();
   if (!target || typeof target.writeText !== "function") return false;
   try {
@@ -68,18 +61,10 @@ export async function safeWriteClipboard(
   }
 }
 
-export async function safeWriteClipboardImage(
-  blob: any,
-  { clipboard }: SafeBrowserOptions = {}
-) {
+export async function safeWriteClipboardImage(blob: any, { clipboard }: SafeBrowserOptions = {}) {
   const target = clipboard ?? getClipboard();
   const ClipboardItemCtor = getClipboardItemCtor();
-  if (
-    !blob ||
-    !target ||
-    typeof target.write !== "function" ||
-    !ClipboardItemCtor
-  ) {
+  if (!blob || !target || typeof target.write !== "function" || !ClipboardItemCtor) {
     return false;
   }
   try {

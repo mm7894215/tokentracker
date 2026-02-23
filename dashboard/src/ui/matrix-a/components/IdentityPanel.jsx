@@ -1,5 +1,4 @@
 import React, { useMemo } from "react";
-
 import { copy } from "../../../lib/copy";
 
 function toHandle(auth) {
@@ -38,17 +37,13 @@ export function IdentityPanel({ auth, streakDays = 0, rankLabel }) {
             <div className="text-caption text-matrix-muted uppercase font-bold">
               {copy("identity_panel.rank_label")}
             </div>
-            <div className="text-matrix-primary font-black text-body">
-              {rankValue}
-            </div>
+            <div className="text-matrix-primary font-black text-body">{rankValue}</div>
           </div>
           <div className="bg-matrix-panel p-2 border border-matrix-ghost text-center">
             <div className="text-caption text-matrix-muted uppercase font-bold">
               {copy("identity_panel.streak_label")}
             </div>
-            <div className="text-gold font-black tracking-tight text-body">
-              {streakValue}
-            </div>
+            <div className="text-gold font-black tracking-tight text-body">{streakValue}</div>
           </div>
         </div>
       </div>

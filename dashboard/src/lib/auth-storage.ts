@@ -25,11 +25,7 @@ export function loadAuthFromStorage() {
     const raw = storage.getItem(STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    if (
-      typeof parsed?.accessToken !== "string" ||
-      parsed.accessToken.length === 0
-    )
-      return null;
+    if (typeof parsed?.accessToken !== "string" || parsed.accessToken.length === 0) return null;
     return parsed;
   } catch (_e) {
     return null;
@@ -94,10 +90,7 @@ export function setSessionExpired() {
   try {
     const storage = getStorage();
     if (!storage || typeof storage.setItem !== "function") return;
-    storage.setItem(
-      SESSION_EXPIRED_KEY,
-      JSON.stringify({ expiredAt: new Date().toISOString() })
-    );
+    storage.setItem(SESSION_EXPIRED_KEY, JSON.stringify({ expiredAt: new Date().toISOString() }));
   } catch (_e) {
     // ignore storage errors
   } finally {
@@ -111,7 +104,7 @@ export function setSessionSoftExpired() {
     if (!storage || typeof storage.setItem !== "function") return;
     storage.setItem(
       SESSION_SOFT_EXPIRED_KEY,
-      JSON.stringify({ expiredAt: new Date().toISOString() })
+      JSON.stringify({ expiredAt: new Date().toISOString() }),
     );
   } catch (_e) {
     // ignore storage errors

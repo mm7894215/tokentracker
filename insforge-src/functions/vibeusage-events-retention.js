@@ -3,27 +3,27 @@
 // Optionally purges ingest batch metrics when requested.
 // Requires service role token in Authorization header.
 
-'use strict';
+"use strict";
 
-const { handleOptions, json, requireMethod, readJson } = require('../shared/http');
-const { getBearerToken } = require('../shared/auth');
-const { getAnonKey, getBaseUrl, getServiceRoleKey } = require('../shared/env');
+const { handleOptions, json, requireMethod, readJson } = require("../shared/http");
+const { getBearerToken } = require("../shared/auth");
+const { getAnonKey, getBaseUrl, getServiceRoleKey } = require("../shared/env");
 
 const DEFAULT_DAYS = 30;
 const MAX_DAYS = 365;
 
-module.exports = async function(request) {
+module.exports = async function (request) {
   const opt = handleOptions(request);
   if (opt) return opt;
 
-  const methodErr = requireMethod(request, 'POST');
+  const methodErr = requireMethod(request, "POST");
   if (methodErr) return methodErr;
 
   const serviceRoleKey = getServiceRoleKey();
-  if (!serviceRoleKey) return json({ error: 'Service role key missing' }, 500);
+  if (!serviceRoleKey) return json({ error: "Service role key missing" }, 500);
 
-  const bearer = getBearerToken(request.headers.get('Authorization'));
-  if (!bearer || bearer !== serviceRoleKey) return json({ error: 'Unauthorized' }, 401);
+  const bearer = getBearerToken(request.headers.get("Authorization"));
+  if (!bearer || bearer !== serviceRoleKey) return json({ error: "Unauthorized" }, 401);
 
   const body = await readJson(request);
   if (body.error) return json({ error: body.error }, body.status);
@@ -32,24 +32,24 @@ module.exports = async function(request) {
   const dryRun = Boolean(body.data?.dry_run);
   const includeIngestBatches = Boolean(body.data?.include_ingest_batches);
   const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-  if (!Number.isFinite(cutoff.getTime())) return json({ error: 'Invalid cutoff' }, 400);
+  if (!Number.isFinite(cutoff.getTime())) return json({ error: "Invalid cutoff" }, 400);
 
   const baseUrl = getBaseUrl();
   const anonKey = getAnonKey();
   const serviceClient = createClient({
     baseUrl,
     anonKey: anonKey || serviceRoleKey,
-    edgeFunctionToken: serviceRoleKey
+    edgeFunctionToken: serviceRoleKey,
   });
 
   const cutoffIso = cutoff.toISOString();
   const eventsResult = await purgeTable({
     serviceClient,
-    table: 'vibeusage_tracker_events',
-    cutoffColumn: 'token_timestamp',
+    table: "vibeusage_tracker_events",
+    cutoffColumn: "token_timestamp",
     cutoffIso,
     dryRun,
-    countColumn: 'event_id'
+    countColumn: "event_id",
   });
   if (eventsResult.error) return json({ error: eventsResult.error }, 500);
 
@@ -57,11 +57,11 @@ module.exports = async function(request) {
   if (includeIngestBatches) {
     ingestResult = await purgeTable({
       serviceClient,
-      table: 'vibeusage_tracker_ingest_batches',
-      cutoffColumn: 'created_at',
+      table: "vibeusage_tracker_ingest_batches",
+      cutoffColumn: "created_at",
       cutoffIso,
       dryRun,
-      countColumn: 'batch_id'
+      countColumn: "batch_id",
     });
     if (ingestResult.error) return json({ error: ingestResult.error }, 500);
   }
@@ -74,20 +74,20 @@ module.exports = async function(request) {
       cutoff: cutoff.toISOString(),
       deleted: eventsResult.deleted,
       deleted_ingest_batches: ingestResult.deleted,
-      ingest_batches_enabled: includeIngestBatches
+      ingest_batches_enabled: includeIngestBatches,
     },
-    200
+    200,
   );
 };
 
 async function purgeTable({ serviceClient, table, cutoffColumn, cutoffIso, dryRun, countColumn }) {
-  if (!serviceClient) return { deleted: 0, error: 'Service client missing' };
-  const countSelect = countColumn || '*';
+  if (!serviceClient) return { deleted: 0, error: "Service client missing" };
+  const countSelect = countColumn || "*";
 
   if (dryRun) {
     const { count, error } = await serviceClient.database
       .from(table)
-      .select(countSelect, { count: 'exact' })
+      .select(countSelect, { count: "exact" })
       .lt(cutoffColumn, cutoffIso)
       .limit(1);
     if (error) return { deleted: 0, error: formatError(error) };
@@ -96,7 +96,7 @@ async function purgeTable({ serviceClient, table, cutoffColumn, cutoffIso, dryRu
 
   const before = await serviceClient.database
     .from(table)
-    .select(countSelect, { count: 'exact' })
+    .select(countSelect, { count: "exact" })
     .lt(cutoffColumn, cutoffIso)
     .limit(1);
   if (before.error) return { deleted: 0, error: formatError(before.error) };
@@ -109,7 +109,7 @@ async function purgeTable({ serviceClient, table, cutoffColumn, cutoffIso, dryRu
 
   const after = await serviceClient.database
     .from(table)
-    .select(countSelect, { count: 'exact' })
+    .select(countSelect, { count: "exact" })
     .lt(cutoffColumn, cutoffIso)
     .limit(1);
   if (after.error) return { deleted: 0, error: formatError(after.error) };
@@ -124,8 +124,8 @@ function toSafeInt(value) {
 }
 
 function formatError(error) {
-  if (!error) return 'Unknown error';
-  if (typeof error === 'string') return error;
+  if (!error) return "Unknown error";
+  if (typeof error === "string") return error;
   return error.message || error.details || error.hint || JSON.stringify(error);
 }
 

@@ -13,6 +13,7 @@
 ### Task 1: Add hardcode scanner + baseline
 
 **Files:**
+
 - Create: `scripts/ops/validate-ui-hardcode.cjs`
 - Create: `scripts/ops/ui-hardcode-baseline.json`
 
@@ -34,7 +35,8 @@ const SRC_ROOT = path.join(ROOT, "dashboard", "src");
 const BASELINE_PATH = path.join(__dirname, "ui-hardcode-baseline.json");
 
 const EXT_REGEX = /[.](js|jsx|ts|tsx)$/;
-const COLOR_REGEX = /#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})\b|rgba?\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}(?:\s*,\s*(?:0?\.\d+|1(?:\.0+)?))?\s*\)/g;
+const COLOR_REGEX =
+  /#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})\b|rgba?\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}(?:\s*,\s*(?:0?\.\d+|1(?:\.0+)?))?\s*\)/g;
 const JSX_TEXT_REGEX = />[^<>{}]*[A-Za-z][^<>{}]*</g;
 
 function walk(dir, results = []) {
@@ -98,7 +100,9 @@ function diffAgainstBaseline(current, baseline) {
   for (const [file, counts] of Object.entries(current.files)) {
     const base = baseline.files?.[file];
     if (!base) {
-      errors.push(`${file}: new hardcode usage detected (colors=${counts.colors}, rawText=${counts.rawText})`);
+      errors.push(
+        `${file}: new hardcode usage detected (colors=${counts.colors}, rawText=${counts.rawText})`,
+      );
       continue;
     }
     if (counts.colors > base.colors) {
@@ -138,7 +142,9 @@ function main() {
     process.exit(1);
   }
 
-  console.log(`UI hardcode guardrails ok: colors=${snapshot.totals.colors}, rawText=${snapshot.totals.rawText}`);
+  console.log(
+    `UI hardcode guardrails ok: colors=${snapshot.totals.colors}, rawText=${snapshot.totals.rawText}`,
+  );
 }
 
 main();
@@ -171,6 +177,7 @@ git commit -m "chore: add ui hardcode guardrail"
 ### Task 2: Wire guardrails into npm + CI + overlay doc
 
 **Files:**
+
 - Modify: `package.json`
 - Modify: `.github/workflows/ci.yml`
 - Modify: `docs/skills/frontend-ui-functional/project-overlay.md`
@@ -191,10 +198,10 @@ Update `package.json` scripts:
 Update `.github/workflows/ci.yml` steps (after tests):
 
 ```yaml
-      - name: Validate copy registry
-        run: npm run validate:copy
-      - name: Validate UI hardcode guardrails
-        run: npm run validate:ui-hardcode
+- name: Validate copy registry
+  run: npm run validate:copy
+- name: Validate UI hardcode guardrails
+  run: npm run validate:ui-hardcode
 ```
 
 Update `docs/skills/frontend-ui-functional/project-overlay.md` Required Rules:
@@ -220,11 +227,13 @@ git commit -m "chore: wire ui guardrails into ci"
 ### Task 3: Verify + update architecture canvas
 
 **Files:**
+
 - Modify: `architecture.canvas`
 
 **Step 1: Run verification**
 
 Run:
+
 - `npm run validate:copy`
 - `npm run validate:ui-hardcode`
 
@@ -245,5 +254,6 @@ git commit -m "chore: refresh architecture canvas"
 ---
 
 ## Notes
+
 - If the baseline needs adjustment after legitimate refactors, re-run `--update` and commit the new baseline.
 - Do not push unless explicitly requested.

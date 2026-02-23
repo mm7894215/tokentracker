@@ -1,27 +1,27 @@
-const assert = require('node:assert/strict');
-const os = require('node:os');
-const path = require('node:path');
-const fs = require('node:fs/promises');
-const { test } = require('node:test');
+const assert = require("node:assert/strict");
+const os = require("node:os");
+const path = require("node:path");
+const fs = require("node:fs/promises");
+const { test } = require("node:test");
 
-const { cmdInit } = require('../src/commands/init');
-const { cmdUninstall } = require('../src/commands/uninstall');
-const { buildClaudeHookCommand } = require('../src/lib/claude-config');
-const { buildGeminiHookCommand } = require('../src/lib/gemini-config');
+const { cmdInit } = require("../src/commands/init");
+const { cmdUninstall } = require("../src/commands/uninstall");
+const { buildClaudeHookCommand } = require("../src/lib/claude-config");
+const { buildGeminiHookCommand } = require("../src/lib/gemini-config");
 const {
   buildOpencodePlugin,
   DEFAULT_EVENT,
   DEFAULT_PLUGIN_NAME,
-  PLUGIN_MARKER
-} = require('../src/lib/opencode-config');
+  PLUGIN_MARKER,
+} = require("../src/lib/opencode-config");
 
 async function waitForFile(filePath, { timeoutMs = 1500, intervalMs = 50 } = {}) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     try {
-      return await fs.readFile(filePath, 'utf8');
+      return await fs.readFile(filePath, "utf8");
     } catch (err) {
-      if (err?.code !== 'ENOENT') throw err;
+      if (err?.code !== "ENOENT") throw err;
     }
     await new Promise((resolve) => setTimeout(resolve, intervalMs));
   }
@@ -32,8 +32,8 @@ function flattenHookEntries(entries) {
   return entries.flatMap((entry) => (Array.isArray(entry?.hooks) ? entry.hooks : [entry]));
 }
 
-test('init then uninstall restores original Codex notify (when pre-existing notify exists)', async () => {
-  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vibeusage-init-uninstall-'));
+test("init then uninstall restores original Codex notify (when pre-existing notify exists)", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "vibeusage-init-uninstall-"));
   const prevHome = process.env.HOME;
   const prevCodexHome = process.env.CODEX_HOME;
   const prevToken = process.env.VIBEUSAGE_DEVICE_TOKEN;
@@ -42,34 +42,37 @@ test('init then uninstall restores original Codex notify (when pre-existing noti
 
   try {
     process.env.HOME = tmp;
-    process.env.CODEX_HOME = path.join(tmp, '.codex-alt');
+    process.env.CODEX_HOME = path.join(tmp, ".codex-alt");
     delete process.env.VIBEUSAGE_DEVICE_TOKEN;
-    process.env.OPENCODE_CONFIG_DIR = path.join(tmp, '.config', 'opencode');
+    process.env.OPENCODE_CONFIG_DIR = path.join(tmp, ".config", "opencode");
     await fs.mkdir(process.env.CODEX_HOME, { recursive: true });
 
-    const codexConfigPath = path.join(process.env.CODEX_HOME, 'config.toml');
+    const codexConfigPath = path.join(process.env.CODEX_HOME, "config.toml");
     const originalNotify = 'notify = ["echo", "hello"]\n';
-    await fs.writeFile(codexConfigPath, originalNotify, 'utf8');
+    await fs.writeFile(codexConfigPath, originalNotify, "utf8");
 
     process.stdout.write = () => true;
-    await cmdInit(['--yes', '--no-auth', '--no-open', '--base-url', 'https://example.invalid']);
+    await cmdInit(["--yes", "--no-auth", "--no-open", "--base-url", "https://example.invalid"]);
 
-    const installed = await fs.readFile(codexConfigPath, 'utf8');
+    const installed = await fs.readFile(codexConfigPath, "utf8");
     assert.match(installed, /^notify\s*=\s*\[.+\]\s*$/m);
-    assert.ok(!installed.includes('["echo", "hello"]'), 'expected init to override notify');
+    assert.ok(!installed.includes('["echo", "hello"]'), "expected init to override notify");
 
-    const cursorsPath = path.join(tmp, '.vibeusage', 'tracker', 'cursors.json');
+    const cursorsPath = path.join(tmp, ".vibeusage", "tracker", "cursors.json");
     const cursorsRaw = await waitForFile(cursorsPath);
-    assert.ok(cursorsRaw, 'expected init to trigger sync and write cursors');
+    assert.ok(cursorsRaw, "expected init to trigger sync and write cursors");
     const cursors = JSON.parse(cursorsRaw);
-    assert.ok(typeof cursors.updatedAt === 'string' && cursors.updatedAt.length > 0);
+    assert.ok(typeof cursors.updatedAt === "string" && cursors.updatedAt.length > 0);
 
     await cmdUninstall([]);
 
-    const restored = await fs.readFile(codexConfigPath, 'utf8');
-    assert.ok(restored.includes('notify = ["echo", "hello"]'), 'expected uninstall to restore original notify');
+    const restored = await fs.readFile(codexConfigPath, "utf8");
+    assert.ok(
+      restored.includes('notify = ["echo", "hello"]'),
+      "expected uninstall to restore original notify",
+    );
 
-    const notifyHandlerPath = path.join(tmp, '.vibeusage', 'bin', 'notify.cjs');
+    const notifyHandlerPath = path.join(tmp, ".vibeusage", "bin", "notify.cjs");
     await assert.rejects(fs.stat(notifyHandlerPath), /ENOENT/);
   } finally {
     process.stdout.write = prevWrite;
@@ -85,20 +88,20 @@ test('init then uninstall restores original Codex notify (when pre-existing noti
   }
 });
 
-test('opencode plugin uses session.updated event', () => {
-  const plugin = buildOpencodePlugin({ notifyPath: '/tmp/notify.cjs' });
+test("opencode plugin uses session.updated event", () => {
+  const plugin = buildOpencodePlugin({ notifyPath: "/tmp/notify.cjs" });
   assert.match(plugin, /session\.updated/);
 });
 
-test('opencode config exports plugin constants', () => {
-  assert.equal(typeof PLUGIN_MARKER, 'string');
+test("opencode config exports plugin constants", () => {
+  assert.equal(typeof PLUGIN_MARKER, "string");
   assert.ok(PLUGIN_MARKER.length > 0);
-  assert.equal(DEFAULT_EVENT, 'session.updated');
-  assert.equal(DEFAULT_PLUGIN_NAME, 'vibeusage-tracker.js');
+  assert.equal(DEFAULT_EVENT, "session.updated");
+  assert.equal(DEFAULT_PLUGIN_NAME, "vibeusage-tracker.js");
 });
 
-test('init then uninstall removes notify when none existed', async () => {
-  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vibeusage-init-uninstall-'));
+test("init then uninstall removes notify when none existed", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "vibeusage-init-uninstall-"));
   const prevHome = process.env.HOME;
   const prevCodexHome = process.env.CODEX_HOME;
   const prevToken = process.env.VIBEUSAGE_DEVICE_TOKEN;
@@ -107,24 +110,27 @@ test('init then uninstall removes notify when none existed', async () => {
 
   try {
     process.env.HOME = tmp;
-    process.env.CODEX_HOME = path.join(tmp, '.codex');
+    process.env.CODEX_HOME = path.join(tmp, ".codex");
     delete process.env.VIBEUSAGE_DEVICE_TOKEN;
-    process.env.OPENCODE_CONFIG_DIR = path.join(tmp, '.config', 'opencode');
+    process.env.OPENCODE_CONFIG_DIR = path.join(tmp, ".config", "opencode");
     await fs.mkdir(process.env.CODEX_HOME, { recursive: true });
 
-    const codexConfigPath = path.join(process.env.CODEX_HOME, 'config.toml');
-    await fs.writeFile(codexConfigPath, '# empty\n', 'utf8');
+    const codexConfigPath = path.join(process.env.CODEX_HOME, "config.toml");
+    await fs.writeFile(codexConfigPath, "# empty\n", "utf8");
 
     process.stdout.write = () => true;
-    await cmdInit(['--yes', '--no-auth', '--no-open', '--base-url', 'https://example.invalid']);
+    await cmdInit(["--yes", "--no-auth", "--no-open", "--base-url", "https://example.invalid"]);
 
-    const installed = await fs.readFile(codexConfigPath, 'utf8');
+    const installed = await fs.readFile(codexConfigPath, "utf8");
     assert.match(installed, /^notify\s*=\s*\[.+\]\s*$/m);
 
     await cmdUninstall([]);
 
-    const restored = await fs.readFile(codexConfigPath, 'utf8');
-    assert.ok(!/^notify\s*=.*$/m.test(restored), 'expected uninstall to remove notify when none existed');
+    const restored = await fs.readFile(codexConfigPath, "utf8");
+    assert.ok(
+      !/^notify\s*=.*$/m.test(restored),
+      "expected uninstall to remove notify when none existed",
+    );
   } finally {
     process.stdout.write = prevWrite;
     if (prevHome === undefined) delete process.env.HOME;
@@ -139,8 +145,8 @@ test('init then uninstall removes notify when none existed', async () => {
   }
 });
 
-test('init skips Codex notify when config is missing', async () => {
-  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vibeusage-init-uninstall-'));
+test("init skips Codex notify when config is missing", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "vibeusage-init-uninstall-"));
   const prevHome = process.env.HOME;
   const prevCodexHome = process.env.CODEX_HOME;
   const prevToken = process.env.VIBEUSAGE_DEVICE_TOKEN;
@@ -150,15 +156,15 @@ test('init skips Codex notify when config is missing', async () => {
 
   try {
     process.env.HOME = tmp;
-    process.env.CODEX_HOME = path.join(tmp, '.codex');
-    process.env.GEMINI_HOME = path.join(tmp, '.gemini');
+    process.env.CODEX_HOME = path.join(tmp, ".codex");
+    process.env.GEMINI_HOME = path.join(tmp, ".gemini");
     delete process.env.VIBEUSAGE_DEVICE_TOKEN;
-    process.env.OPENCODE_CONFIG_DIR = path.join(tmp, '.config', 'opencode');
+    process.env.OPENCODE_CONFIG_DIR = path.join(tmp, ".config", "opencode");
 
     process.stdout.write = () => true;
-    await cmdInit(['--yes', '--no-auth', '--no-open', '--base-url', 'https://example.invalid']);
+    await cmdInit(["--yes", "--no-auth", "--no-open", "--base-url", "https://example.invalid"]);
 
-    const codexConfigPath = path.join(process.env.CODEX_HOME, 'config.toml');
+    const codexConfigPath = path.join(process.env.CODEX_HOME, "config.toml");
     await assert.rejects(fs.stat(codexConfigPath), /ENOENT/);
   } finally {
     process.stdout.write = prevWrite;
@@ -176,8 +182,8 @@ test('init skips Codex notify when config is missing', async () => {
   }
 });
 
-test('init then uninstall restores original Every Code notify (when config exists)', async () => {
-  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vibeusage-init-uninstall-'));
+test("init then uninstall restores original Every Code notify (when config exists)", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "vibeusage-init-uninstall-"));
   const prevHome = process.env.HOME;
   const prevCodexHome = process.env.CODEX_HOME;
   const prevCodeHome = process.env.CODE_HOME;
@@ -187,31 +193,37 @@ test('init then uninstall restores original Every Code notify (when config exist
 
   try {
     process.env.HOME = tmp;
-    process.env.CODEX_HOME = path.join(tmp, '.codex');
-    process.env.CODE_HOME = path.join(tmp, '.code');
+    process.env.CODEX_HOME = path.join(tmp, ".codex");
+    process.env.CODE_HOME = path.join(tmp, ".code");
     delete process.env.VIBEUSAGE_DEVICE_TOKEN;
-    process.env.OPENCODE_CONFIG_DIR = path.join(tmp, '.config', 'opencode');
+    process.env.OPENCODE_CONFIG_DIR = path.join(tmp, ".config", "opencode");
     await fs.mkdir(process.env.CODEX_HOME, { recursive: true });
     await fs.mkdir(process.env.CODE_HOME, { recursive: true });
 
-    const codexConfigPath = path.join(process.env.CODEX_HOME, 'config.toml');
-    await fs.writeFile(codexConfigPath, '# empty\n', 'utf8');
+    const codexConfigPath = path.join(process.env.CODEX_HOME, "config.toml");
+    await fs.writeFile(codexConfigPath, "# empty\n", "utf8");
 
-    const codeConfigPath = path.join(process.env.CODE_HOME, 'config.toml');
+    const codeConfigPath = path.join(process.env.CODE_HOME, "config.toml");
     const originalNotify = 'notify = ["echo", "hello-code"]\n';
-    await fs.writeFile(codeConfigPath, originalNotify, 'utf8');
+    await fs.writeFile(codeConfigPath, originalNotify, "utf8");
 
     process.stdout.write = () => true;
-    await cmdInit(['--yes', '--no-auth', '--no-open', '--base-url', 'https://example.invalid']);
+    await cmdInit(["--yes", "--no-auth", "--no-open", "--base-url", "https://example.invalid"]);
 
-    const installed = await fs.readFile(codeConfigPath, 'utf8');
+    const installed = await fs.readFile(codeConfigPath, "utf8");
     assert.match(installed, /notify\s*=\s*\[[^\n]*notify\.cjs[^\n]*--source=every-code[^\n]*\]/);
-    assert.ok(!installed.includes('["echo", "hello-code"]'), 'expected init to override Every Code notify');
+    assert.ok(
+      !installed.includes('["echo", "hello-code"]'),
+      "expected init to override Every Code notify",
+    );
 
     await cmdUninstall([]);
 
-    const restored = await fs.readFile(codeConfigPath, 'utf8');
-    assert.ok(restored.includes('notify = ["echo", "hello-code"]'), 'expected uninstall to restore Every Code notify');
+    const restored = await fs.readFile(codeConfigPath, "utf8");
+    assert.ok(
+      restored.includes('notify = ["echo", "hello-code"]'),
+      "expected uninstall to restore Every Code notify",
+    );
   } finally {
     process.stdout.write = prevWrite;
     if (prevHome === undefined) delete process.env.HOME;
@@ -228,8 +240,8 @@ test('init then uninstall restores original Every Code notify (when config exist
   }
 });
 
-test('init skips Every Code notify when config is missing', async () => {
-  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vibeusage-init-uninstall-'));
+test("init skips Every Code notify when config is missing", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "vibeusage-init-uninstall-"));
   const prevHome = process.env.HOME;
   const prevCodexHome = process.env.CODEX_HOME;
   const prevCodeHome = process.env.CODE_HOME;
@@ -239,20 +251,20 @@ test('init skips Every Code notify when config is missing', async () => {
 
   try {
     process.env.HOME = tmp;
-    process.env.CODEX_HOME = path.join(tmp, '.codex');
-    process.env.CODE_HOME = path.join(tmp, '.code');
+    process.env.CODEX_HOME = path.join(tmp, ".codex");
+    process.env.CODE_HOME = path.join(tmp, ".code");
     delete process.env.VIBEUSAGE_DEVICE_TOKEN;
-    process.env.OPENCODE_CONFIG_DIR = path.join(tmp, '.config', 'opencode');
+    process.env.OPENCODE_CONFIG_DIR = path.join(tmp, ".config", "opencode");
     await fs.mkdir(process.env.CODEX_HOME, { recursive: true });
     await fs.mkdir(process.env.CODE_HOME, { recursive: true });
 
-    const codexConfigPath = path.join(process.env.CODEX_HOME, 'config.toml');
-    await fs.writeFile(codexConfigPath, '# empty\n', 'utf8');
+    const codexConfigPath = path.join(process.env.CODEX_HOME, "config.toml");
+    await fs.writeFile(codexConfigPath, "# empty\n", "utf8");
 
     process.stdout.write = () => true;
-    await cmdInit(['--yes', '--no-auth', '--no-open', '--base-url', 'https://example.invalid']);
+    await cmdInit(["--yes", "--no-auth", "--no-open", "--base-url", "https://example.invalid"]);
 
-    const codeConfigPath = path.join(process.env.CODE_HOME, 'config.toml');
+    const codeConfigPath = path.join(process.env.CODE_HOME, "config.toml");
     await assert.rejects(fs.stat(codeConfigPath), /ENOENT/);
   } finally {
     process.stdout.write = prevWrite;
@@ -270,8 +282,8 @@ test('init skips Every Code notify when config is missing', async () => {
   }
 });
 
-test('uninstall skips notify restore when no backup and notify not installed', async () => {
-  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vibeusage-init-uninstall-'));
+test("uninstall skips notify restore when no backup and notify not installed", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "vibeusage-init-uninstall-"));
   const prevHome = process.env.HOME;
   const prevCodexHome = process.env.CODEX_HOME;
   const prevCodeHome = process.env.CODE_HOME;
@@ -280,22 +292,22 @@ test('uninstall skips notify restore when no backup and notify not installed', a
 
   try {
     process.env.HOME = tmp;
-    process.env.CODEX_HOME = path.join(tmp, '.codex');
-    process.env.CODE_HOME = path.join(tmp, '.code');
-    process.env.OPENCODE_CONFIG_DIR = path.join(tmp, '.config', 'opencode');
+    process.env.CODEX_HOME = path.join(tmp, ".codex");
+    process.env.CODE_HOME = path.join(tmp, ".code");
+    process.env.OPENCODE_CONFIG_DIR = path.join(tmp, ".config", "opencode");
     await fs.mkdir(process.env.CODEX_HOME, { recursive: true });
     await fs.mkdir(process.env.CODE_HOME, { recursive: true });
 
-    const codexConfigPath = path.join(process.env.CODEX_HOME, 'config.toml');
-    const codeConfigPath = path.join(process.env.CODE_HOME, 'config.toml');
-    await fs.writeFile(codexConfigPath, 'notify = ["echo", "custom-codex"]\n', 'utf8');
-    await fs.writeFile(codeConfigPath, 'notify = ["echo", "custom-code"]\n', 'utf8');
+    const codexConfigPath = path.join(process.env.CODEX_HOME, "config.toml");
+    const codeConfigPath = path.join(process.env.CODE_HOME, "config.toml");
+    await fs.writeFile(codexConfigPath, 'notify = ["echo", "custom-codex"]\n', "utf8");
+    await fs.writeFile(codeConfigPath, 'notify = ["echo", "custom-code"]\n', "utf8");
 
     process.stdout.write = () => true;
     await cmdUninstall([]);
 
-    const codexAfter = await fs.readFile(codexConfigPath, 'utf8');
-    const codeAfter = await fs.readFile(codeConfigPath, 'utf8');
+    const codexAfter = await fs.readFile(codexConfigPath, "utf8");
+    const codeAfter = await fs.readFile(codeConfigPath, "utf8");
     assert.ok(codexAfter.includes('notify = ["echo", "custom-codex"]'));
     assert.ok(codeAfter.includes('notify = ["echo", "custom-code"]'));
   } finally {
@@ -312,8 +324,8 @@ test('uninstall skips notify restore when no backup and notify not installed', a
   }
 });
 
-test('init then uninstall manages Claude hooks without removing existing hooks', async () => {
-  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vibeusage-init-uninstall-'));
+test("init then uninstall manages Claude hooks without removing existing hooks", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "vibeusage-init-uninstall-"));
   const prevHome = process.env.HOME;
   const prevCodexHome = process.env.CODEX_HOME;
   const prevToken = process.env.VIBEUSAGE_DEVICE_TOKEN;
@@ -322,49 +334,59 @@ test('init then uninstall manages Claude hooks without removing existing hooks',
 
   try {
     process.env.HOME = tmp;
-    process.env.CODEX_HOME = path.join(tmp, '.codex');
+    process.env.CODEX_HOME = path.join(tmp, ".codex");
     delete process.env.VIBEUSAGE_DEVICE_TOKEN;
-    process.env.OPENCODE_CONFIG_DIR = path.join(tmp, '.config', 'opencode');
+    process.env.OPENCODE_CONFIG_DIR = path.join(tmp, ".config", "opencode");
     await fs.mkdir(process.env.CODEX_HOME, { recursive: true });
 
-    const codexConfigPath = path.join(process.env.CODEX_HOME, 'config.toml');
-    await fs.writeFile(codexConfigPath, '# empty\n', 'utf8');
+    const codexConfigPath = path.join(process.env.CODEX_HOME, "config.toml");
+    await fs.writeFile(codexConfigPath, "# empty\n", "utf8");
 
-    const claudeDir = path.join(tmp, '.claude');
+    const claudeDir = path.join(tmp, ".claude");
     await fs.mkdir(claudeDir, { recursive: true });
-    const settingsPath = path.join(claudeDir, 'settings.json');
-    const existingCommand = 'echo existing-claude';
+    const settingsPath = path.join(claudeDir, "settings.json");
+    const existingCommand = "echo existing-claude";
     const settings = {
-      env: { SAMPLE: '1' },
+      env: { SAMPLE: "1" },
       hooks: {
         SessionEnd: [
           {
-            hooks: [{ command: existingCommand }]
-          }
-        ]
-      }
+            hooks: [{ command: existingCommand }],
+          },
+        ],
+      },
     };
-    await fs.writeFile(settingsPath, JSON.stringify(settings, null, 2) + '\n', 'utf8');
+    await fs.writeFile(settingsPath, JSON.stringify(settings, null, 2) + "\n", "utf8");
 
     process.stdout.write = () => true;
-    await cmdInit(['--yes', '--no-auth', '--no-open', '--base-url', 'https://example.invalid']);
+    await cmdInit(["--yes", "--no-auth", "--no-open", "--base-url", "https://example.invalid"]);
 
-    const installedRaw = await fs.readFile(settingsPath, 'utf8');
+    const installedRaw = await fs.readFile(settingsPath, "utf8");
     const installed = JSON.parse(installedRaw);
-    const hookCommand = buildClaudeHookCommand(path.join(tmp, '.vibeusage', 'bin', 'notify.cjs'));
+    const hookCommand = buildClaudeHookCommand(path.join(tmp, ".vibeusage", "bin", "notify.cjs"));
     const sessionEnd = installed?.hooks?.SessionEnd || [];
-    const allCommands = sessionEnd.flatMap((entry) => (Array.isArray(entry?.hooks) ? entry.hooks : [entry])).map((h) => h?.command);
-    assert.ok(allCommands.includes(existingCommand), 'expected existing Claude hook to remain');
-    assert.ok(allCommands.includes(hookCommand), 'expected tracker Claude hook to be added');
+    const allCommands = sessionEnd
+      .flatMap((entry) => (Array.isArray(entry?.hooks) ? entry.hooks : [entry]))
+      .map((h) => h?.command);
+    assert.ok(allCommands.includes(existingCommand), "expected existing Claude hook to remain");
+    assert.ok(allCommands.includes(hookCommand), "expected tracker Claude hook to be added");
 
     await cmdUninstall([]);
 
-    const restoredRaw = await fs.readFile(settingsPath, 'utf8');
+    const restoredRaw = await fs.readFile(settingsPath, "utf8");
     const restored = JSON.parse(restoredRaw);
     const restoredSessionEnd = restored?.hooks?.SessionEnd || [];
-    const restoredCommands = restoredSessionEnd.flatMap((entry) => (Array.isArray(entry?.hooks) ? entry.hooks : [entry])).map((h) => h?.command);
-    assert.ok(restoredCommands.includes(existingCommand), 'expected existing Claude hook to remain');
-    assert.ok(!restoredCommands.includes(hookCommand), 'expected tracker Claude hook to be removed');
+    const restoredCommands = restoredSessionEnd
+      .flatMap((entry) => (Array.isArray(entry?.hooks) ? entry.hooks : [entry]))
+      .map((h) => h?.command);
+    assert.ok(
+      restoredCommands.includes(existingCommand),
+      "expected existing Claude hook to remain",
+    );
+    assert.ok(
+      !restoredCommands.includes(hookCommand),
+      "expected tracker Claude hook to be removed",
+    );
   } finally {
     process.stdout.write = prevWrite;
     if (prevHome === undefined) delete process.env.HOME;
@@ -379,8 +401,8 @@ test('init then uninstall manages Claude hooks without removing existing hooks',
   }
 });
 
-test('init then uninstall manages Gemini hooks without removing existing hooks', async () => {
-  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vibeusage-init-uninstall-'));
+test("init then uninstall manages Gemini hooks without removing existing hooks", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "vibeusage-init-uninstall-"));
   const prevHome = process.env.HOME;
   const prevCodexHome = process.env.CODEX_HOME;
   const prevToken = process.env.VIBEUSAGE_DEVICE_TOKEN;
@@ -390,61 +412,68 @@ test('init then uninstall manages Gemini hooks without removing existing hooks',
 
   try {
     process.env.HOME = tmp;
-    process.env.CODEX_HOME = path.join(tmp, '.codex');
-    process.env.GEMINI_HOME = path.join(tmp, '.gemini');
+    process.env.CODEX_HOME = path.join(tmp, ".codex");
+    process.env.GEMINI_HOME = path.join(tmp, ".gemini");
     delete process.env.VIBEUSAGE_DEVICE_TOKEN;
-    process.env.OPENCODE_CONFIG_DIR = path.join(tmp, '.config', 'opencode');
+    process.env.OPENCODE_CONFIG_DIR = path.join(tmp, ".config", "opencode");
     await fs.mkdir(process.env.CODEX_HOME, { recursive: true });
     await fs.mkdir(process.env.GEMINI_HOME, { recursive: true });
 
-    const codexConfigPath = path.join(process.env.CODEX_HOME, 'config.toml');
-    await fs.writeFile(codexConfigPath, '# empty\n', 'utf8');
+    const codexConfigPath = path.join(process.env.CODEX_HOME, "config.toml");
+    await fs.writeFile(codexConfigPath, "# empty\n", "utf8");
 
-    const settingsPath = path.join(process.env.GEMINI_HOME, 'settings.json');
-    const existingCommand = 'echo existing-gemini';
+    const settingsPath = path.join(process.env.GEMINI_HOME, "settings.json");
+    const existingCommand = "echo existing-gemini";
     const settings = {
       tools: { enableHooks: false },
       hooks: {
-        disabled: ['existing-disabled'],
+        disabled: ["existing-disabled"],
         SessionEnd: [
           {
-            matcher: 'exit',
-            hooks: [{ name: 'existing-gemini', type: 'command', command: existingCommand }]
-          }
-        ]
-      }
+            matcher: "exit",
+            hooks: [{ name: "existing-gemini", type: "command", command: existingCommand }],
+          },
+        ],
+      },
     };
-    await fs.writeFile(settingsPath, JSON.stringify(settings, null, 2) + '\n', 'utf8');
+    await fs.writeFile(settingsPath, JSON.stringify(settings, null, 2) + "\n", "utf8");
 
     process.stdout.write = () => true;
-    await cmdInit(['--yes', '--no-auth', '--no-open', '--base-url', 'https://example.invalid']);
+    await cmdInit(["--yes", "--no-auth", "--no-open", "--base-url", "https://example.invalid"]);
 
-    const installedRaw = await fs.readFile(settingsPath, 'utf8');
+    const installedRaw = await fs.readFile(settingsPath, "utf8");
     const installed = JSON.parse(installedRaw);
     assert.equal(installed?.tools?.enableHooks, true);
-    assert.deepEqual(installed?.hooks?.disabled, ['existing-disabled']);
-    const hookCommand = buildGeminiHookCommand(path.join(tmp, '.vibeusage', 'bin', 'notify.cjs'));
+    assert.deepEqual(installed?.hooks?.disabled, ["existing-disabled"]);
+    const hookCommand = buildGeminiHookCommand(path.join(tmp, ".vibeusage", "bin", "notify.cjs"));
     const sessionEnd = installed?.hooks?.SessionEnd || [];
     const hooks = flattenHookEntries(sessionEnd);
     const allCommands = hooks.map((h) => h?.command);
     const trackerEntry = sessionEnd.find(
-      (entry) => Array.isArray(entry?.hooks) && entry.hooks.some((hook) => hook?.command === hookCommand)
+      (entry) =>
+        Array.isArray(entry?.hooks) && entry.hooks.some((hook) => hook?.command === hookCommand),
     );
-    assert.ok(allCommands.includes(existingCommand), 'expected existing Gemini hook to remain');
-    assert.ok(allCommands.includes(hookCommand), 'expected tracker Gemini hook to be added');
-    assert.equal(trackerEntry?.matcher, 'exit|clear|logout|prompt_input_exit|other');
+    assert.ok(allCommands.includes(existingCommand), "expected existing Gemini hook to remain");
+    assert.ok(allCommands.includes(hookCommand), "expected tracker Gemini hook to be added");
+    assert.equal(trackerEntry?.matcher, "exit|clear|logout|prompt_input_exit|other");
 
     await cmdUninstall([]);
 
-    const restoredRaw = await fs.readFile(settingsPath, 'utf8');
+    const restoredRaw = await fs.readFile(settingsPath, "utf8");
     const restored = JSON.parse(restoredRaw);
     assert.equal(restored?.tools?.enableHooks, true);
-    assert.deepEqual(restored?.hooks?.disabled, ['existing-disabled']);
+    assert.deepEqual(restored?.hooks?.disabled, ["existing-disabled"]);
     const restoredSessionEnd = restored?.hooks?.SessionEnd || [];
     const restoredHooks = flattenHookEntries(restoredSessionEnd);
     const restoredCommands = restoredHooks.map((h) => h?.command);
-    assert.ok(restoredCommands.includes(existingCommand), 'expected existing Gemini hook to remain');
-    assert.ok(!restoredCommands.includes(hookCommand), 'expected tracker Gemini hook to be removed');
+    assert.ok(
+      restoredCommands.includes(existingCommand),
+      "expected existing Gemini hook to remain",
+    );
+    assert.ok(
+      !restoredCommands.includes(hookCommand),
+      "expected tracker Gemini hook to be removed",
+    );
   } finally {
     process.stdout.write = prevWrite;
     if (prevHome === undefined) delete process.env.HOME;
@@ -461,8 +490,8 @@ test('init then uninstall manages Gemini hooks without removing existing hooks',
   }
 });
 
-test('init skips Gemini hooks when config directory is missing', async () => {
-  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vibeusage-init-uninstall-'));
+test("init skips Gemini hooks when config directory is missing", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "vibeusage-init-uninstall-"));
   const prevHome = process.env.HOME;
   const prevCodexHome = process.env.CODEX_HOME;
   const prevToken = process.env.VIBEUSAGE_DEVICE_TOKEN;
@@ -472,17 +501,17 @@ test('init skips Gemini hooks when config directory is missing', async () => {
 
   try {
     process.env.HOME = tmp;
-    process.env.CODEX_HOME = path.join(tmp, '.codex');
-    process.env.GEMINI_HOME = path.join(tmp, '.gemini-missing');
+    process.env.CODEX_HOME = path.join(tmp, ".codex");
+    process.env.GEMINI_HOME = path.join(tmp, ".gemini-missing");
     delete process.env.VIBEUSAGE_DEVICE_TOKEN;
-    process.env.OPENCODE_CONFIG_DIR = path.join(tmp, '.config', 'opencode');
+    process.env.OPENCODE_CONFIG_DIR = path.join(tmp, ".config", "opencode");
     await fs.mkdir(process.env.CODEX_HOME, { recursive: true });
 
-    const codexConfigPath = path.join(process.env.CODEX_HOME, 'config.toml');
-    await fs.writeFile(codexConfigPath, '# empty\n', 'utf8');
+    const codexConfigPath = path.join(process.env.CODEX_HOME, "config.toml");
+    await fs.writeFile(codexConfigPath, "# empty\n", "utf8");
 
     process.stdout.write = () => true;
-    await cmdInit(['--yes', '--no-auth', '--no-open', '--base-url', 'https://example.invalid']);
+    await cmdInit(["--yes", "--no-auth", "--no-open", "--base-url", "https://example.invalid"]);
 
     await assert.rejects(fs.stat(process.env.GEMINI_HOME), /ENOENT/);
   } finally {
@@ -501,8 +530,8 @@ test('init skips Gemini hooks when config directory is missing', async () => {
   }
 });
 
-test('init creates Gemini settings when directory exists but file is missing', async () => {
-  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vibeusage-init-uninstall-'));
+test("init creates Gemini settings when directory exists but file is missing", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "vibeusage-init-uninstall-"));
   const prevHome = process.env.HOME;
   const prevCodexHome = process.env.CODEX_HOME;
   const prevToken = process.env.VIBEUSAGE_DEVICE_TOKEN;
@@ -512,29 +541,29 @@ test('init creates Gemini settings when directory exists but file is missing', a
 
   try {
     process.env.HOME = tmp;
-    process.env.CODEX_HOME = path.join(tmp, '.codex');
-    process.env.GEMINI_HOME = path.join(tmp, '.gemini');
+    process.env.CODEX_HOME = path.join(tmp, ".codex");
+    process.env.GEMINI_HOME = path.join(tmp, ".gemini");
     delete process.env.VIBEUSAGE_DEVICE_TOKEN;
-    process.env.OPENCODE_CONFIG_DIR = path.join(tmp, '.config', 'opencode');
+    process.env.OPENCODE_CONFIG_DIR = path.join(tmp, ".config", "opencode");
     await fs.mkdir(process.env.CODEX_HOME, { recursive: true });
     await fs.mkdir(process.env.GEMINI_HOME, { recursive: true });
 
-    const codexConfigPath = path.join(process.env.CODEX_HOME, 'config.toml');
-    await fs.writeFile(codexConfigPath, '# empty\n', 'utf8');
+    const codexConfigPath = path.join(process.env.CODEX_HOME, "config.toml");
+    await fs.writeFile(codexConfigPath, "# empty\n", "utf8");
 
-    const settingsPath = path.join(process.env.GEMINI_HOME, 'settings.json');
+    const settingsPath = path.join(process.env.GEMINI_HOME, "settings.json");
 
     process.stdout.write = () => true;
-    await cmdInit(['--yes', '--no-auth', '--no-open', '--base-url', 'https://example.invalid']);
+    await cmdInit(["--yes", "--no-auth", "--no-open", "--base-url", "https://example.invalid"]);
 
-    const createdRaw = await fs.readFile(settingsPath, 'utf8');
+    const createdRaw = await fs.readFile(settingsPath, "utf8");
     const created = JSON.parse(createdRaw);
     assert.equal(created?.tools?.enableHooks, true);
     const sessionEnd = created?.hooks?.SessionEnd || [];
     const hooks = flattenHookEntries(sessionEnd);
-    const hookCommand = buildGeminiHookCommand(path.join(tmp, '.vibeusage', 'bin', 'notify.cjs'));
+    const hookCommand = buildGeminiHookCommand(path.join(tmp, ".vibeusage", "bin", "notify.cjs"));
     const hasTracker = hooks.some((hook) => hook?.command === hookCommand);
-    assert.ok(hasTracker, 'expected tracker Gemini hook to be created in settings.json');
+    assert.ok(hasTracker, "expected tracker Gemini hook to be created in settings.json");
   } finally {
     process.stdout.write = prevWrite;
     if (prevHome === undefined) delete process.env.HOME;
@@ -551,8 +580,8 @@ test('init creates Gemini settings when directory exists but file is missing', a
   }
 });
 
-test('init then uninstall manages Opencode plugin without removing other plugins', async () => {
-  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vibeusage-init-uninstall-'));
+test("init then uninstall manages Opencode plugin without removing other plugins", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "vibeusage-init-uninstall-"));
   const prevHome = process.env.HOME;
   const prevCodexHome = process.env.CODEX_HOME;
   const prevToken = process.env.VIBEUSAGE_DEVICE_TOKEN;
@@ -561,32 +590,32 @@ test('init then uninstall manages Opencode plugin without removing other plugins
 
   try {
     process.env.HOME = tmp;
-    process.env.CODEX_HOME = path.join(tmp, '.codex');
+    process.env.CODEX_HOME = path.join(tmp, ".codex");
     delete process.env.VIBEUSAGE_DEVICE_TOKEN;
-    process.env.OPENCODE_CONFIG_DIR = path.join(tmp, '.config', 'opencode');
+    process.env.OPENCODE_CONFIG_DIR = path.join(tmp, ".config", "opencode");
     await fs.mkdir(process.env.CODEX_HOME, { recursive: true });
 
-    const codexConfigPath = path.join(process.env.CODEX_HOME, 'config.toml');
-    await fs.writeFile(codexConfigPath, '# empty\n', 'utf8');
+    const codexConfigPath = path.join(process.env.CODEX_HOME, "config.toml");
+    await fs.writeFile(codexConfigPath, "# empty\n", "utf8");
 
-    const opencodeDir = path.join(tmp, '.config', 'opencode');
-    const pluginDir = path.join(opencodeDir, 'plugin');
+    const opencodeDir = path.join(tmp, ".config", "opencode");
+    const pluginDir = path.join(opencodeDir, "plugin");
     await fs.mkdir(pluginDir, { recursive: true });
-    const existingPluginPath = path.join(pluginDir, 'existing.js');
-    await fs.writeFile(existingPluginPath, '// existing\n', 'utf8');
+    const existingPluginPath = path.join(pluginDir, "existing.js");
+    await fs.writeFile(existingPluginPath, "// existing\n", "utf8");
 
     process.stdout.write = () => true;
-    await cmdInit(['--yes', '--no-auth', '--no-open', '--base-url', 'https://example.invalid']);
+    await cmdInit(["--yes", "--no-auth", "--no-open", "--base-url", "https://example.invalid"]);
 
-    const pluginPath = path.join(pluginDir, 'vibeusage-tracker.js');
-    const installed = await fs.readFile(pluginPath, 'utf8');
+    const pluginPath = path.join(pluginDir, "vibeusage-tracker.js");
+    const installed = await fs.readFile(pluginPath, "utf8");
     assert.match(installed, /VIBEUSAGE_TRACKER_PLUGIN/);
 
     await cmdUninstall([]);
 
     await assert.rejects(fs.stat(pluginPath), /ENOENT/);
-    const existing = await fs.readFile(existingPluginPath, 'utf8');
-    assert.ok(existing.includes('existing'));
+    const existing = await fs.readFile(existingPluginPath, "utf8");
+    assert.ok(existing.includes("existing"));
   } finally {
     process.stdout.write = prevWrite;
     if (prevHome === undefined) delete process.env.HOME;
@@ -601,8 +630,8 @@ test('init then uninstall manages Opencode plugin without removing other plugins
   }
 });
 
-test('init installs Opencode plugin when config dir is missing', async () => {
-  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vibeusage-init-uninstall-'));
+test("init installs Opencode plugin when config dir is missing", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "vibeusage-init-uninstall-"));
   const prevHome = process.env.HOME;
   const prevCodexHome = process.env.CODEX_HOME;
   const prevToken = process.env.VIBEUSAGE_DEVICE_TOKEN;
@@ -611,19 +640,19 @@ test('init installs Opencode plugin when config dir is missing', async () => {
 
   try {
     process.env.HOME = tmp;
-    process.env.CODEX_HOME = path.join(tmp, '.codex');
+    process.env.CODEX_HOME = path.join(tmp, ".codex");
     delete process.env.VIBEUSAGE_DEVICE_TOKEN;
-    process.env.OPENCODE_CONFIG_DIR = path.join(tmp, '.config', 'opencode');
+    process.env.OPENCODE_CONFIG_DIR = path.join(tmp, ".config", "opencode");
     await fs.mkdir(process.env.CODEX_HOME, { recursive: true });
 
-    const codexConfigPath = path.join(process.env.CODEX_HOME, 'config.toml');
-    await fs.writeFile(codexConfigPath, '# empty\n', 'utf8');
+    const codexConfigPath = path.join(process.env.CODEX_HOME, "config.toml");
+    await fs.writeFile(codexConfigPath, "# empty\n", "utf8");
 
     process.stdout.write = () => true;
-    await cmdInit(['--yes', '--no-auth', '--no-open', '--base-url', 'https://example.invalid']);
+    await cmdInit(["--yes", "--no-auth", "--no-open", "--base-url", "https://example.invalid"]);
 
-    const pluginPath = path.join(process.env.OPENCODE_CONFIG_DIR, 'plugin', 'vibeusage-tracker.js');
-    const installed = await fs.readFile(pluginPath, 'utf8');
+    const pluginPath = path.join(process.env.OPENCODE_CONFIG_DIR, "plugin", "vibeusage-tracker.js");
+    const installed = await fs.readFile(pluginPath, "utf8");
     assert.match(installed, /VIBEUSAGE_TRACKER_PLUGIN/);
   } finally {
     process.stdout.write = prevWrite;

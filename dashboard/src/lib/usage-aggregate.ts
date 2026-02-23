@@ -26,9 +26,7 @@ export function sumDailyRowsToTotals(rows: any) {
 
   for (const row of Array.isArray(rows) ? rows : []) {
     totals.total_tokens += toBigIntValue(row?.total_tokens);
-    totals.billable_total_tokens += toBigIntValue(
-      row?.billable_total_tokens ?? row?.total_tokens
-    );
+    totals.billable_total_tokens += toBigIntValue(row?.billable_total_tokens ?? row?.total_tokens);
     totals.input_tokens += toBigIntValue(row?.input_tokens);
     totals.cached_input_tokens += toBigIntValue(row?.cached_input_tokens);
     totals.output_tokens += toBigIntValue(row?.output_tokens);

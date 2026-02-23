@@ -16,16 +16,16 @@ test("buildFleetData keeps usage tokens for fleet rows", async () => {
           {
             model: "gpt-4o",
             model_id: "gpt-4o",
-            totals: { total_tokens: 1200 }
-          }
-        ]
+            totals: { total_tokens: 1200 },
+          },
+        ],
       },
       {
         source: "api",
         totals: { total_tokens: 0, total_cost_usd: 0 },
-        models: []
-      }
-    ]
+        models: [],
+      },
+    ],
   };
 
   assert.equal(typeof buildFleetData, "function");
@@ -52,11 +52,11 @@ test("buildFleetData returns model ids for stable keys", async () => {
           {
             model: "GPT-4o",
             model_id: "gpt-4o",
-            totals: { total_tokens: 1200 }
-          }
-        ]
-      }
-    ]
+            totals: { total_tokens: 1200 },
+          },
+        ],
+      },
+    ],
   };
 
   const fleetData = buildFleetData(modelBreakdown);
@@ -72,18 +72,16 @@ test("buildTopModels aggregates by model name across sources", async () => {
     sources: [
       {
         source: "cli",
-        models: [
-          { model: "GPT-4o", totals: { billable_total_tokens: 70 } }
-        ]
+        models: [{ model: "GPT-4o", totals: { billable_total_tokens: 70 } }],
       },
       {
         source: "api",
         models: [
           { model: "gpt-4o", totals: { billable_total_tokens: 50 } },
-          { model: "GPT-4o-mini", totals: { billable_total_tokens: 30 } }
-        ]
-      }
-    ]
+          { model: "GPT-4o-mini", totals: { billable_total_tokens: 30 } },
+        ],
+      },
+    ],
   };
 
   assert.equal(typeof buildTopModels, "function");
@@ -107,16 +105,14 @@ test("buildTopModels computes percent using billable tokens across all models", 
       {
         source: "cli",
         models: [
-          { model: "legacy-model", totals: { billable_total_tokens: 20, total_tokens: 999 } }
-        ]
+          { model: "legacy-model", totals: { billable_total_tokens: 20, total_tokens: 999 } },
+        ],
       },
       {
         source: "api",
-        models: [
-          { model: "GPT-4o", totals: { billable_total_tokens: 80, total_tokens: 999 } }
-        ]
-      }
-    ]
+        models: [{ model: "GPT-4o", totals: { billable_total_tokens: 80, total_tokens: 999 } }],
+      },
+    ],
   };
 
   const topModels = buildTopModels(modelBreakdown, { limit: 1 });

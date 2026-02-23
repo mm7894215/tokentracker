@@ -11,6 +11,7 @@
 ### Task 1: Capture failing tests (RED)
 
 **Files:**
+
 - Modify: `openspec/changes/2026-01-19-update-dashboard-session-renewal/tasks.md`
 
 **Step 1: Run the full test suite to reproduce failures**
@@ -25,6 +26,7 @@ Update `openspec/changes/2026-01-19-update-dashboard-session-renewal/tasks.md` w
 ### Task 2: Install dependencies (GREEN)
 
 **Files:**
+
 - Modify: `openspec/changes/2026-01-19-update-dashboard-session-renewal/tasks.md`
 
 **Step 1: Install dependencies**
@@ -59,8 +61,10 @@ Expected: Canvas regenerated without errors.
 **Step 2: Commit documentation updates**
 
 Run:
+
 ```bash
 git add docs/plans/2026-01-19-test-failures-deps-design.md docs/plans/2026-01-19-fix-test-deps.md openspec/changes/2026-01-19-update-dashboard-session-renewal/tasks.md
 git commit -m "docs: record test dependency fix plan"
 ```
+
 Expected: Commit created locally.

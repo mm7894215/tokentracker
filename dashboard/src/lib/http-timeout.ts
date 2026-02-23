@@ -18,7 +18,7 @@ export function getHttpTimeoutMs({ env }: TimeoutOptions = {}) {
 
 export function createTimeoutFetch(
   baseFetch: FetchLike | null | undefined,
-  { env }: TimeoutOptions = {}
+  { env }: TimeoutOptions = {},
 ): FetchLike | undefined {
   if (!baseFetch) return undefined;
   return async (input: any, init: AnyRecord = {}) => {

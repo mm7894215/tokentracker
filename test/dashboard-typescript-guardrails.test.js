@@ -68,10 +68,7 @@ test("dashboard has tsconfig", async () => {
 
 test("vite env types are declared", async () => {
   const viteEnv = await read(path.join(repoRoot, "dashboard/src/vite-env.d.ts"));
-  assert.ok(
-    viteEnv.includes("interface ImportMetaEnv"),
-    "expected ImportMetaEnv declaration",
-  );
+  assert.ok(viteEnv.includes("interface ImportMetaEnv"), "expected ImportMetaEnv declaration");
 });
 
 test("dashboard package defines typecheck", async () => {
@@ -147,10 +144,7 @@ test("tsc command uses npm exec", async () => {
     "expected typescript package specifier",
   );
   if (lockedVersion) {
-    assert.ok(
-      args.includes(`typescript@${lockedVersion}`),
-      "expected locked typescript version",
-    );
+    assert.ok(args.includes(`typescript@${lockedVersion}`), "expected locked typescript version");
   }
   assert.ok(args.includes("tsc"), "expected tsc in args");
 });

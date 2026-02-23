@@ -8,13 +8,7 @@
   "totalClosed": 64,
   "eligibleMerged": 5,
   "selectedCount": 5,
-  "selected": [
-    56,
-    25,
-    55,
-    34,
-    66
-  ],
+  "selected": [56, 25, 55, 34, 66],
   "prs": [
     {
       "number": 66,
@@ -126,10 +120,7 @@
         {
           "oid": "37ad705c4dcb693c75e0633e17f5672a2ffed545",
           "committedDate": "2026-01-13T12:54:35Z",
-          "files": [
-            "architecture.canvas",
-            "dashboard/src/pages/DashboardPage.jsx"
-          ]
+          "files": ["architecture.canvas", "dashboard/src/pages/DashboardPage.jsx"]
         },
         {
           "oid": "3fde019bf52fb698e7463700dc0b42ffcc031ca0",
@@ -459,10 +450,7 @@
       "closedAt": "2026-01-07T14:57:49Z",
       "mergedAt": "2026-01-07T14:57:49Z",
       "author": "victorGPT",
-      "labels": [
-        "documentation",
-        "enhancement"
-      ],
+      "labels": ["documentation", "enhancement"],
       "frontend": false,
       "backend": true,
       "cycles": 0,
@@ -2093,9 +2081,7 @@
         }
       ],
       "commits": [],
-      "files": [
-        "scripts/ops/usage-daily-rollup-backfill.sql"
-      ]
+      "files": ["scripts/ops/usage-daily-rollup-backfill.sql"]
     },
     {
       "number": 48,
@@ -2956,32 +2942,22 @@
         {
           "oid": "4c84ebe631759f584c7860c3e8d894788eb43703",
           "committedDate": "2025-12-31T00:22:58Z",
-          "files": [
-            "dashboard/src/content/copy.csv",
-            "dashboard/src/pages/AnnualPosterPage.jsx"
-          ]
+          "files": ["dashboard/src/content/copy.csv", "dashboard/src/pages/AnnualPosterPage.jsx"]
         },
         {
           "oid": "cdae058f8023e9c8218e1c175ffd5b1f3f57e1a3",
           "committedDate": "2025-12-31T00:34:06Z",
-          "files": [
-            "dashboard/src/content/copy.csv"
-          ]
+          "files": ["dashboard/src/content/copy.csv"]
         },
         {
           "oid": "987b176ddadd2513a58c9da70cba91d072482073",
           "committedDate": "2025-12-31T01:05:51Z",
-          "files": [
-            "dashboard/src/pages/DashboardPage.jsx",
-            "dashboard/src/styles.css"
-          ]
+          "files": ["dashboard/src/pages/DashboardPage.jsx", "dashboard/src/styles.css"]
         },
         {
           "oid": "6209f5e9cf044ebe563658a45f1c70fbf5a38a18",
           "committedDate": "2025-12-31T01:08:30Z",
-          "files": [
-            "dashboard/src/pages/DashboardPage.jsx"
-          ]
+          "files": ["dashboard/src/pages/DashboardPage.jsx"]
         },
         {
           "oid": "4ae44309f273c85f09497f73b1370270b5a2232e",
@@ -3280,30 +3256,22 @@
         {
           "oid": "a545db5db8562c24336f4820f02e1c6237f61bd6",
           "committedDate": "2025-12-30T04:10:38Z",
-          "files": [
-            "dashboard/src/lib/activity-heatmap.js"
-          ]
+          "files": ["dashboard/src/lib/activity-heatmap.js"]
         },
         {
           "oid": "14b44c871e1822913deef13f2449758b4826efbf",
           "committedDate": "2025-12-30T04:39:05Z",
-          "files": [
-            "dashboard/src/ui/matrix-a/components/TrendMonitor.jsx"
-          ]
+          "files": ["dashboard/src/ui/matrix-a/components/TrendMonitor.jsx"]
         },
         {
           "oid": "9c14d28177d9fb01e1da93c96de9baadde7a6aed",
           "committedDate": "2025-12-30T04:46:46Z",
-          "files": [
-            "dashboard/src/ui/matrix-a/components/TrendMonitor.jsx"
-          ]
+          "files": ["dashboard/src/ui/matrix-a/components/TrendMonitor.jsx"]
         },
         {
           "oid": "e0170a162720b2e9a6adbd64af42681fcf37d4df",
           "committedDate": "2025-12-30T05:05:29Z",
-          "files": [
-            "dashboard/src/ui/matrix-a/components/TrendMonitor.jsx"
-          ]
+          "files": ["dashboard/src/ui/matrix-a/components/TrendMonitor.jsx"]
         },
         {
           "oid": "0af92337b361eea64fb0812f14589273f5443947",
@@ -3880,9 +3848,7 @@
         {
           "oid": "019b8b0acebafe526f86a279151eb9b55d1a10f0",
           "committedDate": "2025-12-28T02:26:56Z",
-          "files": [
-            "test/edge-functions.test.js"
-          ]
+          "files": ["test/edge-functions.test.js"]
         },
         {
           "oid": "d456fa701a24b5b1ba0fac3a578977fd9cd5b4dc",
@@ -3918,10 +3884,7 @@
         {
           "oid": "a5362c6a841c207b2e6f2a5d133a63121813caf1",
           "committedDate": "2025-12-28T02:37:33Z",
-          "files": [
-            "dashboard/src/pages/DashboardPage.jsx",
-            "test/dashboard-render-order.test.js"
-          ]
+          "files": ["dashboard/src/pages/DashboardPage.jsx", "test/dashboard-render-order.test.js"]
         },
         {
           "oid": "d6d6edad8195fdf29ed45f5fa8563d80c4b0c014",
@@ -3981,9 +3944,7 @@
         {
           "oid": "74133cf8a6d61d327a0ea7b0568bd94e4dc42d3b",
           "committedDate": "2025-12-28T10:47:02Z",
-          "files": [
-            "test/edge-functions.test.js"
-          ]
+          "files": ["test/edge-functions.test.js"]
         },
         {
           "oid": "9a6f77d38b4a5e213edbc4e9e6d48f78b13abd38",
@@ -4371,10 +4332,7 @@
         {
           "oid": "211cca5a24dd86222e60a86ce5bdc184aa64c32e",
           "committedDate": "2025-12-27T14:48:29Z",
-          "files": [
-            "insforge-src/shared/pro-status.js",
-            "test/pro-status.test.js"
-          ]
+          "files": ["insforge-src/shared/pro-status.js", "test/pro-status.test.js"]
         },
         {
           "oid": "a0c675e8c019b6c9efa98b4b4304fd1525a160b3",
@@ -4704,11 +4662,7 @@
         }
       ],
       "commits": [],
-      "files": [
-        "CHANGELOG.md",
-        "package-lock.json",
-        "package.json"
-      ]
+      "files": ["CHANGELOG.md", "package-lock.json", "package.json"]
     },
     {
       "number": 18,
@@ -5216,10 +5170,7 @@
         }
       ],
       "commits": [],
-      "files": [
-        ".gitignore",
-        "dashboard/.gitignore"
-      ]
+      "files": [".gitignore", "dashboard/.gitignore"]
     },
     {
       "number": 9,
@@ -5383,9 +5334,7 @@
         }
       ],
       "commits": [],
-      "files": [
-        "openspec/changes/2025-12-24-add-ingest-batch-metrics/verification-report.md"
-      ]
+      "files": ["openspec/changes/2025-12-24-add-ingest-batch-metrics/verification-report.md"]
     },
     {
       "number": 5,
@@ -6668,9 +6617,7 @@
         {
           "oid": "019b8b0acebafe526f86a279151eb9b55d1a10f0",
           "committedDate": "2025-12-28T02:26:56Z",
-          "files": [
-            "test/edge-functions.test.js"
-          ]
+          "files": ["test/edge-functions.test.js"]
         },
         {
           "oid": "d456fa701a24b5b1ba0fac3a578977fd9cd5b4dc",
@@ -6706,10 +6653,7 @@
         {
           "oid": "a5362c6a841c207b2e6f2a5d133a63121813caf1",
           "committedDate": "2025-12-28T02:37:33Z",
-          "files": [
-            "dashboard/src/pages/DashboardPage.jsx",
-            "test/dashboard-render-order.test.js"
-          ]
+          "files": ["dashboard/src/pages/DashboardPage.jsx", "test/dashboard-render-order.test.js"]
         },
         {
           "oid": "d6d6edad8195fdf29ed45f5fa8563d80c4b0c014",
@@ -6769,9 +6713,7 @@
         {
           "oid": "74133cf8a6d61d327a0ea7b0568bd94e4dc42d3b",
           "committedDate": "2025-12-28T10:47:02Z",
-          "files": [
-            "test/edge-functions.test.js"
-          ]
+          "files": ["test/edge-functions.test.js"]
         },
         {
           "oid": "9a6f77d38b4a5e213edbc4e9e6d48f78b13abd38",
@@ -7336,30 +7278,22 @@
         {
           "oid": "a545db5db8562c24336f4820f02e1c6237f61bd6",
           "committedDate": "2025-12-30T04:10:38Z",
-          "files": [
-            "dashboard/src/lib/activity-heatmap.js"
-          ]
+          "files": ["dashboard/src/lib/activity-heatmap.js"]
         },
         {
           "oid": "14b44c871e1822913deef13f2449758b4826efbf",
           "committedDate": "2025-12-30T04:39:05Z",
-          "files": [
-            "dashboard/src/ui/matrix-a/components/TrendMonitor.jsx"
-          ]
+          "files": ["dashboard/src/ui/matrix-a/components/TrendMonitor.jsx"]
         },
         {
           "oid": "9c14d28177d9fb01e1da93c96de9baadde7a6aed",
           "committedDate": "2025-12-30T04:46:46Z",
-          "files": [
-            "dashboard/src/ui/matrix-a/components/TrendMonitor.jsx"
-          ]
+          "files": ["dashboard/src/ui/matrix-a/components/TrendMonitor.jsx"]
         },
         {
           "oid": "e0170a162720b2e9a6adbd64af42681fcf37d4df",
           "committedDate": "2025-12-30T05:05:29Z",
-          "files": [
-            "dashboard/src/ui/matrix-a/components/TrendMonitor.jsx"
-          ]
+          "files": ["dashboard/src/ui/matrix-a/components/TrendMonitor.jsx"]
         },
         {
           "oid": "0af92337b361eea64fb0812f14589273f5443947",
@@ -7552,10 +7486,7 @@
         {
           "oid": "37ad705c4dcb693c75e0633e17f5672a2ffed545",
           "committedDate": "2026-01-13T12:54:35Z",
-          "files": [
-            "architecture.canvas",
-            "dashboard/src/pages/DashboardPage.jsx"
-          ]
+          "files": ["architecture.canvas", "dashboard/src/pages/DashboardPage.jsx"]
         },
         {
           "oid": "3fde019bf52fb698e7463700dc0b42ffcc031ca0",

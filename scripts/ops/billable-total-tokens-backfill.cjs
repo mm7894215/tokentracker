@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 
-'use strict';
+"use strict";
 
-const { computeBillableTotalTokens } = require('../../insforge-src/shared/usage-billable');
+const { computeBillableTotalTokens } = require("../../insforge-src/shared/usage-billable");
 
 const BILLABLE_RULE_VERSION = 1;
-const CURSOR_FIELDS = ['hour_start', 'user_id', 'device_id', 'source', 'model'];
+const CURSOR_FIELDS = ["hour_start", "user_id", "device_id", "source", "model"];
 
 function parseArgs(argv) {
   const out = {
@@ -13,32 +13,32 @@ function parseArgs(argv) {
     to: null,
     batchSize: 500,
     sleepMs: 250,
-    dryRun: false
+    dryRun: false,
   };
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
-    if (arg === '--from') {
+    if (arg === "--from") {
       out.from = argv[++i] || null;
       continue;
     }
-    if (arg === '--to') {
+    if (arg === "--to") {
       out.to = argv[++i] || null;
       continue;
     }
-    if (arg === '--batch-size') {
-      out.batchSize = Number(argv[++i] || '0');
+    if (arg === "--batch-size") {
+      out.batchSize = Number(argv[++i] || "0");
       continue;
     }
-    if (arg === '--sleep-ms') {
-      out.sleepMs = Number(argv[++i] || '0');
+    if (arg === "--sleep-ms") {
+      out.sleepMs = Number(argv[++i] || "0");
       continue;
     }
-    if (arg === '--dry-run') {
+    if (arg === "--dry-run") {
       out.dryRun = true;
       continue;
     }
-    if (arg === '--help' || arg === '-h') {
+    if (arg === "--help" || arg === "-h") {
       out.help = true;
       continue;
     }
@@ -46,10 +46,10 @@ function parseArgs(argv) {
   }
 
   if (!Number.isFinite(out.batchSize) || out.batchSize <= 0) {
-    throw new Error('--batch-size must be a positive number');
+    throw new Error("--batch-size must be a positive number");
   }
   if (!Number.isFinite(out.sleepMs) || out.sleepMs < 0) {
-    throw new Error('--sleep-ms must be a non-negative number');
+    throw new Error("--sleep-ms must be a non-negative number");
   }
 
   return out;
@@ -58,28 +58,29 @@ function parseArgs(argv) {
 function printHelp() {
   process.stdout.write(
     [
-      'Backfill billable_total_tokens on vibeusage_tracker_hourly',
-      '',
-      'Usage:',
-      '  node scripts/ops/billable-total-tokens-backfill.cjs [--from <iso>] [--to <iso>] [--batch-size N] [--sleep-ms N] [--dry-run]',
-      '',
-      'Options:',
-      '  --from <iso>     Inclusive lower bound for hour_start (ISO).',
-      '  --to <iso>       Exclusive upper bound for hour_start (ISO).',
-      '  --batch-size N   Rows per batch (default: 500).',
-      '  --sleep-ms N     Sleep between batches (default: 250).',
-      '  --dry-run        Compute counts without writing updates.',
-      '  --help           Show this help.',
-      ''
-    ].join('\n')
+      "Backfill billable_total_tokens on vibeusage_tracker_hourly",
+      "",
+      "Usage:",
+      "  node scripts/ops/billable-total-tokens-backfill.cjs [--from <iso>] [--to <iso>] [--batch-size N] [--sleep-ms N] [--dry-run]",
+      "",
+      "Options:",
+      "  --from <iso>     Inclusive lower bound for hour_start (ISO).",
+      "  --to <iso>       Exclusive upper bound for hour_start (ISO).",
+      "  --batch-size N   Rows per batch (default: 500).",
+      "  --sleep-ms N     Sleep between batches (default: 250).",
+      "  --dry-run        Compute counts without writing updates.",
+      "  --help           Show this help.",
+      "",
+    ].join("\n"),
   );
 }
 
 function buildUpdates(rows) {
   const updates = [];
   for (const row of Array.isArray(rows) ? rows : []) {
-    if (row?.billable_total_tokens != null && row.billable_total_tokens !== '') continue;
-    if (!row?.user_id || !row?.device_id || !row?.source || !row?.model || !row?.hour_start) continue;
+    if (row?.billable_total_tokens != null && row.billable_total_tokens !== "") continue;
+    if (!row?.user_id || !row?.device_id || !row?.source || !row?.model || !row?.hour_start)
+      continue;
     const billable = computeBillableTotalTokens({ source: row.source, totals: row });
     updates.push({
       user_id: row.user_id,
@@ -88,7 +89,7 @@ function buildUpdates(rows) {
       model: row.model,
       hour_start: row.hour_start,
       billable_total_tokens: billable.toString(),
-      billable_rule_version: BILLABLE_RULE_VERSION
+      billable_rule_version: BILLABLE_RULE_VERSION,
     });
   }
   return updates;
@@ -125,9 +126,9 @@ function buildCursorFilter(cursor) {
       parts.push(`${prevField}.eq.${values[prevField]}`);
     }
     parts.push(`${field}.gt.${values[field]}`);
-    clauses.push(`and(${parts.join(',')})`);
+    clauses.push(`and(${parts.join(",")})`);
   }
-  return `(${clauses.join(',')})`;
+  return `(${clauses.join(",")})`;
 }
 
 function buildCursorFromRow(row) {
@@ -140,49 +141,49 @@ function buildCursorFromRow(row) {
 }
 
 async function fetchBatch({ baseUrl, serviceRoleKey, from, to, limit, cursor }) {
-  const url = new URL('/api/database/records/vibeusage_tracker_hourly', baseUrl);
+  const url = new URL("/api/database/records/vibeusage_tracker_hourly", baseUrl);
   url.searchParams.set(
-    'select',
-    'user_id,device_id,source,model,hour_start,input_tokens,cached_input_tokens,output_tokens,reasoning_output_tokens,total_tokens,billable_total_tokens'
+    "select",
+    "user_id,device_id,source,model,hour_start,input_tokens,cached_input_tokens,output_tokens,reasoning_output_tokens,total_tokens,billable_total_tokens",
   );
-  url.searchParams.set('billable_total_tokens', 'is.null');
-  url.searchParams.set('order', 'hour_start.asc,user_id.asc,device_id.asc,source.asc,model.asc');
-  url.searchParams.set('limit', String(limit));
-  if (from) url.searchParams.set('hour_start', `gte.${from}`);
-  if (to) url.searchParams.set('hour_start', `lt.${to}`);
+  url.searchParams.set("billable_total_tokens", "is.null");
+  url.searchParams.set("order", "hour_start.asc,user_id.asc,device_id.asc,source.asc,model.asc");
+  url.searchParams.set("limit", String(limit));
+  if (from) url.searchParams.set("hour_start", `gte.${from}`);
+  if (to) url.searchParams.set("hour_start", `lt.${to}`);
   const cursorFilter = buildCursorFilter(cursor);
-  if (cursorFilter) url.searchParams.set('or', cursorFilter);
+  if (cursorFilter) url.searchParams.set("or", cursorFilter);
 
   const res = await fetch(url.toString(), {
     headers: {
       apikey: serviceRoleKey,
-      Authorization: `Bearer ${serviceRoleKey}`
-    }
+      Authorization: `Bearer ${serviceRoleKey}`,
+    },
   });
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`Fetch failed: HTTP ${res.status} ${text || ''}`.trim());
+    throw new Error(`Fetch failed: HTTP ${res.status} ${text || ""}`.trim());
   }
   return res.json();
 }
 
 async function upsertBatch({ baseUrl, serviceRoleKey, updates }) {
   if (!updates.length) return { updated: 0 };
-  const url = new URL('/api/database/records/vibeusage_tracker_hourly', baseUrl);
-  url.searchParams.set('on_conflict', 'user_id,device_id,source,model,hour_start');
+  const url = new URL("/api/database/records/vibeusage_tracker_hourly", baseUrl);
+  url.searchParams.set("on_conflict", "user_id,device_id,source,model,hour_start");
   const res = await fetch(url.toString(), {
-    method: 'POST',
+    method: "POST",
     headers: {
       apikey: serviceRoleKey,
       Authorization: `Bearer ${serviceRoleKey}`,
-      Prefer: 'resolution=merge-duplicates',
-      'Content-Type': 'application/json'
+      Prefer: "resolution=merge-duplicates",
+      "Content-Type": "application/json",
     },
-    body: JSON.stringify(updates)
+    body: JSON.stringify(updates),
   });
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`Update failed: HTTP ${res.status} ${text || ''}`.trim());
+    throw new Error(`Update failed: HTTP ${res.status} ${text || ""}`.trim());
   }
   return { updated: updates.length };
 }
@@ -199,11 +200,10 @@ async function runBackfill({
   dryRun,
   fetchBatch: fetchBatchImpl,
   upsertBatch: upsertBatchImpl,
-  logger
+  logger,
 }) {
-  const logLine = typeof logger === 'function'
-    ? logger
-    : (line) => process.stdout.write(`${line}\n`);
+  const logLine =
+    typeof logger === "function" ? logger : (line) => process.stdout.write(`${line}\n`);
 
   let cursor = null;
   let totalSeen = 0;
@@ -215,7 +215,7 @@ async function runBackfill({
       from,
       to,
       limit: batchSize,
-      cursor
+      cursor,
     });
 
     if (!Array.isArray(rows) || rows.length === 0) break;
@@ -232,11 +232,11 @@ async function runBackfill({
     }
 
     logLine(
-      `batch cursor=${cursor ? 'set' : 'start'} rows=${rows.length} updates=${updates.length} total_updated=${totalUpdated}`
+      `batch cursor=${cursor ? "set" : "start"} rows=${rows.length} updates=${updates.length} total_updated=${totalUpdated}`,
     );
 
     if (!cursorRow) {
-      throw new Error('Unable to find cursor row with all key fields present');
+      throw new Error("Unable to find cursor row with all key fields present");
     }
     cursor = buildCursorFromRow(cursorRow);
 
@@ -244,7 +244,7 @@ async function runBackfill({
   }
 
   logLine(
-    `${dryRun ? 'dry-run' : 'apply'} complete: rows=${totalSeen} updates=${totalUpdated} skipped_cursor=${totalSkippedCursor}`
+    `${dryRun ? "dry-run" : "apply"} complete: rows=${totalSeen} updates=${totalUpdated} skipped_cursor=${totalSkippedCursor}`,
   );
   return { totalSeen, totalUpdated, totalSkippedCursor };
 }
@@ -256,20 +256,17 @@ async function main() {
     return;
   }
 
-  const baseUrl =
-    process.env.INSFORGE_BASE_URL ||
-    process.env.VIBEUSAGE_INSFORGE_BASE_URL ||
-    '';
+  const baseUrl = process.env.INSFORGE_BASE_URL || process.env.VIBEUSAGE_INSFORGE_BASE_URL || "";
   const serviceRoleKey =
-    process.env.INSFORGE_SERVICE_ROLE_KEY ||
-    process.env.VIBEUSAGE_SERVICE_ROLE_KEY ||
-    '';
+    process.env.INSFORGE_SERVICE_ROLE_KEY || process.env.VIBEUSAGE_SERVICE_ROLE_KEY || "";
 
   if (!baseUrl) {
-    throw new Error('Missing base URL: set INSFORGE_BASE_URL or VIBEUSAGE_INSFORGE_BASE_URL');
+    throw new Error("Missing base URL: set INSFORGE_BASE_URL or VIBEUSAGE_INSFORGE_BASE_URL");
   }
   if (!serviceRoleKey) {
-    throw new Error('Missing service role key: set INSFORGE_SERVICE_ROLE_KEY or VIBEUSAGE_SERVICE_ROLE_KEY');
+    throw new Error(
+      "Missing service role key: set INSFORGE_SERVICE_ROLE_KEY or VIBEUSAGE_SERVICE_ROLE_KEY",
+    );
   }
 
   await runBackfill({
@@ -279,7 +276,7 @@ async function main() {
     sleepMs: opts.sleepMs,
     dryRun: opts.dryRun,
     fetchBatch: (args) => fetchBatch({ baseUrl, serviceRoleKey, ...args }),
-    upsertBatch: (args) => upsertBatch({ baseUrl, serviceRoleKey, ...args })
+    upsertBatch: (args) => upsertBatch({ baseUrl, serviceRoleKey, ...args }),
   });
 }
 
@@ -294,5 +291,5 @@ module.exports = {
   BILLABLE_RULE_VERSION,
   buildUpdates,
   buildCursorFilter,
-  runBackfill
+  runBackfill,
 };

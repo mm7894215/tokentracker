@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useState } from "react";
-
 import { isScreenshotModeEnabled } from "../../lib/screenshot-mode.js";
 import { shouldScrambleText } from "../matrix-a/util/should-scramble.js";
 
@@ -118,17 +117,7 @@ export function ScrambleText({
       if (raf) window.cancelAnimationFrame(raf);
       if (timeout) window.clearTimeout(timeout);
     };
-  }, [
-    active,
-    chars,
-    durationMs,
-    fps,
-    loop,
-    loopDelayMs,
-    shouldScramble,
-    startScrambled,
-    text,
-  ]);
+  }, [active, chars, durationMs, fps, loop, loopDelayMs, shouldScramble, startScrambled, text]);
 
   return <span className={className}>{display}</span>;
 }

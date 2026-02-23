@@ -17,7 +17,9 @@ This folder is structured for **fast triage first, deep reading only when needed
 ## Progressive Disclosure Levels
 
 ### L1 — Card (30s)
+
 One-line metadata card in `_index.md`:
+
 - repo
 - layer (`frontend` | `backend` | `fullstack` | `infra`)
 - module
@@ -27,7 +29,9 @@ One-line metadata card in `_index.md`:
 - short summary
 
 ### L2 — Brief (2 min)
+
 Inside each postmortem:
+
 - What happened
 - Why design mismatched reality
 - Why it was not detected
@@ -35,6 +39,7 @@ Inside each postmortem:
 - Reuse guidance (which modules should read this)
 
 ### L3 — Full Detail (10+ min)
+
 Timeline, evidence, root causes, action items, prevention rules, follow-up.
 
 ## Mandatory Metadata (top of each postmortem)

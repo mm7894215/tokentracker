@@ -4,25 +4,25 @@
 // Auth:
 // - Authorization: Bearer <device_token>
 
-'use strict';
+"use strict";
 
-const { handleOptions, json, requireMethod } = require('../shared/http');
-const { withRequestLogging } = require('../shared/logging');
-const { getBearerToken } = require('../shared/auth');
-const { getAnonKey, getBaseUrl, getServiceRoleKey } = require('../shared/env');
-const { sha256Hex } = require('../shared/crypto');
+const { handleOptions, json, requireMethod } = require("../shared/http");
+const { withRequestLogging } = require("../shared/logging");
+const { getBearerToken } = require("../shared/auth");
+const { getAnonKey, getBaseUrl, getServiceRoleKey } = require("../shared/env");
+const { sha256Hex } = require("../shared/crypto");
 
 const MIN_INTERVAL_MINUTES = 30;
 
-module.exports = withRequestLogging('vibeusage-sync-ping', async function(request, logger) {
+module.exports = withRequestLogging("vibeusage-sync-ping", async function (request, logger) {
   const opt = handleOptions(request);
   if (opt) return opt;
 
-  const methodErr = requireMethod(request, 'POST');
+  const methodErr = requireMethod(request, "POST");
   if (methodErr) return methodErr;
 
-  const deviceToken = getBearerToken(request.headers.get('Authorization'));
-  if (!deviceToken) return json({ error: 'Missing bearer token' }, 401);
+  const deviceToken = getBearerToken(request.headers.get("Authorization"));
+  if (!deviceToken) return json({ error: "Missing bearer token" }, 401);
 
   const baseUrl = getBaseUrl();
   const serviceRoleKey = getServiceRoleKey();
@@ -30,7 +30,7 @@ module.exports = withRequestLogging('vibeusage-sync-ping', async function(reques
   const fetcher = logger?.fetch || fetch;
 
   if (!serviceRoleKey && !anonKey) {
-    return json({ error: 'Missing anon key' }, 500);
+    return json({ error: "Missing anon key" }, 500);
   }
 
   const tokenHash = await sha256Hex(deviceToken);
@@ -40,17 +40,17 @@ module.exports = withRequestLogging('vibeusage-sync-ping', async function(reques
     const serviceClient = createClient({
       baseUrl,
       anonKey: anonKey || serviceRoleKey,
-      edgeFunctionToken: serviceRoleKey
+      edgeFunctionToken: serviceRoleKey,
     });
 
     const { data: tokenRow, error: tokenErr } = await serviceClient.database
-      .from('vibeusage_tracker_device_tokens')
-      .select('id,revoked_at,last_sync_at')
-      .eq('token_hash', tokenHash)
+      .from("vibeusage_tracker_device_tokens")
+      .select("id,revoked_at,last_sync_at")
+      .eq("token_hash", tokenHash)
       .maybeSingle();
 
     if (tokenErr) return json({ error: tokenErr.message }, 500);
-    if (!tokenRow || tokenRow.revoked_at) return json({ error: 'Unauthorized' }, 401);
+    if (!tokenRow || tokenRow.revoked_at) return json({ error: "Unauthorized" }, 401);
 
     const lastSyncAt = normalizeIso(tokenRow.last_sync_at);
     if (lastSyncAt && isWithinInterval(lastSyncAt, MIN_INTERVAL_MINUTES)) {
@@ -59,16 +59,16 @@ module.exports = withRequestLogging('vibeusage-sync-ping', async function(reques
           success: true,
           updated: false,
           last_sync_at: lastSyncAt,
-          min_interval_minutes: MIN_INTERVAL_MINUTES
+          min_interval_minutes: MIN_INTERVAL_MINUTES,
         },
-        200
+        200,
       );
     }
 
     const { error: updateErr } = await serviceClient.database
-      .from('vibeusage_tracker_device_tokens')
+      .from("vibeusage_tracker_device_tokens")
       .update({ last_sync_at: nowIso, last_used_at: nowIso })
-      .eq('id', tokenRow.id);
+      .eq("id", tokenRow.id);
 
     if (updateErr) return json({ error: updateErr.message }, 500);
 
@@ -77,48 +77,48 @@ module.exports = withRequestLogging('vibeusage-sync-ping', async function(reques
         success: true,
         updated: true,
         last_sync_at: nowIso,
-        min_interval_minutes: MIN_INTERVAL_MINUTES
+        min_interval_minutes: MIN_INTERVAL_MINUTES,
       },
-      200
+      200,
     );
   }
 
   try {
     const touch = await touchSyncWithAnonKey({ baseUrl, anonKey, tokenHash, fetcher });
-    if (!touch) return json({ error: 'Unauthorized' }, 401);
+    if (!touch) return json({ error: "Unauthorized" }, 401);
 
     return json(
       {
         success: true,
         updated: Boolean(touch.updated),
         last_sync_at: touch.last_sync_at || nowIso,
-        min_interval_minutes: MIN_INTERVAL_MINUTES
+        min_interval_minutes: MIN_INTERVAL_MINUTES,
       },
-      200
+      200,
     );
   } catch (e) {
-    return json({ error: e?.message || 'Internal error' }, 500);
+    return json({ error: e?.message || "Internal error" }, 500);
   }
 });
 
 async function touchSyncWithAnonKey({ baseUrl, anonKey, tokenHash, fetcher }) {
-  const url = new URL('/api/database/rpc/vibeusage_touch_device_token_sync', baseUrl);
+  const url = new URL("/api/database/rpc/vibeusage_touch_device_token_sync", baseUrl);
   const res = await (fetcher || fetch)(url.toString(), {
-    method: 'POST',
+    method: "POST",
     headers: {
       apikey: anonKey,
       Authorization: `Bearer ${anonKey}`,
-      'x-vibeusage-device-token-hash': tokenHash,
-      'Content-Type': 'application/json'
+      "x-vibeusage-device-token-hash": tokenHash,
+      "Content-Type": "application/json",
     },
-    body: JSON.stringify({ min_interval_minutes: MIN_INTERVAL_MINUTES })
+    body: JSON.stringify({ min_interval_minutes: MIN_INTERVAL_MINUTES }),
   });
 
   const { data, error } = await readApiJson(res);
   if (!res.ok) throw new Error(error || `HTTP ${res.status}`);
 
   if (Array.isArray(data) && data.length > 0) return data[0];
-  if (data && typeof data === 'object') return data;
+  if (data && typeof data === "object") return data;
   return null;
 }
 
@@ -134,7 +134,7 @@ async function readApiJson(res) {
 }
 
 function normalizeIso(value) {
-  if (typeof value !== 'string') return null;
+  if (typeof value !== "string") return null;
   const dt = new Date(value);
   if (!Number.isFinite(dt.getTime())) return null;
   return dt.toISOString();

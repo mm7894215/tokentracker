@@ -11,13 +11,14 @@
 ### Task 1: Queue per-model buckets (rollout)
 
 **Files:**
+
 - Modify: `src/lib/rollout.js`
 - Test: `test/rollout-parser.test.js`
 
 **Step 1: Write the failing test**
 
 ```js
-test('parseRolloutIncremental keeps buckets separate per model within the same hour', async () => {
+test("parseRolloutIncremental keeps buckets separate per model within the same hour", async () => {
   // expects 2 queued buckets for two models in same hour
 });
 ```
@@ -48,13 +49,14 @@ git commit -m "fix(tracker): queue per-model buckets"
 ### Task 2: Upload dedupe key includes model
 
 **Files:**
+
 - Modify: `src/lib/uploader.js`
 - Test: `test/uploader.test.js`
 
 **Step 1: Write the failing test**
 
 ```js
-test('drainQueueToCloud keeps buckets separate per model when hour/source match', async () => {
+test("drainQueueToCloud keeps buckets separate per model when hour/source match", async () => {
   // expects two buckets to be uploaded
 });
 ```
@@ -83,6 +85,7 @@ git commit -m "fix(tracker): dedupe uploads by source+model+hour"
 ### Task 3: OpenSpec task tracking update
 
 **Files:**
+
 - Modify: `openspec/changes/2025-12-25-add-usage-model/tasks.md`
 
 **Step 1: Add/adjust tasks for per-model queueing + uploader dedupe**

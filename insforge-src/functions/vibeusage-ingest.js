@@ -4,14 +4,14 @@
 // Auth:
 // - Authorization: Bearer <device_token> (opaque, stored as sha256 hash server-side)
 
-'use strict';
+"use strict";
 
-const { handleOptions, json, requireMethod, readJson } = require('../shared/http');
-const { withRequestLogging } = require('../shared/logging');
-const { createConcurrencyGuard } = require('../shared/concurrency');
-const { getBearerToken } = require('../shared/auth');
-const { getAnonKey, getBaseUrl, getServiceRoleKey } = require('../shared/env');
-const { sha256Hex } = require('../shared/crypto');
+const { handleOptions, json, requireMethod, readJson } = require("../shared/http");
+const { withRequestLogging } = require("../shared/logging");
+const { createConcurrencyGuard } = require("../shared/concurrency");
+const { getBearerToken } = require("../shared/auth");
+const { getAnonKey, getBaseUrl, getServiceRoleKey } = require("../shared/env");
+const { sha256Hex } = require("../shared/crypto");
 const {
   BILLABLE_RULE_VERSION,
   buildRows,
@@ -20,41 +20,41 @@ const {
   normalizeProjectHourlyPayload,
   normalizeDeviceSubscriptionsPayload,
   buildSubscriptionRows,
-  buildProjectRows
-} = require('../shared/core/ingest');
+  buildProjectRows,
+} = require("../shared/core/ingest");
 const {
   fetchDeviceTokenRow,
   recordIngestBatchMetrics,
   upsertHourlyUsage,
   upsertProjectUsage,
   upsertProjectRegistry,
-  upsertDeviceSubscriptions
-} = require('../shared/db/ingest');
+  upsertDeviceSubscriptions,
+} = require("../shared/db/ingest");
 
 const MAX_BUCKETS = 500;
 const MAX_DEVICE_SUBSCRIPTIONS = 16;
 
 const ingestGuard = createConcurrencyGuard({
-  name: 'vibeusage-ingest',
-  envKey: ['VIBEUSAGE_INGEST_MAX_INFLIGHT'],
+  name: "vibeusage-ingest",
+  envKey: ["VIBEUSAGE_INGEST_MAX_INFLIGHT"],
   defaultMax: 0,
-  retryAfterEnvKey: ['VIBEUSAGE_INGEST_RETRY_AFTER_MS'],
-  defaultRetryAfterMs: 1000
+  retryAfterEnvKey: ["VIBEUSAGE_INGEST_RETRY_AFTER_MS"],
+  defaultRetryAfterMs: 1000,
 });
 
-module.exports = withRequestLogging('vibeusage-ingest', async function(request, logger) {
+module.exports = withRequestLogging("vibeusage-ingest", async function (request, logger) {
   const opt = handleOptions(request);
   if (opt) return opt;
 
-  const methodErr = requireMethod(request, 'POST');
+  const methodErr = requireMethod(request, "POST");
   if (methodErr) return methodErr;
 
-  const deviceToken = getBearerToken(request.headers.get('Authorization'));
-  if (!deviceToken) return json({ error: 'Missing bearer token' }, 401);
+  const deviceToken = getBearerToken(request.headers.get("Authorization"));
+  if (!deviceToken) return json({ error: "Missing bearer token" }, 401);
 
   const guard = ingestGuard?.acquire();
   if (guard && !guard.ok) {
-    return json({ error: 'Too many requests' }, 429, guard.headers);
+    return json({ error: "Too many requests" }, 429, guard.headers);
   }
 
   const fetcher = logger?.fetch || fetch;
@@ -65,7 +65,7 @@ module.exports = withRequestLogging('vibeusage-ingest', async function(request, 
     ? createClient({
         baseUrl,
         anonKey: anonKey || serviceRoleKey,
-        edgeFunctionToken: serviceRoleKey
+        edgeFunctionToken: serviceRoleKey,
       })
     : null;
 
@@ -75,9 +75,9 @@ module.exports = withRequestLogging('vibeusage-ingest', async function(request, 
     try {
       tokenRow = await fetchDeviceTokenRow({ serviceClient, baseUrl, anonKey, tokenHash, fetcher });
     } catch (e) {
-      return json({ error: e?.message || 'Internal error' }, 500);
+      return json({ error: e?.message || "Internal error" }, 500);
     }
-    if (!tokenRow) return json({ error: 'Unauthorized' }, 401);
+    if (!tokenRow) return json({ error: "Unauthorized" }, 401);
 
     const body = await readJson(request);
     if (body.error) return json({ error: body.error }, body.status);
@@ -86,7 +86,7 @@ module.exports = withRequestLogging('vibeusage-ingest', async function(request, 
     const projectHourly = normalizeProjectHourlyPayload(body.data);
     const deviceSubscriptions = normalizeDeviceSubscriptionsPayload(body.data);
     if (!Array.isArray(hourly) && !Array.isArray(projectHourly)) {
-      return json({ error: 'Invalid payload: expected {hourly:[...]} or [...]' }, 400);
+      return json({ error: "Invalid payload: expected {hourly:[...]} or [...]" }, 400);
     }
     if (Array.isArray(hourly) && hourly.length > MAX_BUCKETS) {
       return json({ error: `Too many buckets (max ${MAX_BUCKETS})` }, 413);
@@ -94,8 +94,14 @@ module.exports = withRequestLogging('vibeusage-ingest', async function(request, 
     if (Array.isArray(projectHourly) && projectHourly.length > MAX_BUCKETS) {
       return json({ error: `Too many buckets (max ${MAX_BUCKETS})` }, 413);
     }
-    if (Array.isArray(deviceSubscriptions) && deviceSubscriptions.length > MAX_DEVICE_SUBSCRIPTIONS) {
-      return json({ error: `Too many device subscriptions (max ${MAX_DEVICE_SUBSCRIPTIONS})` }, 413);
+    if (
+      Array.isArray(deviceSubscriptions) &&
+      deviceSubscriptions.length > MAX_DEVICE_SUBSCRIPTIONS
+    ) {
+      return json(
+        { error: `Too many device subscriptions (max ${MAX_DEVICE_SUBSCRIPTIONS})` },
+        413,
+      );
     }
 
     const nowIso = new Date().toISOString();
@@ -127,7 +133,7 @@ module.exports = withRequestLogging('vibeusage-ingest', async function(request, 
           project_key: row.project_key,
           project_ref: row.project_ref,
           last_seen_at: nowIso,
-          updated_at: nowIso
+          updated_at: nowIso,
         });
       }
       const registryRows = Array.from(registryByKey.values());
@@ -139,7 +145,7 @@ module.exports = withRequestLogging('vibeusage-ingest', async function(request, 
         anonKey,
         tokenHash,
         rows: registryRows,
-        fetcher
+        fetcher,
       });
       if (!registryUpsert.ok) return json({ error: registryUpsert.error }, 500);
 
@@ -152,7 +158,7 @@ module.exports = withRequestLogging('vibeusage-ingest', async function(request, 
         tokenRow,
         rows: projectRows.data,
         nowIso,
-        fetcher
+        fetcher,
       });
       if (!projectUpsert.ok) return json({ error: projectUpsert.error }, 500);
       projectInserted = projectUpsert.inserted;
@@ -167,14 +173,14 @@ module.exports = withRequestLogging('vibeusage-ingest', async function(request, 
         anonKey,
         tokenHash,
         rows: subscriptionRows.data,
-        fetcher
+        fetcher,
       });
       if (!subscriptionUpsert.ok) {
         logger?.log?.({
-          stage: 'subscription_upsert_failed',
+          stage: "subscription_upsert_failed",
           status: 200,
-          errorCode: 'SUBSCRIPTION_UPSERT_FAILED',
-          details: subscriptionUpsert.error
+          errorCode: "SUBSCRIPTION_UPSERT_FAILED",
+          details: subscriptionUpsert.error,
         });
       }
     }
@@ -190,11 +196,17 @@ module.exports = withRequestLogging('vibeusage-ingest', async function(request, 
         inserted: 0,
         skipped: 0,
         source: null,
-        fetcher
+        fetcher,
       });
       return json(
-        { success: true, inserted: 0, skipped: 0, project_inserted: projectInserted, project_skipped: projectSkipped },
-        200
+        {
+          success: true,
+          inserted: 0,
+          skipped: 0,
+          project_inserted: projectInserted,
+          project_skipped: projectSkipped,
+        },
+        200,
       );
     }
 
@@ -207,7 +219,7 @@ module.exports = withRequestLogging('vibeusage-ingest', async function(request, 
       tokenRow,
       rows: rows.data,
       nowIso,
-      fetcher
+      fetcher,
     });
 
     if (!upsert.ok) return json({ error: upsert.error }, 500);
@@ -222,7 +234,7 @@ module.exports = withRequestLogging('vibeusage-ingest', async function(request, 
       inserted: upsert.inserted,
       skipped: upsert.skipped,
       source: deriveMetricsSource(rows.data),
-      fetcher
+      fetcher,
     });
 
     return json(
@@ -231,11 +243,11 @@ module.exports = withRequestLogging('vibeusage-ingest', async function(request, 
         inserted: upsert.inserted,
         skipped: upsert.skipped,
         project_inserted: projectInserted,
-        project_skipped: projectSkipped
+        project_skipped: projectSkipped,
       },
-      200
+      200,
     );
   } finally {
-    if (guard && typeof guard.release === 'function') guard.release();
+    if (guard && typeof guard.release === "function") guard.release();
   }
 });

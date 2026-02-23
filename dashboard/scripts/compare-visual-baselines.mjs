@@ -1,13 +1,11 @@
+import { execFile, spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
-import { execFile, spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-
 import pixelmatch from "pixelmatch";
 import * as pngjs from "pngjs";
-
 import { createBaselineJobs } from "./visual-baseline-config.js";
 
 const { PNG } = pngjs;
@@ -60,11 +58,7 @@ async function isDevServerReachable(baseUrl, timeoutMs) {
 
 function parseBaseUrl(baseUrl) {
   const url = new URL(baseUrl);
-  const port = url.port
-    ? Number(url.port)
-    : url.protocol === "https:"
-      ? 443
-      : 80;
+  const port = url.port ? Number(url.port) : url.protocol === "https:" ? 443 : 80;
   return {
     hostname: url.hostname,
     port,
@@ -87,7 +81,7 @@ function startDashboardDevServer(repoRoot, port) {
       cwd: repoRoot,
       stdio: "inherit",
       detached: process.platform !== "win32",
-    }
+    },
   );
   return child;
 }
@@ -118,7 +112,7 @@ async function waitForDashboardDevServer(baseUrl, child, { timeoutMs, intervalMs
   while (Date.now() < deadline) {
     if (child?.exitCode !== null) {
       throw new Error(
-        `Dev server exited early with code ${child.exitCode ?? "unknown"} (base URL: ${baseUrl}).`
+        `Dev server exited early with code ${child.exitCode ?? "unknown"} (base URL: ${baseUrl}).`,
       );
     }
 
@@ -167,12 +161,11 @@ const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "..", "..");
 
 const baseUrl = normalizeBaseUrl(
-  readArg("--base-url", process.env.VIBEUSAGE_DASHBOARD_BASE_URL) ||
-    "http://localhost:5173"
+  readArg("--base-url", process.env.VIBEUSAGE_DASHBOARD_BASE_URL) || "http://localhost:5173",
 );
 const baselineDir = resolveFromRepoRoot(
   repoRoot,
-  readArg("--baseline-dir", "docs/screenshots/baselines/2026-01-23")
+  readArg("--baseline-dir", "docs/screenshots/baselines/2026-01-23"),
 );
 
 const script = path.resolve(repoRoot, "dashboard/scripts/capture-dashboard-screenshot.mjs");
@@ -196,7 +189,7 @@ async function captureJob(job, outPath) {
       "1200",
       "--no-full-page",
     ],
-    { cwd: repoRoot }
+    { cwd: repoRoot },
   );
 }
 
@@ -227,11 +220,7 @@ async function run() {
   }
 
   const timestamp = toSafeTimestamp(new Date());
-  const runDir = path.resolve(
-    repoRoot,
-    "dashboard/tmp/visual-baselines",
-    timestamp
-  );
+  const runDir = path.resolve(repoRoot, "dashboard/tmp/visual-baselines", timestamp);
   const currentDir = path.join(runDir, "current");
   const diffDir = path.join(runDir, "diff");
 
@@ -257,7 +246,7 @@ async function run() {
             `Output: ${currentPath}`,
             "",
             `Is the dev server running at ${baseUrl}?`,
-          ].join("\n")
+          ].join("\n"),
         );
         // Preserve structured details from execFile errors (stdout/stderr/code).
         // @ts-ignore
@@ -295,7 +284,7 @@ async function run() {
         diffPng.data,
         width,
         height,
-        { threshold: 0.1 }
+        { threshold: 0.1 },
       );
 
       if (diffPixels === 0) {
@@ -320,9 +309,7 @@ async function run() {
   }
 
   console.log("");
-  console.log(
-    `Visual baselines: ${matched.length} matched, ${mismatched.length} mismatched`
-  );
+  console.log(`Visual baselines: ${matched.length} matched, ${mismatched.length} mismatched`);
 
   if (mismatched.length > 0) {
     for (const item of mismatched) {

@@ -1,35 +1,35 @@
 #!/usr/bin/env node
-'use strict';
+"use strict";
 
-const assert = require('node:assert/strict');
+const assert = require("node:assert/strict");
 
 const {
   computeUsageCost,
   formatUsdFromMicros,
-  getDefaultPricingProfile
-} = require('../../insforge-src/shared/pricing');
+  getDefaultPricingProfile,
+} = require("../../insforge-src/shared/pricing");
 
 const ROWS = [
   {
-    hour_start: '2025-12-01T18:00:00.000Z',
-    source: 'alpha',
-    model: 'gpt-5.2-codex',
-    total_tokens: '300',
-    input_tokens: '100',
-    cached_input_tokens: '50',
-    output_tokens: '200',
-    reasoning_output_tokens: '20'
+    hour_start: "2025-12-01T18:00:00.000Z",
+    source: "alpha",
+    model: "gpt-5.2-codex",
+    total_tokens: "300",
+    input_tokens: "100",
+    cached_input_tokens: "50",
+    output_tokens: "200",
+    reasoning_output_tokens: "20",
   },
   {
-    hour_start: '2025-12-02T18:00:00.000Z',
-    source: 'beta',
-    model: 'gpt-5.2-codex',
-    total_tokens: '220',
-    input_tokens: '100',
-    cached_input_tokens: '10',
-    output_tokens: '100',
-    reasoning_output_tokens: '10'
-  }
+    hour_start: "2025-12-02T18:00:00.000Z",
+    source: "beta",
+    model: "gpt-5.2-codex",
+    total_tokens: "220",
+    input_tokens: "100",
+    cached_input_tokens: "10",
+    output_tokens: "100",
+    reasoning_output_tokens: "10",
+  },
 ];
 
 class DatabaseStub {
@@ -73,23 +73,23 @@ class DatabaseStub {
   }
 
   limit() {
-    if (this._table === 'vibeusage_pricing_model_aliases') {
+    if (this._table === "vibeusage_pricing_model_aliases") {
       return { data: [], error: null };
     }
-    if (this._table === 'vibeusage_pricing_profiles') {
+    if (this._table === "vibeusage_pricing_profiles") {
       return { data: [buildPricingRow()], error: null };
     }
     return { data: [], error: null };
   }
 
   range(from, to) {
-    if (this._table !== 'vibeusage_tracker_hourly') {
+    if (this._table !== "vibeusage_tracker_hourly") {
       return { data: [], error: null };
     }
     if (from > 0) return { data: [], error: null };
     return {
       data: ROWS,
-      error: null
+      error: null,
     };
   }
 }
@@ -103,7 +103,7 @@ function buildPricingRow() {
     input_rate_micro_per_million: profile.rates_micro_per_million.input,
     cached_input_rate_micro_per_million: profile.rates_micro_per_million.cached_input,
     output_rate_micro_per_million: profile.rates_micro_per_million.output,
-    reasoning_output_rate_micro_per_million: profile.rates_micro_per_million.reasoning_output
+    reasoning_output_rate_micro_per_million: profile.rates_micro_per_million.reasoning_output,
   };
 }
 
@@ -111,49 +111,49 @@ function createClientStub() {
   return {
     auth: {
       async getCurrentUser() {
-        return { data: { user: { id: 'user-id' } }, error: null };
-      }
+        return { data: { user: { id: "user-id" } }, error: null };
+      },
     },
-    database: new DatabaseStub()
+    database: new DatabaseStub(),
   };
 }
 
 async function main() {
-  process.env.INSFORGE_INTERNAL_URL = 'http://insforge:7130';
-  process.env.INSFORGE_ANON_KEY = 'anon';
-  process.env.INSFORGE_SERVICE_ROLE_KEY = '';
+  process.env.INSFORGE_INTERNAL_URL = "http://insforge:7130";
+  process.env.INSFORGE_ANON_KEY = "anon";
+  process.env.INSFORGE_SERVICE_ROLE_KEY = "";
 
   global.Deno = {
     env: {
       get(key) {
         const v = process.env[key];
-        return v == null || v === '' ? null : v;
-      }
-    }
+        return v == null || v === "" ? null : v;
+      },
+    },
   };
 
   global.createClient = createClientStub;
 
-  const usageSummary = require('../../insforge-src/functions/vibeusage-usage-summary.js');
+  const usageSummary = require("../../insforge-src/functions/vibeusage-usage-summary.js");
 
-  const query = 'from=2025-12-01&to=2025-12-02';
+  const query = "from=2025-12-01&to=2025-12-02";
   const res = await usageSummary(
     new Request(`http://local/functions/vibeusage-usage-summary?${query}`, {
-      method: 'GET',
-      headers: { Authorization: 'Bearer user-jwt' }
-    })
+      method: "GET",
+      headers: { Authorization: "Bearer user-jwt" },
+    }),
   );
 
   const body = await res.json();
 
   assert.equal(res.status, 200);
   assert.equal(body.days, 2);
-  assert.equal(body.totals.total_tokens, '520');
-  assert.equal(body.totals.input_tokens, '200');
-  assert.equal(body.totals.cached_input_tokens, '60');
-  assert.equal(body.totals.output_tokens, '300');
-  assert.equal(body.totals.reasoning_output_tokens, '30');
-  assert.equal(body.pricing.pricing_mode, 'mixed');
+  assert.equal(body.totals.total_tokens, "520");
+  assert.equal(body.totals.input_tokens, "200");
+  assert.equal(body.totals.cached_input_tokens, "60");
+  assert.equal(body.totals.output_tokens, "300");
+  assert.equal(body.totals.reasoning_output_tokens, "30");
+  assert.equal(body.pricing.pricing_mode, "mixed");
   const expectedCost = formatUsdFromMicros(
     computeUsageCost(
       {
@@ -161,9 +161,9 @@ async function main() {
         input_tokens: ROWS[0].input_tokens,
         cached_input_tokens: ROWS[0].cached_input_tokens,
         output_tokens: ROWS[0].output_tokens,
-        reasoning_output_tokens: ROWS[0].reasoning_output_tokens
+        reasoning_output_tokens: ROWS[0].reasoning_output_tokens,
       },
-      getDefaultPricingProfile()
+      getDefaultPricingProfile(),
     ).cost_micros +
       computeUsageCost(
         {
@@ -171,10 +171,10 @@ async function main() {
           input_tokens: ROWS[1].input_tokens,
           cached_input_tokens: ROWS[1].cached_input_tokens,
           output_tokens: ROWS[1].output_tokens,
-          reasoning_output_tokens: ROWS[1].reasoning_output_tokens
+          reasoning_output_tokens: ROWS[1].reasoning_output_tokens,
         },
-        getDefaultPricingProfile()
-      ).cost_micros
+        getDefaultPricingProfile(),
+      ).cost_micros,
   );
   assert.equal(body.totals.total_cost_usd, expectedCost);
 
@@ -183,11 +183,11 @@ async function main() {
       {
         ok: true,
         totals: body.totals,
-        days: body.days
+        days: body.days,
       },
       null,
-      2
-    ) + '\n'
+      2,
+    ) + "\n",
   );
 }
 

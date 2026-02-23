@@ -43,6 +43,7 @@ Expected: PASS (no failures).
 ### Task 2: Bump version and changelog
 
 **Files:**
+
 - Modify: `package.json`
 - Modify: `package-lock.json`
 - Modify: `CHANGELOG.md`
@@ -66,6 +67,7 @@ Expected: PASS.
 **Step 4: Commit release**
 
 Run:
+
 ```bash
 git add package.json package-lock.json CHANGELOG.md
 git commit -m "release: 0.2.10"
@@ -106,6 +108,7 @@ Expected: PASS.
 ### Task 4: Record release verification
 
 **Files:**
+
 - Create: `docs/pr/2026-01-06-release-0.2.10.md`
 - Modify: `architecture.canvas` (if regenerated)
 
@@ -122,6 +125,7 @@ Expected: `✓ 架构图已生成...`
 **Step 3: Commit release record**
 
 Run:
+
 ```bash
 git add docs/pr/2026-01-06-release-0.2.10.md architecture.canvas
 git commit -m "docs: record 0.2.10 release verification"

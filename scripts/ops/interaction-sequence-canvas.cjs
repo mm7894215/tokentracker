@@ -376,7 +376,7 @@ function printHelp() {
       "  --out <path>     Output path (default: <root>/interaction_sequence.canvas)",
       "  --config <path>  Config path (default: <root>/interaction_sequence.config.json)",
       "",
-    ].join("\n")
+    ].join("\n"),
   );
 }
 
@@ -536,7 +536,9 @@ function buildCanvasModel({ scenarios, config }) {
     const messages = scenario.messages || [];
     const lifelineCount = lifelines.length;
     const lifelineBandWidth =
-      lifelineCount * LIFELINE_WIDTH + Math.max(0, lifelineCount - 1) * LIFELINE_GAP + GROUP_PADDING * 2;
+      lifelineCount * LIFELINE_WIDTH +
+      Math.max(0, lifelineCount - 1) * LIFELINE_GAP +
+      GROUP_PADDING * 2;
     const minWidth = MESSAGE_WIDTH + GROUP_PADDING * 2;
     const groupWidth = Math.max(lifelineBandWidth, minWidth);
     const groupHeight = MESSAGE_START_Y + messages.length * MESSAGE_GAP + GROUP_PADDING;
@@ -618,11 +620,17 @@ async function writeCanvasFile(outputPath, canvas) {
 }
 
 function buildSummary({ outputPath, scenarios, canvas }) {
-  const messageCount = scenarios.reduce((sum, scenario) => sum + (scenario.messages || []).length, 0);
-  const lifelineCount = scenarios.reduce((sum, scenario) => sum + (scenario.lifelines || []).length, 0);
+  const messageCount = scenarios.reduce(
+    (sum, scenario) => sum + (scenario.messages || []).length,
+    0,
+  );
+  const lifelineCount = scenarios.reduce(
+    (sum, scenario) => sum + (scenario.lifelines || []).length,
+    0,
+  );
   const maxDepth = scenarios.reduce(
     (max, scenario) => Math.max(max, (scenario.messages || []).length),
-    0
+    0,
   );
 
   return [
@@ -644,7 +652,9 @@ async function main() {
 
   const rootDir = path.resolve(opts.root || process.cwd());
   const projectName = path.basename(rootDir);
-  const preferredOut = opts.out ? path.resolve(opts.out) : path.join(rootDir, "interaction_sequence.canvas");
+  const preferredOut = opts.out
+    ? path.resolve(opts.out)
+    : path.join(rootDir, "interaction_sequence.canvas");
   let outputPath = preferredOut;
 
   const { config } = await loadConfig({ rootDir, configPath: opts.config });

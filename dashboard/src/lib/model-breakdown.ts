@@ -22,14 +22,11 @@ function resolveModelName(model: any, fallback: any) {
 
 export function buildFleetData(modelBreakdown: any, { copyFn }: AnyRecord = {}) {
   const safeCopy = typeof copyFn === "function" ? copyFn : (key: string) => key;
-  const sources: any[] = Array.isArray(modelBreakdown?.sources)
-    ? modelBreakdown.sources
-    : [];
+  const sources: any[] = Array.isArray(modelBreakdown?.sources) ? modelBreakdown.sources : [];
   const normalizedSources = sources
     .map((entry: any) => {
-      const totalTokens = toFiniteNumber(
-        entry?.totals?.billable_total_tokens ?? entry?.totals?.total_tokens
-      ) ?? 0;
+      const totalTokens =
+        toFiniteNumber(entry?.totals?.billable_total_tokens ?? entry?.totals?.total_tokens) ?? 0;
       const totalCost = toFiniteNumber(entry?.totals?.total_cost_usd) ?? 0;
       return {
         source: entry?.source,
@@ -42,10 +39,7 @@ export function buildFleetData(modelBreakdown: any, { copyFn }: AnyRecord = {}) 
 
   if (!normalizedSources.length) return [];
 
-  const grandTotal = normalizedSources.reduce(
-    (acc, entry) => acc + entry.totalTokens,
-    0
-  );
+  const grandTotal = normalizedSources.reduce((acc, entry) => acc + entry.totalTokens, 0);
   const pricingMode =
     typeof modelBreakdown?.pricing?.pricing_mode === "string"
       ? modelBreakdown.pricing.pricing_mode.toUpperCase()
@@ -58,21 +52,16 @@ export function buildFleetData(modelBreakdown: any, { copyFn }: AnyRecord = {}) 
       const label = entry.source
         ? String(entry.source).toUpperCase()
         : safeCopy("shared.placeholder.short");
-      const totalPercentRaw =
-        grandTotal > 0 ? (entry.totalTokens / grandTotal) * 100 : 0;
-      const totalPercent = Number.isFinite(totalPercentRaw)
-        ? totalPercentRaw.toFixed(1)
-        : "0.0";
+      const totalPercentRaw = grandTotal > 0 ? (entry.totalTokens / grandTotal) * 100 : 0;
+      const totalPercent = Number.isFinite(totalPercentRaw) ? totalPercentRaw.toFixed(1) : "0.0";
       const models = entry.models
         .map((model: any) => {
-          const modelTokens = toFiniteNumber(
-            model?.totals?.billable_total_tokens ?? model?.totals?.total_tokens
-          ) ?? 0;
+          const modelTokens =
+            toFiniteNumber(model?.totals?.billable_total_tokens ?? model?.totals?.total_tokens) ??
+            0;
           if (!Number.isFinite(modelTokens) || modelTokens <= 0) return null;
           const share =
-            entry.totalTokens > 0
-              ? Math.round((modelTokens / entry.totalTokens) * 1000) / 10
-              : 0;
+            entry.totalTokens > 0 ? Math.round((modelTokens / entry.totalTokens) * 1000) / 10 : 0;
           const name = resolveModelName(model, safeCopy("shared.placeholder.short"));
           const id = resolveModelId(model);
           return { id, name, share, usage: modelTokens, calc: pricingMode };
@@ -88,14 +77,9 @@ export function buildFleetData(modelBreakdown: any, { copyFn }: AnyRecord = {}) 
     });
 }
 
-export function buildTopModels(
-  modelBreakdown: any,
-  { limit = 3, copyFn }: AnyRecord = {}
-) {
+export function buildTopModels(modelBreakdown: any, { limit = 3, copyFn }: AnyRecord = {}) {
   const safeCopy = typeof copyFn === "function" ? copyFn : (key: string) => key;
-  const sources: any[] = Array.isArray(modelBreakdown?.sources)
-    ? modelBreakdown.sources
-    : [];
+  const sources: any[] = Array.isArray(modelBreakdown?.sources) ? modelBreakdown.sources : [];
   if (!sources.length) return [];
 
   const totalsByKey = new Map();
@@ -123,17 +107,13 @@ export function buildTopModels(
 
   if (!totalsByKey.size) return [];
 
-  const knownTotal = Array.from(totalsByKey.values()).reduce(
-    (acc, value) => acc + value,
-    0
-  );
+  const knownTotal = Array.from(totalsByKey.values()).reduce((acc, value) => acc + value, 0);
   const totalTokens = totalTokensAll > 0 ? totalTokensAll : knownTotal;
 
   const normalizedLimit = Number.isFinite(limit) ? Math.max(0, Math.floor(limit)) : 3;
   return Array.from(totalsByKey.entries())
     .map(([key, tokens]) => {
-      const percent =
-        totalTokens > 0 ? ((tokens / totalTokens) * 100).toFixed(1) : "0.0";
+      const percent = totalTokens > 0 ? ((tokens / totalTokens) * 100).toFixed(1) : "0.0";
       return {
         id: key,
         name: nameByKey.get(key) || safeCopy("shared.placeholder.short"),

@@ -1,21 +1,21 @@
-'use strict';
+"use strict";
 
-const { toBigInt } = require('./numbers');
-const { normalizeModel } = require('./model');
+const { toBigInt } = require("./numbers");
+const { normalizeModel } = require("./model");
 
 const TOKENS_PER_MILLION = 1000000n;
 const MICROS_PER_DOLLAR = 1000000n;
 
 const DEFAULT_PROFILE = {
-  model: 'gpt-5.2-codex',
-  source: 'openrouter',
-  effective_from: '2025-12-23',
+  model: "gpt-5.2-codex",
+  source: "openrouter",
+  effective_from: "2025-12-23",
   rates_micro_per_million: {
     input: 1750000,
     cached_input: 175000,
     output: 14000000,
-    reasoning_output: 14000000
-  }
+    reasoning_output: 14000000,
+  },
 };
 
 function getDefaultPricingProfile() {
@@ -23,42 +23,42 @@ function getDefaultPricingProfile() {
     model: DEFAULT_PROFILE.model,
     source: DEFAULT_PROFILE.source,
     effective_from: DEFAULT_PROFILE.effective_from,
-    rates_micro_per_million: { ...DEFAULT_PROFILE.rates_micro_per_million }
+    rates_micro_per_million: { ...DEFAULT_PROFILE.rates_micro_per_million },
   };
 }
 
 function getEnvValue(key) {
   try {
-    if (typeof Deno !== 'undefined' && Deno?.env?.get) {
+    if (typeof Deno !== "undefined" && Deno?.env?.get) {
       return Deno.env.get(key);
     }
   } catch (_) {
     // Ignore Deno env lookup failures.
   }
-  if (typeof process !== 'undefined' && process?.env) {
+  if (typeof process !== "undefined" && process?.env) {
     return process.env[key];
   }
   return null;
 }
 
 function normalizeSource(value) {
-  if (typeof value !== 'string') return null;
+  if (typeof value !== "string") return null;
   const trimmed = value.trim().toLowerCase();
   return trimmed.length > 0 ? trimmed : null;
 }
 
 function normalizeModelValue(value) {
   const normalized = normalizeModel(value);
-  if (!normalized || normalized.toLowerCase() === 'unknown') return null;
+  if (!normalized || normalized.toLowerCase() === "unknown") return null;
   return normalized;
 }
 
 function getPricingDefaults() {
-  const primaryModel = normalizeModelValue(getEnvValue('VIBEUSAGE_PRICING_MODEL'));
-  const primarySource = normalizeSource(getEnvValue('VIBEUSAGE_PRICING_SOURCE'));
+  const primaryModel = normalizeModelValue(getEnvValue("VIBEUSAGE_PRICING_MODEL"));
+  const primarySource = normalizeSource(getEnvValue("VIBEUSAGE_PRICING_SOURCE"));
   return {
     model: primaryModel || DEFAULT_PROFILE.model,
-    source: primarySource || DEFAULT_PROFILE.source
+    source: primarySource || DEFAULT_PROFILE.source,
   };
 }
 
@@ -72,7 +72,7 @@ async function resolvePricingProfile({ edgeClient, effectiveDate, model, source 
   const requestedSource = normalizeSource(source) || defaults.source;
 
   const dateKey =
-    typeof effectiveDate === 'string' && effectiveDate.trim()
+    typeof effectiveDate === "string" && effectiveDate.trim()
       ? effectiveDate.trim()
       : new Date().toISOString().slice(0, 10);
 
@@ -81,13 +81,13 @@ async function resolvePricingProfile({ edgeClient, effectiveDate, model, source 
 
     if (requestedModelLower) {
       const { data: aliasRows, error: aliasError } = await edgeClient.database
-        .from('vibeusage_pricing_model_aliases')
-        .select('pricing_model,effective_from')
-        .eq('active', true)
-        .eq('pricing_source', requestedSource)
-        .eq('usage_model', requestedModelLower)
-        .lte('effective_from', dateKey)
-        .order('effective_from', { ascending: false })
+        .from("vibeusage_pricing_model_aliases")
+        .select("pricing_model,effective_from")
+        .eq("active", true)
+        .eq("pricing_source", requestedSource)
+        .eq("usage_model", requestedModelLower)
+        .lte("effective_from", dateKey)
+        .order("effective_from", { ascending: false })
         .limit(1);
 
       if (!aliasError && Array.isArray(aliasRows) && aliasRows.length > 0) {
@@ -97,31 +97,31 @@ async function resolvePricingProfile({ edgeClient, effectiveDate, model, source 
     }
 
     let query = edgeClient.database
-      .from('vibeusage_pricing_profiles')
+      .from("vibeusage_pricing_profiles")
       .select(
         [
-          'model',
-          'source',
-          'effective_from',
-          'input_rate_micro_per_million',
-          'cached_input_rate_micro_per_million',
-          'output_rate_micro_per_million',
-          'reasoning_output_rate_micro_per_million'
-        ].join(',')
+          "model",
+          "source",
+          "effective_from",
+          "input_rate_micro_per_million",
+          "cached_input_rate_micro_per_million",
+          "output_rate_micro_per_million",
+          "reasoning_output_rate_micro_per_million",
+        ].join(","),
       )
-      .eq('active', true)
-      .eq('source', requestedSource)
-      .lte('effective_from', dateKey);
+      .eq("active", true)
+      .eq("source", requestedSource)
+      .lte("effective_from", dateKey);
 
     if (resolvedModel) {
-      if (resolvedModel.includes('/')) {
-        query = query.eq('model', resolvedModel);
+      if (resolvedModel.includes("/")) {
+        query = query.eq("model", resolvedModel);
       } else {
         query = query.or(`model.eq.${resolvedModel},model.like.%/${resolvedModel}`);
       }
     }
 
-    const { data, error } = await query.order('effective_from', { ascending: false }).limit(1);
+    const { data, error } = await query.order("effective_from", { ascending: false }).limit(1);
 
     if (error || !Array.isArray(data) || data.length === 0) return fallback;
 
@@ -134,8 +134,8 @@ async function resolvePricingProfile({ edgeClient, effectiveDate, model, source 
         input: row?.input_rate_micro_per_million,
         cached_input: row?.cached_input_rate_micro_per_million,
         output: row?.output_rate_micro_per_million,
-        reasoning_output: row?.reasoning_output_rate_micro_per_million
-      }
+        reasoning_output: row?.reasoning_output_rate_micro_per_million,
+      },
     });
   } catch (_err) {
     return fallback;
@@ -154,15 +154,15 @@ function computeUsageCost(totals, profile) {
   const sumOverlap = input + output;
   const canOverlap = cached <= input && reasoning <= output;
 
-  let pricingMode = 'add';
+  let pricingMode = "add";
   if (total > 0n && canOverlap) {
     const diffOverlap = absBigInt(total - sumOverlap);
     const diffAdd = absBigInt(total - sumAdd);
-    if (diffOverlap <= diffAdd) pricingMode = 'overlap';
+    if (diffOverlap <= diffAdd) pricingMode = "overlap";
   }
 
   let costMicros = 0n;
-  if (pricingMode === 'overlap') {
+  if (pricingMode === "overlap") {
     const billableInput = input > cached ? input - cached : 0n;
     costMicros += mulRate(billableInput, pricing.rates_micro_per_million.input);
     costMicros += mulRate(cached, pricing.rates_micro_per_million.cached_input);
@@ -187,8 +187,8 @@ function buildPricingMetadata({ profile, pricingMode }) {
       input: formatUsdFromMicros(profile.rates_micro_per_million.input),
       cached_input: formatUsdFromMicros(profile.rates_micro_per_million.cached_input),
       output: formatUsdFromMicros(profile.rates_micro_per_million.output),
-      reasoning_output: formatUsdFromMicros(profile.rates_micro_per_million.reasoning_output)
-    }
+      reasoning_output: formatUsdFromMicros(profile.rates_micro_per_million.reasoning_output),
+    },
   };
 }
 
@@ -196,7 +196,7 @@ function formatUsdFromMicros(micros) {
   const value = normalizeBigInt(micros);
   const dollars = value / MICROS_PER_DOLLAR;
   const remainder = value % MICROS_PER_DOLLAR;
-  return `${dollars.toString()}.${remainder.toString().padStart(6, '0')}`;
+  return `${dollars.toString()}.${remainder.toString().padStart(6, "0")}`;
 }
 
 function mulRate(tokens, rateMicrosPerMillion) {
@@ -210,20 +210,20 @@ function absBigInt(value) {
 }
 
 function normalizeProfile(profile) {
-  if (!profile || typeof profile !== 'object') return getDefaultPricingProfile();
+  if (!profile || typeof profile !== "object") return getDefaultPricingProfile();
   return {
-    model: typeof profile.model === 'string' ? profile.model : DEFAULT_PROFILE.model,
-    source: typeof profile.source === 'string' ? profile.source : DEFAULT_PROFILE.source,
+    model: typeof profile.model === "string" ? profile.model : DEFAULT_PROFILE.model,
+    source: typeof profile.source === "string" ? profile.source : DEFAULT_PROFILE.source,
     effective_from:
-      typeof profile.effective_from === 'string'
+      typeof profile.effective_from === "string"
         ? profile.effective_from
         : DEFAULT_PROFILE.effective_from,
     rates_micro_per_million: {
       input: toPositiveInt(profile?.rates_micro_per_million?.input),
       cached_input: toPositiveInt(profile?.rates_micro_per_million?.cached_input),
       output: toPositiveInt(profile?.rates_micro_per_million?.output),
-      reasoning_output: toPositiveInt(profile?.rates_micro_per_million?.reasoning_output)
-    }
+      reasoning_output: toPositiveInt(profile?.rates_micro_per_million?.reasoning_output),
+    },
   };
 }
 
@@ -233,7 +233,7 @@ function toPositiveInt(value) {
 }
 
 function normalizeBigInt(value) {
-  if (typeof value === 'bigint') return value >= 0n ? value : 0n;
+  if (typeof value === "bigint") return value >= 0n ? value : 0n;
   const n = Number(value);
   if (Number.isFinite(n) && n >= 0) return BigInt(Math.floor(n));
   return 0n;
@@ -245,5 +245,5 @@ module.exports = {
   formatUsdFromMicros,
   getDefaultPricingProfile,
   _getPricingDefaults: getPricingDefaults,
-  resolvePricingProfile
+  resolvePricingProfile,
 };

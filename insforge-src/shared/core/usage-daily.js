@@ -1,7 +1,7 @@
-'use strict';
+"use strict";
 
-const { formatLocalDateKey } = require('../date');
-const { toBigInt } = require('../numbers');
+const { formatLocalDateKey } = require("../date");
+const { toBigInt } = require("../numbers");
 
 function initDailyBuckets(dayKeys) {
   const buckets = new Map(
@@ -13,9 +13,9 @@ function initDailyBuckets(dayKeys) {
         input: 0n,
         cached: 0n,
         output: 0n,
-        reasoning: 0n
-      }
-    ])
+        reasoning: 0n,
+      },
+    ]),
   );
   return { buckets };
 }
@@ -40,5 +40,5 @@ function applyDailyBucket({ buckets, row, tzContext, billable }) {
 
 module.exports = {
   initDailyBuckets,
-  applyDailyBucket
+  applyDailyBucket,
 };

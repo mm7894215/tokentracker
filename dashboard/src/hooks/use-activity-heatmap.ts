@@ -1,14 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-
 import {
   buildActivityHeatmap,
   computeActiveStreakDays,
   getHeatmapRangeLocal,
 } from "../lib/activity-heatmap";
-import { isMockEnabled } from "../lib/mock-data";
 import { isAccessTokenReady, resolveAuthAccessToken } from "../lib/auth-token";
-import { getUsageDaily, getUsageHeatmap } from "../lib/vibeusage-api";
+import { isMockEnabled } from "../lib/mock-data";
 import { getTimeZoneCacheKey } from "../lib/timezone";
+import { getUsageDaily, getUsageHeatmap } from "../lib/vibeusage-api";
 
 export function useActivityHeatmap({
   baseUrl,
@@ -61,7 +60,7 @@ export function useActivityHeatmap({
         // ignore write errors (quota/private mode)
       }
     },
-    [storageKey]
+    [storageKey],
   );
 
   const clearCache = useCallback(() => {
@@ -100,9 +99,9 @@ export function useActivityHeatmap({
           }
         }
         const hasLevels = weeksData.some((week: any) =>
-          (Array.isArray(week) ? week : []).some((cell: any) =>
-            cell && Number.isFinite(Number(cell.level))
-          )
+          (Array.isArray(week) ? week : []).some(
+            (cell: any) => cell && Number.isFinite(Number(cell.level)),
+          ),
         );
         if (!hasLevels && weeksData.length) {
           const rows = [];
@@ -128,7 +127,7 @@ export function useActivityHeatmap({
             ...localHeatmap,
             week_starts_on: weekStartsOn,
             active_days: rows.filter(
-              (r: any) => Number(r?.billable_total_tokens ?? r?.total_tokens) > 0
+              (r: any) => Number(r?.billable_total_tokens ?? r?.total_tokens) > 0,
             ).length,
             streak_days: computeActiveStreakDays({
               dailyRows: rows,
@@ -142,7 +141,7 @@ export function useActivityHeatmap({
                 ...localHeatmap,
                 week_starts_on: weekStartsOn,
                 active_days: rows.filter(
-                  (r: any) => Number(r?.billable_total_tokens ?? r?.total_tokens) > 0
+                  (r: any) => Number(r?.billable_total_tokens ?? r?.total_tokens) > 0,
                 ).length,
                 streak_days: computeActiveStreakDays({
                   dailyRows: rows,
@@ -197,7 +196,7 @@ export function useActivityHeatmap({
         ...localHeatmap,
         week_starts_on: weekStartsOn,
         active_days: rows.filter(
-          (r: any) => Number(r?.billable_total_tokens ?? r?.total_tokens) > 0
+          (r: any) => Number(r?.billable_total_tokens ?? r?.total_tokens) > 0,
         ).length,
         streak_days: computeActiveStreakDays({ dailyRows: rows, to: range.to }),
       });
@@ -208,7 +207,7 @@ export function useActivityHeatmap({
             ...localHeatmap,
             week_starts_on: weekStartsOn,
             active_days: rows.filter(
-              (r: any) => Number(r?.billable_total_tokens ?? r?.total_tokens) > 0
+              (r: any) => Number(r?.billable_total_tokens ?? r?.total_tokens) > 0,
             ).length,
             streak_days: computeActiveStreakDays({ dailyRows: rows, to: range.to }),
           },
@@ -296,11 +295,7 @@ export function useActivityHeatmap({
     clearCache,
   ]);
 
-  const normalizedSource = mockEnabled
-    ? "mock"
-    : source === "client"
-      ? "edge"
-      : source;
+  const normalizedSource = mockEnabled ? "mock" : source === "client" ? "edge" : source;
 
   return { range, daily, heatmap, source: normalizedSource, loading, error, refresh };
 }

@@ -1,4 +1,4 @@
-'use strict';
+"use strict";
 
 const MAX_PAGE_SIZE = 1000;
 
@@ -9,11 +9,11 @@ function normalizePageSize(value) {
 }
 
 async function forEachPage({ createQuery, pageSize, onPage }) {
-  if (typeof createQuery !== 'function') {
-    throw new Error('createQuery must be a function');
+  if (typeof createQuery !== "function") {
+    throw new Error("createQuery must be a function");
   }
-  if (typeof onPage !== 'function') {
-    throw new Error('onPage must be a function');
+  if (typeof onPage !== "function") {
+    throw new Error("onPage must be a function");
   }
 
   const size = normalizePageSize(pageSize);
@@ -21,7 +21,7 @@ async function forEachPage({ createQuery, pageSize, onPage }) {
 
   while (true) {
     const query = createQuery();
-    if (!query || typeof query.range !== 'function') {
+    if (!query || typeof query.range !== "function") {
       const { data, error } = await query;
       if (error) return { error };
       const rows = Array.isArray(data) ? data : [];

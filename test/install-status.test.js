@@ -4,14 +4,7 @@ const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 
 async function loadShouldShowInstallCard() {
-  const modulePath = path.join(
-    __dirname,
-    "..",
-    "dashboard",
-    "src",
-    "lib",
-    "install-status.js"
-  );
+  const modulePath = path.join(__dirname, "..", "dashboard", "src", "lib", "install-status.js");
   const mod = await import(pathToFileURL(modulePath).href);
   return mod.shouldShowInstallCard;
 }

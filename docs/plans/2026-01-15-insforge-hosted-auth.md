@@ -11,6 +11,7 @@
 ### Task 1: Add hosted auth routing test coverage
 
 **Files:**
+
 - Modify: `test/dashboard-session-expired-banner.test.js`
 - (Optional) Modify: `dashboard/src/main.jsx` (only after failing test)
 
@@ -20,10 +21,7 @@ Add a test that expects `dashboard/src/main.jsx` to reference `@insforge/react-r
 
 ```js
 test("main wires InsForge hosted auth routes", () => {
-  const src = fs.readFileSync(
-    path.resolve("dashboard/src/main.jsx"),
-    "utf8"
-  );
+  const src = fs.readFileSync(path.resolve("dashboard/src/main.jsx"), "utf8");
   expect(src).toContain("@insforge/react-router");
   expect(src).toContain("getInsforgeRoutes");
   expect(src).toContain("/sign-in");
@@ -55,7 +53,7 @@ createRoot(document.getElementById("root")).render(
     <InsforgeProvider client={insforgeAuthClient}>
       <RouterProvider router={router} />
     </InsforgeProvider>
-  </React.StrictMode>
+  </React.StrictMode>,
 );
 ```
 
@@ -74,6 +72,7 @@ git commit -m "test(auth): assert hosted auth router wiring"
 ### Task 2: Add InsForge auth client wrapper
 
 **Files:**
+
 - Create: `dashboard/src/lib/insforge-auth-client.js`
 - Modify: `dashboard/src/lib/config.js` (if needed for base url/anon key helpers)
 
@@ -83,10 +82,7 @@ Add a test that ensures the auth client wrapper exists and uses `createClient` w
 
 ```js
 test("insforge auth client wrapper uses base url and anon key", () => {
-  const src = fs.readFileSync(
-    path.resolve("dashboard/src/lib/insforge-auth-client.js"),
-    "utf8"
-  );
+  const src = fs.readFileSync(path.resolve("dashboard/src/lib/insforge-auth-client.js"), "utf8");
   expect(src).toContain("createClient");
   expect(src).toContain("getInsforgeBaseUrl");
   expect(src).toContain("getInsforgeAnonKey");
@@ -106,10 +102,7 @@ Create `dashboard/src/lib/insforge-auth-client.js`:
 import { createClient } from "@insforge/sdk";
 import { getInsforgeAnonKey, getInsforgeBaseUrl } from "./config.js";
 
-export const insforgeAuthClient = createClient(
-  getInsforgeBaseUrl(),
-  getInsforgeAnonKey()
-);
+export const insforgeAuthClient = createClient(getInsforgeBaseUrl(), getInsforgeAnonKey());
 ```
 
 **Step 4: Run test to verify it passes**
@@ -127,6 +120,7 @@ git commit -m "feat(auth): add insforge auth client wrapper"
 ### Task 3: Landing login should target hosted auth routes
 
 **Files:**
+
 - Modify: `test/dashboard-session-expired-banner.test.js`
 - Modify: `dashboard/src/App.jsx`
 - Modify: `dashboard/src/pages/LandingPage.jsx`
@@ -137,10 +131,7 @@ Add a test that verifies the landing sign-in URL defaults to `/sign-in` when no 
 
 ```js
 test("App uses hosted auth routes for Landing login", () => {
-  const src = fs.readFileSync(
-    path.resolve("dashboard/src/App.jsx"),
-    "utf8"
-  );
+  const src = fs.readFileSync(path.resolve("dashboard/src/App.jsx"), "utf8");
   expect(src).toContain("/sign-in");
   expect(src).toContain("/sign-up");
 });
@@ -185,6 +176,7 @@ git commit -m "feat(auth): route landing to hosted auth"
 ### Task 4: Switch signed-in gating to InsForge session (with fallback)
 
 **Files:**
+
 - Modify: `test/dashboard-session-expired-banner.test.js`
 - Modify: `dashboard/src/App.jsx`
 - Modify: `dashboard/src/hooks/use-auth.js`
@@ -195,10 +187,7 @@ Add a test that asserts App uses `@insforge/react-router` `useAuth` as the prima
 
 ```js
 test("App uses InsForge auth hook for signed-in gating", () => {
-  const src = fs.readFileSync(
-    path.resolve("dashboard/src/App.jsx"),
-    "utf8"
-  );
+  const src = fs.readFileSync(path.resolve("dashboard/src/App.jsx"), "utf8");
   expect(src).toContain("@insforge/react-router");
   expect(src).toContain("useAuth");
 });
@@ -212,6 +201,7 @@ Expected: FAIL.
 **Step 3: Write minimal implementation**
 
 Update `dashboard/src/App.jsx`:
+
 - Import `useAuth` from `@insforge/react-router` as `useInsforgeAuth`.
 - Keep existing local `useAuth` for fallback.
 - Prefer InsForge session state when available (`isSignedIn` + `session?.accessToken`).
@@ -234,11 +224,13 @@ git commit -m "feat(auth): gate dashboard by insforge session"
 ### Task 5: Manual hosted-auth regression script
 
 **Files:**
+
 - Create: `docs/pr/2026-01-15-insforge-hosted-auth.md`
 
 **Step 1: Write the manual regression steps**
 
 Document the manual flow:
+
 1. Open `https://www.vibeusage.cc/` in incognito.
 2. Click “Login” and confirm hosted `/sign-in` loads.
 3. Complete OAuth login and ensure you land back on `/` with dashboard visible.
@@ -254,6 +246,7 @@ git commit -m "docs(auth): add hosted auth manual regression"
 ### Task 6: Update OpenSpec tasks + architecture canvas status
 
 **Files:**
+
 - Modify: `openspec/changes/2026-01-15-adopt-insforge-hosted-auth/tasks.md`
 - Modify: `architecture.canvas`
 

@@ -1,24 +1,24 @@
-const os = require('node:os');
-const path = require('node:path');
-const fs = require('node:fs/promises');
-const { spawnSync } = require('node:child_process');
+const os = require("node:os");
+const path = require("node:path");
+const fs = require("node:fs/promises");
+const { spawnSync } = require("node:child_process");
 
 async function main() {
-  const repoRoot = path.resolve(__dirname, '..', '..');
-  const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'vibeusage-accept-'));
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "vibeusage-accept-"));
   const env = {
     ...process.env,
     HOME: tmpRoot,
-    CODEX_HOME: path.join(tmpRoot, '.codex')
+    CODEX_HOME: path.join(tmpRoot, ".codex"),
   };
 
   await fs.mkdir(env.CODEX_HOME, { recursive: true });
-  await fs.writeFile(path.join(env.CODEX_HOME, 'config.toml'), '# test config\n', 'utf8');
+  await fs.writeFile(path.join(env.CODEX_HOME, "config.toml"), "# test config\n", "utf8");
 
   const init = spawnSync(
     process.execPath,
-    [path.join(repoRoot, 'bin', 'tracker.js'), 'init', '--yes', '--no-auth', '--no-open'],
-    { env, stdio: 'inherit' }
+    [path.join(repoRoot, "bin", "tracker.js"), "init", "--yes", "--no-auth", "--no-open"],
+    { env, stdio: "inherit" },
   );
   if (init.status !== 0) {
     process.exit(init.status || 1);
@@ -26,13 +26,13 @@ async function main() {
 
   const depPath = path.join(
     tmpRoot,
-    '.vibeusage',
-    'tracker',
-    'app',
-    'node_modules',
-    '@insforge',
-    'sdk',
-    'package.json'
+    ".vibeusage",
+    "tracker",
+    "app",
+    "node_modules",
+    "@insforge",
+    "sdk",
+    "package.json",
   );
 
   try {
@@ -42,7 +42,7 @@ async function main() {
     process.exit(1);
   }
 
-  console.log('ok: local runtime dependencies installed');
+  console.log("ok: local runtime dependencies installed");
 }
 
 main().catch((err) => {

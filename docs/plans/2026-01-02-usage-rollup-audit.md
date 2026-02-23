@@ -13,44 +13,53 @@
 ### Task 1: Add rollup audit helper + unit test
 
 **Files:**
+
 - Create: `insforge-src/shared/rollup-audit.js`
 - Create: `test/rollup-audit.test.js`
 
 **Step 1: Write the failing test**
 
 ```js
-const assert = require('node:assert/strict');
-const { test } = require('node:test');
+const assert = require("node:assert/strict");
+const { test } = require("node:test");
 
-const { compareRollupVsHourly } = require('../insforge-src/shared/rollup-audit');
+const { compareRollupVsHourly } = require("../insforge-src/shared/rollup-audit");
 
 function createClient({ rollupTotal, hourlyTotal }) {
   return {
     database: {
       from() {
         return {
-          select() { return this; },
-          eq() { return this; },
-          gte() { return this; },
-          lt() { return this; },
+          select() {
+            return this;
+          },
+          eq() {
+            return this;
+          },
+          gte() {
+            return this;
+          },
+          lt() {
+            return this;
+          },
           maybeSingle() {
             return Promise.resolve({
               data: { total_tokens: rollupTotal },
-              error: null
+              error: null,
             });
-          }
+          },
         };
-      }
-    }
+      },
+    },
   };
 }
 
-test('compareRollupVsHourly returns mismatch when totals differ', async () => {
+test("compareRollupVsHourly returns mismatch when totals differ", async () => {
   const edgeClient = createClient({ rollupTotal: 5, hourlyTotal: 10 });
   const result = await compareRollupVsHourly({
     edgeClient,
-    userId: 'user-1',
-    day: '2025-12-02'
+    userId: "user-1",
+    day: "2025-12-02",
   });
   assert.equal(result.matched, false);
   assert.equal(result.rollupTotal, 5n);
@@ -66,17 +75,17 @@ Expected: FAIL (module/function missing).
 **Step 3: Write minimal implementation**
 
 ```js
-'use strict';
+"use strict";
 
-const { toBigInt } = require('./numbers');
-const { addUtcDays, formatDateUTC, parseDateParts, dateFromPartsUTC } = require('./date');
+const { toBigInt } = require("./numbers");
+const { addUtcDays, formatDateUTC, parseDateParts, dateFromPartsUTC } = require("./date");
 
 async function sumDailyRollup({ edgeClient, userId, day }) {
   const { data, error } = await edgeClient.database
-    .from('vibescore_tracker_daily_rollup')
-    .select('total_tokens')
-    .eq('user_id', userId)
-    .eq('day', day)
+    .from("vibescore_tracker_daily_rollup")
+    .select("total_tokens")
+    .eq("user_id", userId)
+    .eq("day", day)
     .maybeSingle();
   if (error) return { ok: false, error };
   return { ok: true, total: toBigInt(data?.total_tokens) };
@@ -87,15 +96,15 @@ async function sumHourly({ edgeClient, userId, day }) {
   const start = dateFromPartsUTC(parts);
   const end = addUtcDays(start, 1);
   const { data, error } = await edgeClient.database
-    .from('vibescore_tracker_hourly')
-    .select('total_tokens')
-    .eq('user_id', userId)
-    .gte('hour_start', start.toISOString())
-    .lt('hour_start', end.toISOString());
+    .from("vibescore_tracker_hourly")
+    .select("total_tokens")
+    .eq("user_id", userId)
+    .gte("hour_start", start.toISOString())
+    .lt("hour_start", end.toISOString());
   if (error) return { ok: false, error };
   const total = (Array.isArray(data) ? data : []).reduce(
     (acc, row) => acc + toBigInt(row?.total_tokens),
-    0n
+    0n,
   );
   return { ok: true, total };
 }
@@ -108,7 +117,7 @@ async function compareRollupVsHourly({ edgeClient, userId, day }) {
   return {
     matched: rollup.total === hourly.total,
     rollupTotal: rollup.total,
-    hourlyTotal: hourly.total
+    hourlyTotal: hourly.total,
   };
 }
 
@@ -132,22 +141,25 @@ git commit -m "feat: add rollup audit helper"
 ### Task 2: Add audit script + integration test
 
 **Files:**
+
 - Create: `scripts/ops/usage-rollup-audit.cjs`
 - Create: `test/usage-rollup-audit.test.js`
 
 **Step 1: Write the failing test**
 
 ```js
-const assert = require('node:assert/strict');
-const { test } = require('node:test');
+const assert = require("node:assert/strict");
+const { test } = require("node:test");
 
-const { runAudit } = require('../scripts/ops/usage-rollup-audit.cjs');
+const { runAudit } = require("../scripts/ops/usage-rollup-audit.cjs");
 
-test('runAudit reports mismatch and sets exit status', async () => {
+test("runAudit reports mismatch and sets exit status", async () => {
   const result = await runAudit({
-    edgeClient: { /* stubbed client with mismatch */ },
-    sampleUsers: ['user-1'],
-    days: ['2025-12-02']
+    edgeClient: {
+      /* stubbed client with mismatch */
+    },
+    sampleUsers: ["user-1"],
+    days: ["2025-12-02"],
   });
   assert.equal(result.mismatches, 1);
 });
@@ -162,9 +174,9 @@ Expected: FAIL (module missing).
 
 ```js
 #!/usr/bin/env node
-'use strict';
+"use strict";
 
-const { compareRollupVsHourly } = require('../../insforge-src/shared/rollup-audit');
+const { compareRollupVsHourly } = require("../../insforge-src/shared/rollup-audit");
 
 async function runAudit({ edgeClient, sampleUsers, days }) {
   let mismatches = 0;
@@ -197,6 +209,7 @@ git commit -m "feat: add usage rollup audit script"
 ### Task 3: Add scheduler hook (optional)
 
 **Files:**
+
 - Modify: `.github/workflows/usage-rollup-audit.yml`
 
 **Step 1: Write failing test (if workflow tests exist)**

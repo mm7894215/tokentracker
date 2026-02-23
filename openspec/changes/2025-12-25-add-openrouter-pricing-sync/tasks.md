@@ -1,4 +1,5 @@
 ## 1. Implementation
+
 - [x] 1.1 Confirm OpenRouter pricing field mapping and units.
 - [x] 1.2 Add OpenRouter pricing normalization helper (USD/token -> micro USD per million).
 - [x] 1.3 Add `vibescore-pricing-sync` edge function.

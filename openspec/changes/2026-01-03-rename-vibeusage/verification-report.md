@@ -3,6 +3,7 @@
 Date: 2026-01-04
 
 ## Automated Tests
+
 - Command: `node scripts/validate-copy-registry.cjs`
 - Result: pass
 - Command: `node --test test/auto-retry.test.js test/link-code-request-id.test.js test/interaction-sequence-canvas.test.js`
@@ -11,6 +12,7 @@ Date: 2026-01-04
 - Result: pass (note: `--localstorage-file` warning emitted by test harness)
 
 ## Manual Verification
+
 - Command: `node -e "process.argv=['node','vibeusage','--help']; require('./bin/tracker.js');"`
 - Result: pass (help runs and displays VibeUsage commands)
 - Command: `node - <<'NODE'\nconst assert = require('node:assert/strict');\nconst a = require('./insforge-src/functions/vibeusage-usage-summary.js');\nconst b = require('./insforge-src/functions/vibescore-usage-summary.js');\nconst c = require('./insforge-src/functions/vibeusage-device-token-issue.js');\nconst d = require('./insforge-src/functions/vibescore-device-token-issue.js');\nassert.equal(a, b);\nassert.equal(c, d);\nconsole.log('ok: vibeusage and vibescore handlers match');\nNODE`
@@ -19,4 +21,5 @@ Date: 2026-01-04
 - Result: pass (first run migrated, second run no-op; legacy removed, new exists)
 
 ## Regression Notes
+
 - Regression: not run

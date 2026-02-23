@@ -43,13 +43,10 @@ const MatrixRain = () => {
       ctx.fillStyle = "#00FF41";
       ctx.font = `${fontSize}px monospace`;
       for (let i = 0; i < drops.length; i++) {
-        const text = characters.charAt(
-          Math.floor(Math.random() * characters.length)
-        );
+        const text = characters.charAt(Math.floor(Math.random() * characters.length));
         ctx.globalAlpha = 0.05;
         ctx.fillText(text, i * fontSize, drops[i] * fontSize);
-        if (drops[i] * fontSize > canvas.height && Math.random() > 0.985)
-          drops[i] = 0;
+        if (drops[i] * fontSize > canvas.height && Math.random() > 0.985) drops[i] = 0;
         drops[i] += 1.2;
       }
       animationFrameId = requestAnimationFrame(draw);
@@ -60,9 +57,7 @@ const MatrixRain = () => {
       cancelAnimationFrame(animationFrameId);
     };
   }, []);
-  return (
-    <canvas ref={canvasRef} className="fixed inset-0 z-0 pointer-events-none" />
-  );
+  return <canvas ref={canvasRef} className="fixed inset-0 z-0 pointer-events-none" />;
 };
 
 // 2. 增强型字符容器
@@ -76,9 +71,7 @@ const AsciiBox = ({ title, children, className = "", subtitle = "" }) => (
         {title}
       </span>
       {subtitle && (
-        <span className="text-[8px] opacity-30 mr-2 tracking-tighter">
-          [{subtitle}]
-        </span>
+        <span className="text-[8px] opacity-30 mr-2 tracking-tighter">[{subtitle}]</span>
       )}
       <span className="flex-1 overflow-hidden whitespace-nowrap opacity-10 text-[#00FF41]">
         {CHARS.HORIZONTAL.repeat(100)}
@@ -111,14 +104,8 @@ const DataRow = ({ label, value, subValue, colorClass = "text-[#00FF41]" }) => (
       {label}
     </span>
     <div className="flex items-center space-x-3">
-      {subValue && (
-        <span className="text-[8px] opacity-20 italic font-mono">
-          {subValue}
-        </span>
-      )}
-      <span className={`font-black tracking-tight text-[11px] ${colorClass}`}>
-        {value}
-      </span>
+      {subValue && <span className="text-[8px] opacity-20 italic font-mono">{subValue}</span>}
+      <span className={`font-black tracking-tight text-[11px] ${colorClass}`}>{value}</span>
     </div>
   </div>
 );
@@ -185,10 +172,7 @@ export default function App() {
       setCpuUsage(Math.floor(Math.random() * 40) + 10);
     }, 3000);
 
-    const timer = setInterval(
-      () => setTime(new Date().toLocaleTimeString()),
-      1000
-    );
+    const timer = setInterval(() => setTime(new Date().toLocaleTimeString()), 1000);
     const boot = setTimeout(() => setBooted(true), 1200);
 
     return () => {
@@ -209,18 +193,8 @@ export default function App() {
         let dayArray = [];
         for (let d = 0; d < rows; d++) {
           const noise = Math.random();
-          let level =
-            noise > 0.9
-              ? 4
-              : noise > 0.7
-              ? 3
-              : noise > 0.5
-              ? 2
-              : noise > 0.3
-              ? 1
-              : 0;
-          if (d === 0 || d === 6)
-            if (Math.random() > 0.5) level = Math.max(0, level - 2);
+          let level = noise > 0.9 ? 4 : noise > 0.7 ? 3 : noise > 0.5 ? 2 : noise > 0.3 ? 1 : 0;
+          if (d === 0 || d === 6) if (Math.random() > 0.5) level = Math.max(0, level - 2);
           dayArray.push(level);
         }
         weekArray.push(dayArray);
@@ -260,9 +234,7 @@ export default function App() {
       {/* 状态顶部栏 */}
       <header className="relative z-10 flex justify-between border-b border-[#00FF41]/20 pb-3 mb-6 items-center shrink-0">
         <div className="flex items-center space-x-6">
-          <div className="bg-[#00FF41] text-black px-3 py-1 font-black text-xs">
-            VIBE_SYSTEM_X
-          </div>
+          <div className="bg-[#00FF41] text-black px-3 py-1 font-black text-xs">VIBE_SYSTEM_X</div>
           <div className="flex items-center space-x-4 opacity-50 text-[9px] tracking-widest font-black uppercase">
             <span className="flex items-center">
               <span className="w-1.5 h-1.5 bg-[#00FF41] rounded-full mr-2 animate-pulse"></span>
@@ -273,9 +245,7 @@ export default function App() {
           </div>
         </div>
         <div className="text-[#00FF41] font-bold bg-[#00FF41]/5 px-3 py-1 border border-[#00FF41]/20 flex items-center space-x-4">
-          <span className="opacity-40 font-normal uppercase text-[8px]">
-            Session_Time:
-          </span>
+          <span className="opacity-40 font-normal uppercase text-[8px]">Session_Time:</span>
           <span className="text-white tracking-widest">{time}</span>
         </div>
       </header>
@@ -305,20 +275,14 @@ export default function App() {
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <div className="bg-[#00FF41]/5 p-1 border border-[#00FF41]/10 text-center">
-                    <div className="text-[7px] opacity-40 uppercase font-black">
-                      Rank
-                    </div>
+                    <div className="text-[7px] opacity-40 uppercase font-black">Rank</div>
                     <div className="text-[#00FF41] font-black underline underline-offset-2">
                       #0042
                     </div>
                   </div>
                   <div className="bg-[#00FF41]/5 p-1 border border-[#00FF41]/10 text-center">
-                    <div className="text-[7px] opacity-40 uppercase font-black">
-                      Streak
-                    </div>
-                    <div className="text-yellow-400 font-black tracking-tighter">
-                      12_DAYS
-                    </div>
+                    <div className="text-[7px] opacity-40 uppercase font-black">Streak</div>
+                    <div className="text-yellow-400 font-black tracking-tighter">12_DAYS</div>
                   </div>
                 </div>
               </div>
@@ -332,10 +296,7 @@ export default function App() {
                   Lifetime_Token_Weight
                 </div>
                 <div className="text-4xl font-black tracking-tighter text-white glow-text leading-none flex items-baseline">
-                  142,892{" "}
-                  <span className="text-[9px] opacity-30 tracking-[0.4em] ml-2">
-                    Tks
-                  </span>
+                  142,892 <span className="text-[9px] opacity-30 tracking-[0.4em] ml-2">Tks</span>
                 </div>
               </div>
               <div className="space-y-3 border-t border-[#00FF41]/10 pt-4">
@@ -362,11 +323,7 @@ export default function App() {
           </AsciiBox>
 
           {/* 实时系统日志 - 填充空白，增加“忙碌”感 */}
-          <AsciiBox
-            title="System_Logs"
-            className="flex-1 overflow-hidden"
-            subtitle="0x2A1"
-          >
+          <AsciiBox title="System_Logs" className="flex-1 overflow-hidden" subtitle="0x2A1">
             <div className="text-[8px] space-y-1.5 font-mono opacity-50 h-full overflow-hidden">
               {logs.map((log, i) => (
                 <p
@@ -400,9 +357,7 @@ export default function App() {
                           <span
                             key={dIdx}
                             className={`text-[9px] leading-none transition-all duration-700 ${
-                              level === 0
-                                ? "text-[#00FF41]/10"
-                                : "text-[#00FF41] shadow-glow"
+                              level === 0 ? "text-[#00FF41]/10" : "text-[#00FF41] shadow-glow"
                             }`}
                             style={{
                               opacity: level === 0 ? 0.15 : 0.3 + level * 0.175,
@@ -437,8 +392,8 @@ export default function App() {
             <AsciiBox title="Token_Flow_History" subtitle="24h">
               <TrendChart
                 data={[
-                  20, 35, 28, 60, 85, 40, 25, 45, 90, 100, 70, 55, 30, 20, 40,
-                  65, 80, 50, 30, 45, 75, 90, 60, 45,
+                  20, 35, 28, 60, 85, 40, 25, 45, 90, 100, 70, 55, 30, 20, 40, 65, 80, 50, 30, 45,
+                  75, 90, 60, 45,
                 ]}
               />
             </AsciiBox>
@@ -500,9 +455,7 @@ export default function App() {
         </div>
         <div className="flex items-center space-x-3">
           <span className="font-bold">Neural_Index: 0.942.A1</span>
-          <span className="opacity-50 tracking-normal">
-            © 2024 VibeScore_Corp
-          </span>
+          <span className="opacity-50 tracking-normal">© 2024 VibeScore_Corp</span>
         </div>
       </footer>
 

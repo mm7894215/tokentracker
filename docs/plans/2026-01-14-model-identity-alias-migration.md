@@ -11,43 +11,42 @@
 ### Task 1: Add failing acceptance script for table existence
 
 **Files:**
+
 - Create: `scripts/acceptance/model-identity-alias-table.cjs`
 
 **Step 1: Write the failing test**
 
 ```js
 #!/usr/bin/env node
-'use strict';
+"use strict";
 
-const assert = require('node:assert/strict');
-const { createClient } = require('@insforge/sdk');
+const assert = require("node:assert/strict");
+const { createClient } = require("@insforge/sdk");
 
 async function main() {
   const baseUrl =
     process.env.VIBEUSAGE_INSFORGE_BASE_URL ||
     process.env.VIBESCORE_INSFORGE_BASE_URL ||
     process.env.INSFORGE_BASE_URL ||
-    'https://5tmappuk.us-east.insforge.app';
+    "https://5tmappuk.us-east.insforge.app";
 
   const serviceRoleKey =
-    process.env.INSFORGE_SERVICE_ROLE_KEY ||
-    process.env.INSFORGE_API_KEY ||
-    '';
+    process.env.INSFORGE_SERVICE_ROLE_KEY || process.env.INSFORGE_API_KEY || "";
 
   if (!serviceRoleKey) {
-    throw new Error('Missing INSFORGE_SERVICE_ROLE_KEY / INSFORGE_API_KEY');
+    throw new Error("Missing INSFORGE_SERVICE_ROLE_KEY / INSFORGE_API_KEY");
   }
 
-  const anonKey = process.env.INSFORGE_ANON_KEY || '';
+  const anonKey = process.env.INSFORGE_ANON_KEY || "";
   const client = createClient({
     baseUrl,
     anonKey: anonKey || serviceRoleKey,
-    edgeFunctionToken: serviceRoleKey
+    edgeFunctionToken: serviceRoleKey,
   });
 
   const { data, error } = await client.database
-    .from('vibescore_model_aliases')
-    .select('usage_model')
+    .from("vibescore_model_aliases")
+    .select("usage_model")
     .limit(1);
 
   if (error) {
@@ -56,7 +55,9 @@ async function main() {
 
   assert.ok(Array.isArray(data));
 
-  process.stdout.write(JSON.stringify({ ok: true, table: 'vibescore_model_aliases' }, null, 2) + '\n');
+  process.stdout.write(
+    JSON.stringify({ ok: true, table: "vibescore_model_aliases" }, null, 2) + "\n",
+  );
 }
 
 main().catch((err) => {
@@ -68,14 +69,17 @@ main().catch((err) => {
 **Step 2: Run test to verify it fails**
 
 Run:
+
 ```bash
 INSFORGE_SERVICE_ROLE_KEY=... INSFORGE_ANON_KEY=... node scripts/acceptance/model-identity-alias-table.cjs
 ```
+
 Expected: FAIL with "vibescore_model_aliases missing or inaccessible".
 
 ### Task 2: Add migration SQL
 
 **Files:**
+
 - Create: `openspec/changes/2026-01-05-add-model-identity-alias/sql/001_create_model_aliases.sql`
 
 **Step 1: Write SQL migration**
@@ -122,6 +126,7 @@ exception when undefined_object then null; end $$;
 ### Task 3: Apply migration to InsForge
 
 **Files:**
+
 - Execute: `openspec/changes/2026-01-05-add-model-identity-alias/sql/001_create_model_aliases.sql`
 
 **Step 1: Apply SQL in InsForge SQL console**
@@ -133,20 +138,24 @@ Expected: Table created with indexes + RLS policies.
 **Step 1: Re-run acceptance script**
 
 Run:
+
 ```bash
 INSFORGE_SERVICE_ROLE_KEY=... INSFORGE_ANON_KEY=... node scripts/acceptance/model-identity-alias-table.cjs
 ```
+
 Expected: PASS with `{ "ok": true }`.
 
 ### Task 5: Update OpenSpec task checklist
 
 **Files:**
+
 - Modify: `openspec/changes/2026-01-05-add-model-identity-alias/tasks.md`
 
 **Step 1: Add Database section**
 
 ```markdown
 ## 5. Database
+
 - [ ] Add `vibescore_model_aliases` table migration SQL.
 - [ ] Apply migration in InsForge.
 - [ ] Verify table existence via acceptance script.
@@ -159,9 +168,11 @@ Expected: PASS with `{ "ok": true }`.
 **Step 1: Run validation**
 
 Run:
+
 ```bash
 openspec validate 2026-01-05-add-model-identity-alias --strict
 ```
+
 Expected: PASS.
 
 ### Task 7: Update architecture canvas
@@ -169,9 +180,11 @@ Expected: PASS.
 **Step 1: Regenerate canvas**
 
 Run:
+
 ```bash
 node scripts/ops/architecture-canvas.cjs
 ```
+
 Expected: Canvas refreshed with no drift warnings.
 
 ### Task 8: Commit

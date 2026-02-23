@@ -1,13 +1,13 @@
 #!/usr/bin/env node
-'use strict';
+"use strict";
 
-const assert = require('node:assert/strict');
-const { createHash } = require('node:crypto');
-const path = require('node:path');
+const assert = require("node:assert/strict");
+const { createHash } = require("node:crypto");
+const path = require("node:path");
 
-const BASE_URL = 'http://insforge:7130';
-const USER_ID = '11111111-2222-3333-4444-555555555555';
-const USER_JWT = 'user_jwt_test';
+const BASE_URL = "http://insforge:7130";
+const USER_ID = "11111111-2222-3333-4444-555555555555";
+const USER_JWT = "user_jwt_test";
 
 main().catch((err) => {
   process.stderr.write(`${err && err.stack ? err.stack : String(err)}\n`);
@@ -17,17 +17,23 @@ main().catch((err) => {
 async function main() {
   setDenoEnv();
 
-  const repoRoot = path.resolve(__dirname, '..', '..');
-  const issueFn = require(path.join(repoRoot, 'insforge-functions', 'vibeusage-public-view-issue.js'));
-  const revokeFn = require(path.join(repoRoot, 'insforge-functions', 'vibeusage-public-view-revoke.js'));
-  const statusFn = require(path.join(repoRoot, 'insforge-functions', 'vibeusage-public-view-status.js'));
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const issueFn = require(
+    path.join(repoRoot, "insforge-functions", "vibeusage-public-view-issue.js"),
+  );
+  const revokeFn = require(
+    path.join(repoRoot, "insforge-functions", "vibeusage-public-view-revoke.js"),
+  );
+  const statusFn = require(
+    path.join(repoRoot, "insforge-functions", "vibeusage-public-view-status.js"),
+  );
 
   const state = {
     row: null,
     upserts: 0,
     selects: 0,
     inserts: 0,
-    updates: 0
+    updates: 0,
   };
 
   globalThis.createClient = makeClient({ userId: USER_ID, userJwt: USER_JWT, state });
@@ -37,9 +43,9 @@ async function main() {
 
   const issued = await callIssue(issueFn);
   assert.equal(issued.enabled, true);
-  assert.ok(typeof issued.share_token === 'string' && issued.share_token.length > 0);
+  assert.ok(typeof issued.share_token === "string" && issued.share_token.length > 0);
 
-  const expectedHash = createHash('sha256').update(issued.share_token).digest('hex');
+  const expectedHash = createHash("sha256").update(issued.share_token).digest("hex");
   assert.equal(state.row?.token_hash, expectedHash);
   assert.equal(state.row?.revoked_at, null);
 
@@ -48,12 +54,12 @@ async function main() {
 
   const revoked = await callRevoke(revokeFn);
   assert.equal(revoked.enabled, false);
-  assert.ok(typeof state.row?.revoked_at === 'string');
+  assert.ok(typeof state.row?.revoked_at === "string");
 
   const status2 = await callStatus(statusFn);
   assert.equal(status2.enabled, false);
 
-  process.stdout.write('ok: public view issue/revoke/status flow\n');
+  process.stdout.write("ok: public view issue/revoke/status flow\n");
 }
 
 function makeClient({ userId, userJwt, state }) {
@@ -62,47 +68,47 @@ function makeClient({ userId, userJwt, state }) {
 
     return {
       auth: {
-        getCurrentUser: async () => ({ data: { user: { id: userId } }, error: null })
+        getCurrentUser: async () => ({ data: { user: { id: userId } }, error: null }),
       },
       database: {
         from: (table) => {
-          if (table === 'vibeusage_user_settings') {
+          if (table === "vibeusage_user_settings") {
             return {
               select: () => ({
                 eq: (col, value) => {
-                  assert.equal(col, 'user_id');
+                  assert.equal(col, "user_id");
                   assert.equal(value, userId);
                   return {
                     maybeSingle: async () => ({
                       data: { leaderboard_public: true },
-                      error: null
-                    })
+                      error: null,
+                    }),
                   };
-                }
-              })
+                },
+              }),
             };
           }
 
-          assert.equal(table, 'vibeusage_public_views');
+          assert.equal(table, "vibeusage_public_views");
 
           return {
             upsert: async (rows, options) => {
               state.upserts += 1;
-              assert.equal(options?.onConflict, 'user_id');
+              assert.equal(options?.onConflict, "user_id");
               state.row = rows?.[0] || null;
               return { error: null };
             },
             select: () => ({
               eq: (col, value) => {
-                assert.equal(col, 'user_id');
+                assert.equal(col, "user_id");
                 assert.equal(value, userId);
                 return {
                   maybeSingle: async () => {
                     state.selects += 1;
                     return { data: state.row, error: null };
-                  }
+                  },
                 };
-              }
+              },
             }),
             insert: async (rows) => {
               state.inserts += 1;
@@ -111,24 +117,24 @@ function makeClient({ userId, userJwt, state }) {
             },
             update: (values) => ({
               eq: async (col, value) => {
-                assert.equal(col, 'user_id');
+                assert.equal(col, "user_id");
                 assert.equal(value, userId);
                 state.updates += 1;
                 state.row = { ...(state.row || { user_id: userId }), ...values, user_id: userId };
                 return { error: null };
-              }
-            })
+              },
+            }),
           };
-        }
-      }
+        },
+      },
     };
   };
 }
 
 async function callIssue(fn) {
-  const req = new Request('http://localhost/functions/vibeusage-public-view-issue', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${USER_JWT}` }
+  const req = new Request("http://localhost/functions/vibeusage-public-view-issue", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${USER_JWT}` },
   });
 
   const res = await fn(req);
@@ -137,9 +143,9 @@ async function callIssue(fn) {
 }
 
 async function callRevoke(fn) {
-  const req = new Request('http://localhost/functions/vibeusage-public-view-revoke', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${USER_JWT}` }
+  const req = new Request("http://localhost/functions/vibeusage-public-view-revoke", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${USER_JWT}` },
   });
 
   const res = await fn(req);
@@ -148,9 +154,9 @@ async function callRevoke(fn) {
 }
 
 async function callStatus(fn) {
-  const req = new Request('http://localhost/functions/vibeusage-public-view-status', {
-    method: 'GET',
-    headers: { Authorization: `Bearer ${USER_JWT}` }
+  const req = new Request("http://localhost/functions/vibeusage-public-view-status", {
+    method: "GET",
+    headers: { Authorization: `Bearer ${USER_JWT}` },
   });
 
   const res = await fn(req);
@@ -162,9 +168,9 @@ function setDenoEnv() {
   globalThis.Deno = {
     env: {
       get(key) {
-        if (key === 'INSFORGE_INTERNAL_URL') return BASE_URL;
+        if (key === "INSFORGE_INTERNAL_URL") return BASE_URL;
         return undefined;
-      }
-    }
+      },
+    },
   };
 }

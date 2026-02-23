@@ -2,7 +2,7 @@ name: Refresh Leaderboard Total Snapshot
 
 on:
   schedule:
-    - cron: '0 2 * * *'
+    - cron: "0 2 * * *"
   workflow_dispatch:
 
 jobs:
@@ -51,4 +51,3 @@ jobs:
             echo "Refresh failed (HTTP ${status}) period=total" >&2
             exit 1
           fi
-

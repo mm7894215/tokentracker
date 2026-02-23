@@ -1,5 +1,4 @@
-export const AUTH_CALLBACK_RETRY_KEY =
-  "vibeusage.dashboard.auth_callback_retry.v1";
+export const AUTH_CALLBACK_RETRY_KEY = "vibeusage.dashboard.auth_callback_retry.v1";
 
 // Fallback for environments where sessionStorage is blocked (Safari private mode,
 // some in-app webviews, strict tracking protection). window.name survives reloads
@@ -9,7 +8,7 @@ let memoryRetry: string | null = null;
 
 export function getSafeSessionStorage(
   getter: () => Storage | null = () =>
-    typeof window === "undefined" ? null : window.sessionStorage
+    typeof window === "undefined" ? null : window.sessionStorage,
 ) {
   try {
     return getter();
@@ -133,11 +132,11 @@ export function hasAuthCallbackParams(search: any) {
   const params = new URLSearchParams(normalized);
   return Boolean(
     params.get("insforge_code") ||
-      params.get("access_token") ||
-      params.get("user_id") ||
-      params.get("email") ||
-      params.get("csrf_token") ||
-      params.get("error")
+    params.get("access_token") ||
+    params.get("user_id") ||
+    params.get("email") ||
+    params.get("csrf_token") ||
+    params.get("error"),
   );
 }
 

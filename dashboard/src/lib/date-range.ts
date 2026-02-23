@@ -48,7 +48,7 @@ function formatDateParts(parts: any) {
 
 export function getRangeForPeriod(
   period: any,
-  { timeZone, offsetMinutes, now }: DateRangeOptions = {}
+  { timeZone, offsetMinutes, now }: DateRangeOptions = {},
 ) {
   const baseDate = now instanceof Date && Number.isFinite(now.getTime()) ? now : new Date();
   const parts = getLocalDateParts({ timeZone, offsetMinutes, date: baseDate });
@@ -99,7 +99,5 @@ export function getDefaultRange() {
 }
 
 function addUtcDays(date: Date, days: number) {
-  return new Date(
-    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() + days)
-  );
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() + days));
 }

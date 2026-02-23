@@ -1,22 +1,22 @@
-const os = require('node:os');
-const path = require('node:path');
-const fs = require('node:fs/promises');
-const fssync = require('node:fs');
-const cp = require('node:child_process');
+const os = require("node:os");
+const path = require("node:path");
+const fs = require("node:fs/promises");
+const fssync = require("node:fs");
+const cp = require("node:child_process");
 
-const OPENCLAW_HOOK_NAME = 'vibeusage-openclaw-sync';
-const OPENCLAW_HOOK_DIRNAME = 'openclaw-hook';
+const OPENCLAW_HOOK_NAME = "vibeusage-openclaw-sync";
+const OPENCLAW_HOOK_DIRNAME = "openclaw-hook";
 
 function resolveOpenclawHookPaths({ home = os.homedir(), trackerDir, env = process.env } = {}) {
-  if (!trackerDir) throw new Error('trackerDir is required');
+  if (!trackerDir) throw new Error("trackerDir is required");
 
   const openclawConfigPath =
-    normalizeString(env.OPENCLAW_CONFIG_PATH) || path.join(home, '.openclaw', 'openclaw.json');
+    normalizeString(env.OPENCLAW_CONFIG_PATH) || path.join(home, ".openclaw", "openclaw.json");
 
   const openclawHome =
     normalizeString(env.VIBEUSAGE_OPENCLAW_HOME) ||
     normalizeString(env.OPENCLAW_STATE_DIR) ||
-    path.join(home, '.openclaw');
+    path.join(home, ".openclaw");
 
   const hookDir = path.join(trackerDir, OPENCLAW_HOOK_DIRNAME);
   const hookEntryDir = path.join(hookDir, OPENCLAW_HOOK_NAME);
@@ -26,21 +26,26 @@ function resolveOpenclawHookPaths({ home = os.homedir(), trackerDir, env = proce
     hookDir,
     hookEntryDir,
     openclawConfigPath,
-    openclawHome
+    openclawHome,
   };
 }
 
-async function installOpenclawHook({ home = os.homedir(), trackerDir, packageName = 'vibeusage', env = process.env } = {}) {
+async function installOpenclawHook({
+  home = os.homedir(),
+  trackerDir,
+  packageName = "vibeusage",
+  env = process.env,
+} = {}) {
   const paths = resolveOpenclawHookPaths({ home, trackerDir, env });
 
   await ensureOpenclawHookFiles({
     hookDir: paths.hookDir,
     trackerDir,
     packageName,
-    openclawHome: paths.openclawHome
+    openclawHome: paths.openclawHome,
   });
 
-  const installResult = runOpenclawCli(['hooks', 'install', '--link', paths.hookDir], env);
+  const installResult = runOpenclawCli(["hooks", "install", "--link", paths.hookDir], env);
   if (installResult.skippedReason) {
     return { configured: false, ...paths, ...installResult };
   }
@@ -48,28 +53,37 @@ async function installOpenclawHook({ home = os.homedir(), trackerDir, packageNam
   const state = await probeOpenclawHookState({ home, trackerDir, env });
   return {
     configured: state.configured,
-    changed: /Linked hook path:/i.test(installResult.stdout || ''),
+    changed: /Linked hook path:/i.test(installResult.stdout || ""),
     ...paths,
     stdout: installResult.stdout,
     stderr: installResult.stderr,
-    code: installResult.code
+    code: installResult.code,
   };
 }
 
-async function ensureOpenclawHookFiles({ hookDir, trackerDir, packageName = 'vibeusage', openclawHome } = {}) {
-  if (!hookDir || !trackerDir) throw new Error('hookDir and trackerDir are required');
+async function ensureOpenclawHookFiles({
+  hookDir,
+  trackerDir,
+  packageName = "vibeusage",
+  openclawHome,
+} = {}) {
+  if (!hookDir || !trackerDir) throw new Error("hookDir and trackerDir are required");
 
   const hookEntryDir = path.join(hookDir, OPENCLAW_HOOK_NAME);
   await fs.mkdir(hookEntryDir, { recursive: true });
 
-  const hookMdPath = path.join(hookEntryDir, 'HOOK.md');
-  const handlerPath = path.join(hookEntryDir, 'handler.js');
+  const hookMdPath = path.join(hookEntryDir, "HOOK.md");
+  const handlerPath = path.join(hookEntryDir, "handler.js");
 
-  await fs.writeFile(hookMdPath, buildHookMarkdown(), 'utf8');
+  await fs.writeFile(hookMdPath, buildHookMarkdown(), "utf8");
   await fs.writeFile(
     handlerPath,
-    buildHookHandler({ trackerDir, packageName, openclawHome: openclawHome || path.join(os.homedir(), '.openclaw') }),
-    'utf8'
+    buildHookHandler({
+      trackerDir,
+      packageName,
+      openclawHome: openclawHome || path.join(os.homedir(), ".openclaw"),
+    }),
+    "utf8",
   );
 }
 
@@ -78,21 +92,22 @@ async function probeOpenclawHookState({ home = os.homedir(), trackerDir, env = p
   const { openclawConfigPath, hookDir, hookEntryDir, hookName } = paths;
 
   const hookFilesReady =
-    fssync.existsSync(path.join(hookEntryDir, 'HOOK.md')) && fssync.existsSync(path.join(hookEntryDir, 'handler.js'));
+    fssync.existsSync(path.join(hookEntryDir, "HOOK.md")) &&
+    fssync.existsSync(path.join(hookEntryDir, "handler.js"));
 
   let cfg = null;
   try {
-    const raw = await fs.readFile(openclawConfigPath, 'utf8');
+    const raw = await fs.readFile(openclawConfigPath, "utf8");
     cfg = JSON.parse(raw);
   } catch (err) {
-    if (err?.code === 'ENOENT' || err?.code === 'ENOTDIR') {
+    if (err?.code === "ENOENT" || err?.code === "ENOTDIR") {
       return {
         configured: false,
         enabled: false,
         linked: false,
         hookFilesReady,
-        skippedReason: 'openclaw-config-missing',
-        ...paths
+        skippedReason: "openclaw-config-missing",
+        ...paths,
       };
     }
     return {
@@ -100,42 +115,48 @@ async function probeOpenclawHookState({ home = os.homedir(), trackerDir, env = p
       enabled: false,
       linked: false,
       hookFilesReady,
-      skippedReason: 'openclaw-config-unreadable',
+      skippedReason: "openclaw-config-unreadable",
       error: err?.message || String(err),
-      ...paths
+      ...paths,
     };
   }
 
   const enabled = Boolean(cfg?.hooks?.internal?.entries?.[hookName]?.enabled);
-  const extraDirs = Array.isArray(cfg?.hooks?.internal?.load?.extraDirs) ? cfg.hooks.internal.load.extraDirs : [];
+  const extraDirs = Array.isArray(cfg?.hooks?.internal?.load?.extraDirs)
+    ? cfg.hooks.internal.load.extraDirs
+    : [];
   const normalizedHookDir = path.resolve(hookDir);
-  const linked = extraDirs.some((entry) => path.resolve(String(entry || '')) === normalizedHookDir);
+  const linked = extraDirs.some((entry) => path.resolve(String(entry || "")) === normalizedHookDir);
 
   return {
     configured: enabled && linked,
     enabled,
     linked,
     hookFilesReady,
-    ...paths
+    ...paths,
   };
 }
 
-async function removeOpenclawHookConfig({ home = os.homedir(), trackerDir, env = process.env } = {}) {
+async function removeOpenclawHookConfig({
+  home = os.homedir(),
+  trackerDir,
+  env = process.env,
+} = {}) {
   const paths = resolveOpenclawHookPaths({ home, trackerDir, env });
   const { openclawConfigPath, hookDir, hookName } = paths;
 
   let cfg;
   try {
-    cfg = JSON.parse(await fs.readFile(openclawConfigPath, 'utf8'));
+    cfg = JSON.parse(await fs.readFile(openclawConfigPath, "utf8"));
   } catch (err) {
-    if (err?.code === 'ENOENT' || err?.code === 'ENOTDIR') {
-      return { removed: false, skippedReason: 'openclaw-config-missing', ...paths };
+    if (err?.code === "ENOENT" || err?.code === "ENOTDIR") {
+      return { removed: false, skippedReason: "openclaw-config-missing", ...paths };
     }
     return {
       removed: false,
-      skippedReason: 'openclaw-config-unreadable',
+      skippedReason: "openclaw-config-unreadable",
       error: err?.message || String(err),
-      ...paths
+      ...paths,
     };
   }
 
@@ -152,7 +173,7 @@ async function removeOpenclawHookConfig({ home = os.homedir(), trackerDir, env =
   if (internal?.load && Array.isArray(internal.load.extraDirs)) {
     const before = internal.load.extraDirs;
     const target = path.resolve(hookDir);
-    const after = before.filter((entry) => path.resolve(String(entry || '')) !== target);
+    const after = before.filter((entry) => path.resolve(String(entry || "")) !== target);
     if (after.length !== before.length) {
       internal.load.extraDirs = after;
       changed = true;
@@ -161,7 +182,7 @@ async function removeOpenclawHookConfig({ home = os.homedir(), trackerDir, env =
     }
   }
 
-  if (internal?.installs && typeof internal.installs === 'object') {
+  if (internal?.installs && typeof internal.installs === "object") {
     const installs = internal.installs;
     if (Object.prototype.hasOwnProperty.call(installs, hookName)) {
       delete installs[hookName];
@@ -194,7 +215,7 @@ async function removeOpenclawHookConfig({ home = os.homedir(), trackerDir, env =
   }
 
   if (changed) {
-    await fs.writeFile(openclawConfigPath, `${JSON.stringify(cfg, null, 2)}\n`, 'utf8');
+    await fs.writeFile(openclawConfigPath, `${JSON.stringify(cfg, null, 2)}\n`, "utf8");
   }
 
   await fs.rm(hookDir, { recursive: true, force: true }).catch(() => {});
@@ -205,45 +226,45 @@ async function removeOpenclawHookConfig({ home = os.homedir(), trackerDir, env =
 function runOpenclawCli(args, env = process.env) {
   let res;
   try {
-    res = cp.spawnSync('openclaw', args, {
+    res = cp.spawnSync("openclaw", args, {
       env,
-      encoding: 'utf8',
-      timeout: 30_000
+      encoding: "utf8",
+      timeout: 30_000,
     });
   } catch (err) {
     return {
       code: 1,
-      skippedReason: err?.code === 'ENOENT' ? 'openclaw-cli-missing' : 'openclaw-cli-error',
+      skippedReason: err?.code === "ENOENT" ? "openclaw-cli-missing" : "openclaw-cli-error",
       error: err?.message || String(err),
-      stdout: '',
-      stderr: ''
+      stdout: "",
+      stderr: "",
     };
   }
 
-  if (res.error?.code === 'ENOENT') {
+  if (res.error?.code === "ENOENT") {
     return {
       code: 1,
-      skippedReason: 'openclaw-cli-missing',
+      skippedReason: "openclaw-cli-missing",
       error: res.error.message,
-      stdout: res.stdout || '',
-      stderr: res.stderr || ''
+      stdout: res.stdout || "",
+      stderr: res.stderr || "",
     };
   }
 
   if ((res.status || 0) !== 0) {
     return {
       code: Number(res.status || 1),
-      skippedReason: 'openclaw-hooks-install-failed',
-      error: (res.stderr || res.stdout || '').trim() || 'openclaw hooks install failed',
-      stdout: res.stdout || '',
-      stderr: res.stderr || ''
+      skippedReason: "openclaw-hooks-install-failed",
+      error: (res.stderr || res.stdout || "").trim() || "openclaw hooks install failed",
+      stdout: res.stdout || "",
+      stderr: res.stderr || "",
     };
   }
 
   return {
     code: 0,
-    stdout: res.stdout || '',
-    stderr: res.stderr || ''
+    stdout: res.stdout || "",
+    stderr: res.stderr || "",
   };
 }
 
@@ -261,12 +282,13 @@ Triggers non-blocking 'vibeusage sync --auto --from-openclaw' runs when OpenClaw
 `;
 }
 
-function buildHookHandler({ trackerDir, packageName = 'vibeusage', openclawHome }) {
-  const trackerBinPath = path.join(trackerDir, 'app', 'bin', 'tracker.js');
-  const fallbackPkg = packageName || 'vibeusage';
-  const safeOpenclawHome = openclawHome || path.join(os.homedir(), '.openclaw');
+function buildHookHandler({ trackerDir, packageName = "vibeusage", openclawHome }) {
+  const trackerBinPath = path.join(trackerDir, "app", "bin", "tracker.js");
+  const fallbackPkg = packageName || "vibeusage";
+  const safeOpenclawHome = openclawHome || path.join(os.homedir(), ".openclaw");
 
-  return `'use strict';\n` +
+  return (
+    `'use strict';\n` +
     `const fs = require('node:fs');\n` +
     `const path = require('node:path');\n` +
     `const cp = require('node:child_process');\n` +
@@ -377,11 +399,12 @@ function buildHookHandler({ trackerDir, packageName = 'vibeusage', openclawHome 
     `    normalize(ctx.sessionEntry && ctx.sessionEntry.sessionId) ||\n` +
     `    normalize(ctx.sessionId)\n` +
     `  );\n` +
-    `}\n`;
+    `}\n`
+  );
 }
 
 function normalizeString(value) {
-  if (typeof value !== 'string') return null;
+  if (typeof value !== "string") return null;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
 }
@@ -393,5 +416,5 @@ module.exports = {
   ensureOpenclawHookFiles,
   installOpenclawHook,
   probeOpenclawHookState,
-  removeOpenclawHookConfig
+  removeOpenclawHookConfig,
 };

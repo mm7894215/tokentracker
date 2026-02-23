@@ -1,23 +1,23 @@
-const path = require('node:path');
+const path = require("node:path");
 
-const CODE_EXTS = new Set(['.ts', '.tsx', '.js', '.jsx']);
-const NOISE_SEGMENTS = ['__tests__', 'test', 'tests', 'fixtures', 'dist', 'build', 'generated'];
-const SKIP_DIRS = new Set(['node_modules', '.git', '.tmp', 'dist', 'build']);
+const CODE_EXTS = new Set([".ts", ".tsx", ".js", ".jsx"]);
+const NOISE_SEGMENTS = ["__tests__", "test", "tests", "fixtures", "dist", "build", "generated"];
+const SKIP_DIRS = new Set(["node_modules", ".git", ".tmp", "dist", "build"]);
 
 function scanDomainMetrics({ rootDir, domains, fs, path: pathMod = path }) {
-  return domains.map(domain => {
+  return domains.map((domain) => {
     const { fileCount, noiseCount } = countFiles({
       baseDir: rootDir,
       relPaths: domain.paths,
       fs,
-      path: pathMod
+      path: pathMod,
     });
     const noiseRatio = fileCount === 0 ? 0 : noiseCount / fileCount;
     return {
       name: domain.name,
       fileCount,
       noiseCount,
-      noiseRatio
+      noiseRatio,
     };
   });
 }
@@ -45,7 +45,7 @@ function countFiles({ baseDir, relPaths, fs, path: pathMod }) {
       const ext = pathMod.extname(full);
       if (!CODE_EXTS.has(ext)) continue;
       fileCount += 1;
-      if (NOISE_SEGMENTS.some(seg => full.split(pathMod.sep).includes(seg))) {
+      if (NOISE_SEGMENTS.some((seg) => full.split(pathMod.sep).includes(seg))) {
         noiseCount += 1;
       }
     }

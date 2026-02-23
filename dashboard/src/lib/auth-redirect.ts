@@ -76,10 +76,7 @@ export function saveRedirectToStorage(target: any, storage: any = getRedirectSto
   }
 }
 
-export function savePostAuthPathToStorage(
-  target: any,
-  storage: any = getRedirectStorage()
-) {
+export function savePostAuthPathToStorage(target: any, storage: any = getRedirectStorage()) {
   if (!storage || typeof storage.setItem !== "function") return false;
   const valid = validateNextPath(target);
   if (!valid) return false;
@@ -159,7 +156,7 @@ export function stripNextParam(urlString: any) {
 
 export function buildRedirectUrl(
   target: any,
-  { accessToken, userId, email, name }: Record<string, any> = {}
+  { accessToken, userId, email, name }: Record<string, any> = {},
 ) {
   const url = new URL(target);
   if (typeof accessToken === "string" && accessToken.length > 0) {
@@ -177,10 +174,7 @@ export function buildRedirectUrl(
   return url.toString();
 }
 
-export function storeRedirectFromSearch(
-  search: any,
-  storage: any = getRedirectStorage()
-) {
+export function storeRedirectFromSearch(search: any, storage: any = getRedirectStorage()) {
   const raw = parseRedirectParam(search);
   const valid = validateLoopbackHttpRedirect(raw);
   const saved = valid ? saveRedirectToStorage(valid, storage) : false;
@@ -194,10 +188,7 @@ export function storeRedirectFromSearch(
   return { raw, valid, saved };
 }
 
-export function storePostAuthPathFromSearch(
-  search: any,
-  storage: any = getRedirectStorage()
-) {
+export function storePostAuthPathFromSearch(search: any, storage: any = getRedirectStorage()) {
   const raw = parseNextParam(search);
   const valid = validateNextPath(raw);
   const saved = valid ? savePostAuthPathToStorage(valid, storage) : false;
@@ -211,10 +202,7 @@ export function storePostAuthPathFromSearch(
   return { raw, valid, saved };
 }
 
-export function resolveRedirectTarget(
-  search: any,
-  storage: any = getRedirectStorage()
-) {
+export function resolveRedirectTarget(search: any, storage: any = getRedirectStorage()) {
   const raw = parseRedirectParam(search);
   const fromQuery = validateLoopbackHttpRedirect(raw);
   if (fromQuery) {

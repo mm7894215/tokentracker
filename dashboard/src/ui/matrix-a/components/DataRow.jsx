@@ -7,12 +7,8 @@ export function DataRow({ label, value, subValue, valueClassName = "" }) {
         {label}
       </span>
       <div className="flex items-center space-x-3">
-        {subValue ? (
-          <span className="text-caption text-matrix-dim italic">{subValue}</span>
-        ) : null}
-        <span className={`font-black tracking-tight text-body ${valueClassName}`}>
-          {value}
-        </span>
+        {subValue ? <span className="text-caption text-matrix-dim italic">{subValue}</span> : null}
+        <span className={`font-black tracking-tight text-body ${valueClassName}`}>{value}</span>
       </div>
     </div>
   );

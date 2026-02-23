@@ -1,22 +1,22 @@
-'use strict';
+"use strict";
 
 function loadInsforgeSdk() {
   try {
-    return require('@insforge/sdk');
+    return require("@insforge/sdk");
   } catch (err) {
-    const wrapped = new Error('Missing dependency @insforge/sdk. Please reinstall vibeusage.');
+    const wrapped = new Error("Missing dependency @insforge/sdk. Please reinstall vibeusage.");
     wrapped.cause = err;
     throw wrapped;
   }
 }
 
 function getAnonKey({ env = process.env } = {}) {
-  return env.VIBEUSAGE_INSFORGE_ANON_KEY || '';
+  return env.VIBEUSAGE_INSFORGE_ANON_KEY || "";
 }
 
 function getHttpTimeoutMs({ env = process.env } = {}) {
-  const raw = readEnvValue(env, ['VIBEUSAGE_HTTP_TIMEOUT_MS']);
-  if (raw == null || raw === '') return 20_000;
+  const raw = readEnvValue(env, ["VIBEUSAGE_HTTP_TIMEOUT_MS"]);
+  if (raw == null || raw === "") return 20_000;
   const n = Number(raw);
   if (!Number.isFinite(n)) return 20_000;
   if (n <= 0) return 0;
@@ -46,14 +46,14 @@ function createTimeoutFetch(baseFetch) {
 }
 
 function createInsforgeClient({ baseUrl, accessToken } = {}) {
-  if (!baseUrl) throw new Error('Missing baseUrl');
+  if (!baseUrl) throw new Error("Missing baseUrl");
   const { createClient } = loadInsforgeSdk();
   const anonKey = getAnonKey();
   return createClient({
     baseUrl,
     anonKey: anonKey || undefined,
     edgeFunctionToken: accessToken || undefined,
-    fetch: createTimeoutFetch(globalThis.fetch)
+    fetch: createTimeoutFetch(globalThis.fetch),
   });
 }
 
@@ -67,7 +67,7 @@ function readEnvValue(env, keys) {
   if (!env || !Array.isArray(keys)) return undefined;
   for (const key of keys) {
     const value = env?.[key];
-    if (value != null && value !== '') return value;
+    if (value != null && value !== "") return value;
   }
   return undefined;
 }
@@ -75,5 +75,5 @@ function readEnvValue(env, keys) {
 module.exports = {
   createInsforgeClient,
   getAnonKey,
-  getHttpTimeoutMs
+  getHttpTimeoutMs,
 };

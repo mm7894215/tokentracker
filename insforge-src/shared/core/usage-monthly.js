@@ -1,10 +1,10 @@
-'use strict';
+"use strict";
 
-const { addDatePartsMonths, getLocalParts } = require('../date');
-const { toBigInt } = require('../numbers');
-const { normalizeUsageModel } = require('../model');
-const { extractDateKey, resolveIdentityAtDate } = require('../model-alias-timeline');
-const { resolveBillableTotals } = require('../usage-aggregate');
+const { addDatePartsMonths, getLocalParts } = require("../date");
+const { toBigInt } = require("../numbers");
+const { normalizeUsageModel } = require("../model");
+const { extractDateKey, resolveIdentityAtDate } = require("../model-alias-timeline");
+const { resolveBillableTotals } = require("../usage-aggregate");
 
 function initMonthlyBuckets({ startMonthParts, months }) {
   const monthKeys = [];
@@ -12,7 +12,7 @@ function initMonthlyBuckets({ startMonthParts, months }) {
   const count = Number.isFinite(months) ? months : 0;
   for (let i = 0; i < count; i += 1) {
     const parts = addDatePartsMonths(startMonthParts, i);
-    const key = `${parts.year}-${String(parts.month).padStart(2, '0')}`;
+    const key = `${parts.year}-${String(parts.month).padStart(2, "0")}`;
     monthKeys.push(key);
     buckets.set(key, {
       total: 0n,
@@ -20,7 +20,7 @@ function initMonthlyBuckets({ startMonthParts, months }) {
       input: 0n,
       cached: 0n,
       output: 0n,
-      reasoning: 0n
+      reasoning: 0n,
     });
   }
   return { monthKeys, buckets };
@@ -34,7 +34,7 @@ function ingestMonthlyRow({
   canonicalModel,
   hasModelFilter,
   aliasTimeline,
-  to
+  to,
 }) {
   const ts = row?.hour_start;
   if (!ts) return false;
@@ -49,13 +49,13 @@ function ingestMonthlyRow({
       rawModel: canonicalModel,
       usageKey: canonicalModel,
       dateKey,
-      timeline: aliasTimeline
+      timeline: aliasTimeline,
     });
     if (identity.model_id !== filterIdentity.model_id) return false;
   }
 
   const localParts = getLocalParts(dt, tzContext);
-  const key = `${localParts.year}-${String(localParts.month).padStart(2, '0')}`;
+  const key = `${localParts.year}-${String(localParts.month).padStart(2, "0")}`;
   const bucket = buckets?.get ? buckets.get(key) : null;
   if (!bucket) return false;
 
@@ -71,5 +71,5 @@ function ingestMonthlyRow({
 
 module.exports = {
   initMonthlyBuckets,
-  ingestMonthlyRow
+  ingestMonthlyRow,
 };

@@ -19,6 +19,7 @@ incident_window: 2026-02-13..2026-02-14
 # Postmortem: OpenClaw Usage Ingest Gap (JSONL-first assumption broke)
 
 ## L2 Brief (2 min)
+
 - **What happened:** OpenClaw hook and upload succeeded, but many runs still ingested `0` buckets.
 - **Why design mismatched reality:** Parser assumed OpenClaw JSONL always contains non-zero usage; production had missing/empty/zero-usage JSONL while `sessions.json` totals were high.
 - **Why not detected early:** Health checks tracked trigger and transport success, not semantic completeness (`totals > 0` but parsed usage `= 0`).
@@ -26,11 +27,13 @@ incident_window: 2026-02-13..2026-02-14
 - **When to read this next time:** Any work touching `openclaw-sync`, source adapters, lifecycle hooks, ingest diagnostics, or backfill automation.
 
 ## 1. Scope
+
 - In scope: OpenClaw hook trigger path, `sync --from-openclaw`, OpenClaw session usage parsing, fallback ingest logic.
 - Out of scope: Codex notify implementation, non-OpenClaw sources (Claude/Gemini/Opencode), dashboard rendering.
 - Time window (2026-02-13 → 2026-02-14).
 
 ## 2. Plan Before Incident
+
 - Intended outcomes:
   - OpenClaw hook should auto-trigger `vibeusage sync --from-openclaw`.
   - Sync should ingest OpenClaw usage from session JSONL incrementally and upload automatically.
@@ -40,6 +43,7 @@ incident_window: 2026-02-13..2026-02-14
   - If hook runs and upload path is healthy, data should appear in `source=openclaw` without extra logic.
 
 ## 3. Outcome vs Plan
+
 - What actually happened:
   - Hook wiring and upload transport were healthy.
   - But many OpenClaw sessions had missing/empty JSONL or only `delivery-mirror` entries with `totalTokens=0`.
@@ -49,6 +53,7 @@ incident_window: 2026-02-13..2026-02-14
   - Detection was missing: system saw `sync success` but did not flag `session totals > 0 while parsed usage == 0`.
 
 ## 4. Impact
+
 - User/customer impact:
   - `source=openclaw` usage under-counted/missing for affected windows.
 - Ops impact:
@@ -58,6 +63,7 @@ incident_window: 2026-02-13..2026-02-14
   - Backfill executed for missing sessions; DB confirmed ingest restored.
 
 ## 5. Timeline
+
 - Detection date (2026-02-13):
   - Found repeated successful syncs with `New buckets queued: 0` despite high `sessions.json` totals.
 - Mitigation date (2026-02-14):
@@ -68,6 +74,7 @@ incident_window: 2026-02-13..2026-02-14
   - Ran production backfill and verified `source=openclaw` rows/tokens via InsForge MCP.
 
 ## 6. Evidence
+
 - OpenClaw inconsistency examples:
   - `sessions.json` had high `totalTokens`, while matching JSONL was missing/empty/zero-usage.
 - Code changes:
@@ -82,6 +89,7 @@ incident_window: 2026-02-13..2026-02-14
     - `rows_count=7`, `total_tokens=1,258,845`, `input_tokens=655,490`, `output_tokens=8,597`.
 
 ## 7. Root Causes
+
 - Primary cause (Design/Integration Contract):
   - Parser design assumed OpenClaw session JSONL is authoritative and sufficient.
   - In production, session summary totals (`sessions.json`) and JSONL usage events can diverge.
@@ -92,6 +100,7 @@ incident_window: 2026-02-13..2026-02-14
   - Initial trigger set missed practical lifecycle paths; `reset` was not covered.
 
 ## 8. Action Items
+
 - [ ] Add automated completeness check in `doctor`/diagnostics:
   - Detect sessions where `sessions.json.totalTokens > 0` but parsed JSONL contribution is 0 for N runs.
   - Owner: Victor, Due: 2026-02-16.
@@ -105,6 +114,7 @@ incident_window: 2026-02-13..2026-02-14
   - Owner: Victor, Due: 2026-02-16.
 
 ## 9. Prevention Rules
+
 - Rule 1: OpenClaw ingest must be multi-source resilient (JSONL primary + session totals fallback).
 - Rule 2: `Sync succeeded` is not enough; must track semantic completeness indicators.
 - Rule 3: Hook lifecycle coverage must include `new/reset/stop` unless OpenClaw event model changes.
@@ -114,6 +124,7 @@ incident_window: 2026-02-13..2026-02-14
   - Release checklist includes one MCP-side aggregate verification for `source=openclaw`.
 
 ## 10. Follow-up
+
 - Checkpoint date (2026-02-17).
 - Success criteria:
   - No new `totals>0 but queued=0` anomalies without explicit warning.

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-'use strict';
+"use strict";
 
-const assert = require('node:assert/strict');
+const assert = require("node:assert/strict");
 
 class DatabaseStub {
   constructor({ tokenRow }) {
@@ -40,21 +40,21 @@ function createClientStub(database) {
 
 async function runScenario({ name, lastSyncAt, expectUpdated }) {
   const tokenRow = {
-    id: 'token-id',
+    id: "token-id",
     revoked_at: null,
-    last_sync_at: lastSyncAt
+    last_sync_at: lastSyncAt,
   };
 
   const db = new DatabaseStub({ tokenRow });
   global.createClient = () => createClientStub(db);
-  delete require.cache[require.resolve('../../insforge-src/functions/vibeusage-sync-ping.js')];
-  const syncPing = require('../../insforge-src/functions/vibeusage-sync-ping.js');
+  delete require.cache[require.resolve("../../insforge-src/functions/vibeusage-sync-ping.js")];
+  const syncPing = require("../../insforge-src/functions/vibeusage-sync-ping.js");
 
   const res = await syncPing(
-    new Request('http://local/functions/vibeusage-sync-ping', {
-      method: 'POST',
-      headers: { Authorization: 'Bearer device-token' }
-    })
+    new Request("http://local/functions/vibeusage-sync-ping", {
+      method: "POST",
+      headers: { Authorization: "Bearer device-token" },
+    }),
   );
 
   const body = await res.json();
@@ -66,24 +66,24 @@ async function runScenario({ name, lastSyncAt, expectUpdated }) {
 }
 
 async function main() {
-  process.env.INSFORGE_INTERNAL_URL = 'http://insforge:7130';
-  process.env.INSFORGE_ANON_KEY = 'anon';
-  process.env.INSFORGE_SERVICE_ROLE_KEY = 'service';
+  process.env.INSFORGE_INTERNAL_URL = "http://insforge:7130";
+  process.env.INSFORGE_ANON_KEY = "anon";
+  process.env.INSFORGE_SERVICE_ROLE_KEY = "service";
 
   global.Deno = {
     env: {
       get(key) {
         const v = process.env[key];
-        return v == null || v === '' ? null : v;
-      }
-    }
+        return v == null || v === "" ? null : v;
+      },
+    },
   };
 
   const oldSync = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
   const recentSync = new Date(Date.now() - 10 * 60 * 1000).toISOString();
 
-  await runScenario({ name: 'old-sync', lastSyncAt: oldSync, expectUpdated: true });
-  await runScenario({ name: 'recent-sync', lastSyncAt: recentSync, expectUpdated: false });
+  await runScenario({ name: "old-sync", lastSyncAt: oldSync, expectUpdated: true });
+  await runScenario({ name: "recent-sync", lastSyncAt: recentSync, expectUpdated: false });
 }
 
 main().catch((err) => {

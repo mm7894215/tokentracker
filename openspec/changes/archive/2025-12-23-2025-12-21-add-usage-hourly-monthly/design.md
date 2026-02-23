@@ -3,11 +3,13 @@
 ## Scope
 
 IN:
+
 - 新增 **hourly** 与 **monthly** 聚合接口（UTC）。
 - Dashboard TREND 按 period 切换数据粒度（day=hourly，total=monthly 24）。
 - 与现有 daily/summary/heatmap 兼容，不引入自定义日期筛选。
 
 OUT:
+
 - 历史任意范围小时级查询（仅 day 当天 24 小时）。
 - 全量 monthly 分页浏览（先固定 24 个月窗口）。
 - 对外公开 API（仅已登录用户）。
@@ -17,11 +19,13 @@ OUT:
 ### Scope
 
 IN:
+
 - `GET /functions/vibescore-usage-hourly`（单日 24 小时）
 - `GET /functions/vibescore-usage-monthly`（最近 24 个月）
 - 前端 TREND 数据源切换与标签对齐
 
 OUT:
+
 - 自定义 `from/to` 时间选择
 - 预聚合/物化表（若性能触发再升级）
 
@@ -44,6 +48,7 @@ OUT:
 3. 前端只展示，不插值造数；缺口补 0 仅用于轴一致性。
 
 信任边界：
+
 - 仅允许已登录用户（`user_jwt`）。
 - 不返回任何 PII 或日志内容。
 

@@ -1,5 +1,4 @@
 import React from "react";
-
 import { copy } from "../lib/copy";
 import { toFiniteNumber } from "../lib/format";
 
@@ -25,9 +24,7 @@ export function Sparkline({ rows }) {
   });
 
   const d = pts
-    .map(
-      (p, i) => `${i === 0 ? "M" : "L"} ${p.x.toFixed(2)} ${p.y.toFixed(2)}`
-    )
+    .map((p, i) => `${i === 0 ? "M" : "L"} ${p.x.toFixed(2)} ${p.y.toFixed(2)}`)
     .join(" ");
 
   return (

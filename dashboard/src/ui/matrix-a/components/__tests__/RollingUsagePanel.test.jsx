@@ -1,5 +1,4 @@
 import { render, screen } from "@testing-library/react";
-
 import { copy } from "../../../../lib/copy";
 import { formatCompactNumber } from "../../../../lib/format";
 import { RollingUsagePanel } from "../RollingUsagePanel.jsx";

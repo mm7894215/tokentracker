@@ -13,6 +13,7 @@
 ### Task 1: Update auth session-expiry tests (RED)
 
 **Files:**
+
 - Modify: `test/dashboard-session-expired-banner.test.js`
 
 **Step 1: Write the failing test**
@@ -82,6 +83,7 @@ Expected: FAIL on new assertions (signedIn/sessionExpired guard, expired gate, b
 ### Task 2: Implement auth state machine + revalidate (GREEN)
 
 **Files:**
+
 - Modify: `dashboard/src/App.jsx`
 
 **Step 1: Guard auth with sessionExpired and derive signedIn from state**
@@ -89,12 +91,12 @@ Expected: FAIL on new assertions (signedIn/sessionExpired guard, expired gate, b
 Replace the current `signedIn` and `auth` wiring with:
 
 ```jsx
-  const signedIn = useInsforge && !sessionExpired;
+const signedIn = useInsforge && !sessionExpired;
 
-  const auth = useMemo(() => {
-    if (!useInsforge || sessionExpired) return null;
-    return insforgeAuth ?? insforgeAuthFallback;
-  }, [insforgeAuth, insforgeAuthFallback, sessionExpired, useInsforge]);
+const auth = useMemo(() => {
+  if (!useInsforge || sessionExpired) return null;
+  return insforgeAuth ?? insforgeAuthFallback;
+}, [insforgeAuth, insforgeAuthFallback, sessionExpired, useInsforge]);
 ```
 
 **Step 2: Revalidate using latest token**
@@ -102,27 +104,27 @@ Replace the current `signedIn` and `auth` wiring with:
 Replace the session-expired revalidation effect with:
 
 ```jsx
-  useEffect(() => {
-    if (!sessionExpired) {
-      lastProbeTokenRef.current = null;
-      return;
-    }
-    if (!insforgeSignedIn) {
-      lastProbeTokenRef.current = null;
-      return;
-    }
-    let active = true;
-    (async () => {
-      const token = await getInsforgeAccessToken();
-      if (!active) return;
-      if (!token || token === lastProbeTokenRef.current) return;
-      lastProbeTokenRef.current = token;
-      probeBackend({ baseUrl, accessToken: token }).catch(() => {});
-    })();
-    return () => {
-      active = false;
-    };
-  }, [baseUrl, getInsforgeAccessToken, insforgeSignedIn, sessionExpired]);
+useEffect(() => {
+  if (!sessionExpired) {
+    lastProbeTokenRef.current = null;
+    return;
+  }
+  if (!insforgeSignedIn) {
+    lastProbeTokenRef.current = null;
+    return;
+  }
+  let active = true;
+  (async () => {
+    const token = await getInsforgeAccessToken();
+    if (!active) return;
+    if (!token || token === lastProbeTokenRef.current) return;
+    lastProbeTokenRef.current = token;
+    probeBackend({ baseUrl, accessToken: token }).catch(() => {});
+  })();
+  return () => {
+    active = false;
+  };
+}, [baseUrl, getInsforgeAccessToken, insforgeSignedIn, sessionExpired]);
 ```
 
 **Step 3: Run test to verify it still fails (expected)**
@@ -136,6 +138,7 @@ Expected: FAIL (DashboardPage gating tests still failing).
 ### Task 3: Implement Dashboard expired gating + backend status gate (GREEN)
 
 **Files:**
+
 - Modify: `dashboard/src/pages/DashboardPage.jsx`
 
 **Step 1: Gate authAccessToken on signedIn**
@@ -143,9 +146,7 @@ Expected: FAIL (DashboardPage gating tests still failing).
 Replace the `authAccessToken` block with:
 
 ```jsx
-  const authAccessToken = signedIn
-    ? auth?.getAccessToken ?? auth?.accessToken ?? null
-    : null;
+const authAccessToken = signedIn ? (auth?.getAccessToken ?? auth?.accessToken ?? null) : null;
 ```
 
 **Step 2: Add expired gate + backend status gate**
@@ -153,17 +154,17 @@ Replace the `authAccessToken` block with:
 Add the gate booleans near the existing auth gate:
 
 ```jsx
-  const showExpiredGate = sessionExpired && !publicMode;
-  const requireAuthGate = !signedIn && !mockEnabled && !sessionExpired;
-  const showAuthGate = requireAuthGate && !publicMode;
+const showExpiredGate = sessionExpired && !publicMode;
+const requireAuthGate = !signedIn && !mockEnabled && !sessionExpired;
+const showAuthGate = requireAuthGate && !publicMode;
 ```
 
 Update `headerStatus` to only render when signed in:
 
 ```jsx
-  const headerStatus = signedIn ? (
-    <BackendStatus baseUrl={baseUrl} accessToken={authAccessToken} />
-  ) : null;
+const headerStatus = signedIn ? (
+  <BackendStatus baseUrl={baseUrl} accessToken={authAccessToken} />
+) : null;
 ```
 
 **Step 3: Gate main UI by expired/auth state**
@@ -171,31 +172,31 @@ Update `headerStatus` to only render when signed in:
 Replace the render section that currently shows both the expired banner and the grid with a single gate:
 
 ```jsx
-        {showExpiredGate ? (
-          <div className="mb-6">
-            <AsciiBox
-              title={copy("dashboard.session_expired.title")}
-              subtitle={copy("dashboard.session_expired.subtitle")}
-              className="border-[#00FF41]/40"
-            >
-              {/* keep existing expired copy + buttons */}
-            </AsciiBox>
-          </div>
-        ) : showAuthGate ? (
-          <div className="flex items-center justify-center">
-            <AsciiBox
-              title={copy("dashboard.auth_required.title")}
-              subtitle={copy("dashboard.auth_required.subtitle")}
-              className="w-full max-w-2xl"
-            >
-              {/* keep existing auth required copy + buttons */}
-            </AsciiBox>
-          </div>
-        ) : (
-          <>
-            {/* keep existing dashboard grid content */}
-          </>
-        )}
+{
+  showExpiredGate ? (
+    <div className="mb-6">
+      <AsciiBox
+        title={copy("dashboard.session_expired.title")}
+        subtitle={copy("dashboard.session_expired.subtitle")}
+        className="border-[#00FF41]/40"
+      >
+        {/* keep existing expired copy + buttons */}
+      </AsciiBox>
+    </div>
+  ) : showAuthGate ? (
+    <div className="flex items-center justify-center">
+      <AsciiBox
+        title={copy("dashboard.auth_required.title")}
+        subtitle={copy("dashboard.auth_required.subtitle")}
+        className="w-full max-w-2xl"
+      >
+        {/* keep existing auth required copy + buttons */}
+      </AsciiBox>
+    </div>
+  ) : (
+    <>{/* keep existing dashboard grid content */}</>
+  );
+}
 ```
 
 **Step 4: Run test to verify it passes**
@@ -209,6 +210,7 @@ Expected: PASS.
 ### Task 4: Canvas + OpenSpec + regression record + commit
 
 **Files:**
+
 - Modify: `architecture.canvas`
 - Modify: `openspec/changes/2026-01-15-auth-session-expiry-recovery/tasks.md`
 - Modify: `docs/pr/2026-01-15-auth-session-expiry-recovery.md`

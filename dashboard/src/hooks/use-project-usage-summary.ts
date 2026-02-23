@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
-
-import { getProjectUsageSummary } from "../lib/vibeusage-api";
-import { isMockEnabled } from "../lib/mock-data";
 import { isAccessTokenReady, resolveAuthAccessToken } from "../lib/auth-token";
+import { isMockEnabled } from "../lib/mock-data";
+import { getProjectUsageSummary } from "../lib/vibeusage-api";
 
 export function useProjectUsageSummary({
   baseUrl,
@@ -49,17 +48,7 @@ export function useProjectUsageSummary({
     } finally {
       setLoading(false);
     }
-  }, [
-    accessToken,
-    baseUrl,
-    from,
-    limit,
-    mockEnabled,
-    source,
-    timeZone,
-    to,
-    tzOffsetMinutes,
-  ]);
+  }, [accessToken, baseUrl, from, limit, mockEnabled, source, timeZone, to, tzOffsetMinutes]);
 
   useEffect(() => {
     if (!tokenReady && !mockEnabled) {

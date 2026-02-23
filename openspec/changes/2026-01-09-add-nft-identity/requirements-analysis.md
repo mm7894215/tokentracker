@@ -1,9 +1,11 @@
 # Requirement Analysis
 
 ## Goal
+
 - Launch a VibeUsage SBT NFT with a public identity display powered by InsForge2, using controlled minting and lifetime usage totals.
 
 ## Scope
+
 - In scope:
   - Public NFT page at `/nft/:tokenId` (no login required) with IdentityCard styling.
   - Read-only public edge function returning sanitized NFT display data.
@@ -21,6 +23,7 @@
   - Custom analytics or secondary leaderboards.
 
 ## Users / Actors
+
 - Public viewer (no auth)
 - Authenticated user (insforge2 login)
 - Admin/operator
@@ -29,6 +32,7 @@
 - Fiat checkout provider (TBD)
 
 ## Inputs
+
 - `tokenId` or wallet address
 - SIWE signature + nonce
 - Merkle proof + allowlist root
@@ -37,12 +41,14 @@
 - Registration timestamp (`auth.users.created_at`)
 
 ## Outputs
+
 - Public NFT display JSON (sanitized)
 - NFT public page rendering
 - Minted SBT token (on-chain)
 - DB rows for bindings, issuances, audit, totals
 
 ## Business Rules
+
 - One user binds exactly one wallet; one wallet maps to one user.
 - Each user can mint exactly one NFT; `tokenId` equals `issue_no`.
 - SBT is non-transferable; ERC-5192 lock state is true.
@@ -54,13 +60,15 @@
 - Total usage shows full number with thousands separators.
 
 ## Assumptions
+
 - Base mainnet single contract and single contract address.
 - IPFS pinning via Pinata or Web3.Storage.
- - Fiat checkout provider is MoonPay.
+- Fiat checkout provider is MoonPay.
 - Contract toolchain is Foundry.
 - Dashboard homepage remains unchanged (NFT uses independent totals).
 
 ## Dependencies
+
 - InsForge2 DB + edge functions
 - GitHub Actions schedule
 - Base RPC + block explorer
@@ -70,6 +78,7 @@
 - CDN caching for public endpoint
 
 ## Risks
+
 - Voucher misuse or replay if binding checks are weak.
 - Wallet binding hijack without strict SIWE + nonce validation.
 - PII leakage if public endpoint returns raw handle.

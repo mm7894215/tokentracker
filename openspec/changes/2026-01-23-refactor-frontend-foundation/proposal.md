@@ -1,9 +1,11 @@
 # Change: Refactor Frontend Foundation (Preserve UI/Data)
 
 ## Why
+
 The current frontend has accumulated technical debt and is hard to change safely. We need a clean rebuild that preserves UI styles and displayed data semantics, with a provable, automated baseline.
 
 ## What Changes
+
 - **BREAKING**: Replace the current frontend implementation with a new architecture.
 - Preserve **all** existing UI styles, layouts, and visual behavior across all frontend pages.
 - Preserve **all** displayed data semantics and formatting.
@@ -12,6 +14,7 @@ The current frontend has accumulated technical debt and is hard to change safely
 - Establish automated visual baselines using **agent-browser** with **mock data**.
 
 ## Decisions (Confirmed)
+
 - Scope: **all frontend** (dashboard) + `copy.jsx` included in baseline.
 - Routes unchanged: `/` and `/share/:token`.
 - Mock baseline: `dashboard/src/mock/data.json` + `VITE_USE_MOCK=1`.
@@ -25,5 +28,6 @@ The current frontend has accumulated technical debt and is hard to change safely
 - Copy system: `copy.csv` is frozen and authoritative.
 
 ## Impact
+
 - Affected spec: `vibeusage-tracker`
 - Affected code: `dashboard/` (all frontend entry points)

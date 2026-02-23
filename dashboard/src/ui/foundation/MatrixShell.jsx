@@ -1,7 +1,6 @@
 import React from "react";
-
-import { MatrixRain } from "../matrix-a/components/MatrixRain.jsx";
 import { copy } from "../../lib/copy";
+import { MatrixRain } from "../matrix-a/components/MatrixRain.jsx";
 
 export function MatrixShell({
   headerRight,
@@ -14,7 +13,9 @@ export function MatrixShell({
   hideHeader = false,
 }) {
   const headerTitle = copy("shell.header.title");
-  const titleParts = String(headerTitle || "").trim().split(/\s+/);
+  const titleParts = String(headerTitle || "")
+    .trim()
+    .split(/\s+/);
   const titlePrimary = titleParts[0] || headerTitle;
   const titleSecondary = titleParts.slice(1).join(" ");
 
@@ -66,9 +67,7 @@ export function MatrixShell({
 
               {headerRight ? (
                 <div className="w-full md:w-auto md:ml-4">
-                  <div className="w-full md:w-auto overflow-x-auto no-scrollbar">
-                    {headerRight}
-                  </div>
+                  <div className="w-full md:w-auto overflow-x-auto no-scrollbar">{headerRight}</div>
                 </div>
               ) : null}
             </div>
@@ -82,9 +81,7 @@ export function MatrixShell({
             {footerLeft || <span>{copy("shell.footer.help")}</span>}
           </div>
           <div className="flex items-center space-x-3">
-            {footerRight || (
-              <span className="font-bold">{copy("shell.footer.neural_index")}</span>
-            )}
+            {footerRight || <span className="font-bold">{copy("shell.footer.neural_index")}</span>}
           </div>
         </footer>
       </div>

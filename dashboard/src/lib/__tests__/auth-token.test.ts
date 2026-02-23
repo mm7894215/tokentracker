@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-
-import {
-  isLikelyExpiredAccessToken,
-  resolveAuthAccessToken,
-} from "../auth-token";
+import { isLikelyExpiredAccessToken, resolveAuthAccessToken } from "../auth-token";
 
 describe("resolveAuthAccessToken", () => {
   it("falls back to object.accessToken when getAccessToken returns null", async () => {

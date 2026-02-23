@@ -1,40 +1,54 @@
-const os = require('node:os');
-const path = require('node:path');
-const fs = require('node:fs/promises');
-const fssync = require('node:fs');
-const cp = require('node:child_process');
-const crypto = require('node:crypto');
+const os = require("node:os");
+const path = require("node:path");
+const fs = require("node:fs/promises");
+const fssync = require("node:fs");
+const cp = require("node:child_process");
+const crypto = require("node:crypto");
 
-const { ensureDir, writeFileAtomic, readJson, writeJson, chmod600IfPossible } = require('../lib/fs');
-const { prompt, promptHidden } = require('../lib/prompt');
+const {
+  ensureDir,
+  writeFileAtomic,
+  readJson,
+  writeJson,
+  chmod600IfPossible,
+} = require("../lib/fs");
+const { prompt, promptHidden } = require("../lib/prompt");
 const {
   upsertCodexNotify,
   upsertEveryCodeNotify,
   readCodexNotify,
-  readEveryCodeNotify
-} = require('../lib/codex-config');
-const { upsertClaudeHook, buildClaudeHookCommand, isClaudeHookConfigured } = require('../lib/claude-config');
+  readEveryCodeNotify,
+} = require("../lib/codex-config");
+const {
+  upsertClaudeHook,
+  buildClaudeHookCommand,
+  isClaudeHookConfigured,
+} = require("../lib/claude-config");
 const {
   resolveGeminiConfigDir,
   resolveGeminiSettingsPath,
   buildGeminiHookCommand,
   upsertGeminiHook,
-  isGeminiHookConfigured
-} = require('../lib/gemini-config');
-const { resolveOpencodeConfigDir, upsertOpencodePlugin, isOpencodePluginInstalled } = require('../lib/opencode-config');
-const { removeOpenclawHookConfig, probeOpenclawHookState } = require('../lib/openclaw-hook');
+  isGeminiHookConfigured,
+} = require("../lib/gemini-config");
+const {
+  resolveOpencodeConfigDir,
+  upsertOpencodePlugin,
+  isOpencodePluginInstalled,
+} = require("../lib/opencode-config");
+const { removeOpenclawHookConfig, probeOpenclawHookState } = require("../lib/openclaw-hook");
 const {
   installOpenclawSessionPlugin,
-  probeOpenclawSessionPluginState
-} = require('../lib/openclaw-session-plugin');
-const { beginBrowserAuth, openInBrowser } = require('../lib/browser-auth');
+  probeOpenclawSessionPluginState,
+} = require("../lib/openclaw-session-plugin");
+const { beginBrowserAuth, openInBrowser } = require("../lib/browser-auth");
 const {
   issueDeviceTokenWithPassword,
   issueDeviceTokenWithAccessToken,
-  issueDeviceTokenWithLinkCode
-} = require('../lib/insforge');
-const { resolveTrackerPaths } = require('../lib/tracker-paths');
-const { resolveRuntimeConfig } = require('../lib/runtime-config');
+  issueDeviceTokenWithLinkCode,
+} = require("../lib/insforge");
+const { resolveTrackerPaths } = require("../lib/tracker-paths");
+const { resolveRuntimeConfig } = require("../lib/runtime-config");
 const {
   BOLD,
   DIM,
@@ -43,21 +57,21 @@ const {
   color,
   isInteractive,
   promptMenu,
-  createSpinner
-} = require('../lib/cli-ui');
-const { renderLocalReport, renderAuthTransition, renderSuccessBox } = require('../lib/init-flow');
+  createSpinner,
+} = require("../lib/cli-ui");
+const { renderLocalReport, renderAuthTransition, renderSuccessBox } = require("../lib/init-flow");
 
 const ASCII_LOGO = [
-  '██╗   ██╗██╗██████╗ ███████╗██╗   ██╗███████╗ █████╗  ██████╗ ███████╗',
-  '██║   ██║██║██╔══██╗██╔════╝██║   ██║██╔════╝██╔══██╗██╔════╝ ██╔════╝',
-  '██║   ██║██║██████╔╝█████╗  ██║   ██║███████╗███████║██║  ███╗█████╗',
-  '╚██╗ ██╔╝██║██╔══██╗██╔══╝  ██║   ██║╚════██║██╔══██║██║   ██║██╔══╝',
-  ' ╚████╔╝ ██║██████╔╝███████╗╚██████╔╝███████║██║  ██║╚██████╔╝███████╗',
-  '  ╚═══╝  ╚═╝╚═════╝ ╚══════╝ ╚═════╝ ╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚══════╝'
-].join('\n');
+  "██╗   ██╗██╗██████╗ ███████╗██╗   ██╗███████╗ █████╗  ██████╗ ███████╗",
+  "██║   ██║██║██╔══██╗██╔════╝██║   ██║██╔════╝██╔══██╗██╔════╝ ██╔════╝",
+  "██║   ██║██║██████╔╝█████╗  ██║   ██║███████╗███████║██║  ███╗█████╗",
+  "╚██╗ ██╔╝██║██╔══██╗██╔══╝  ██║   ██║╚════██║██╔══██║██║   ██║██╔══╝",
+  " ╚████╔╝ ██║██████╔╝███████╗╚██████╔╝███████║██║  ██║╚██████╔╝███████╗",
+  "  ╚═══╝  ╚═╝╚═════╝ ╚══════╝ ╚═════╝ ╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚══════╝",
+].join("\n");
 
-const DIVIDER = '----------------------------------------------';
-const DEFAULT_DASHBOARD_URL = 'https://www.vibeusage.cc';
+const DIVIDER = "----------------------------------------------";
+const DEFAULT_DASHBOARD_URL = "https://www.vibeusage.cc";
 
 async function cmdInit(argv) {
   const opts = parseArgs(argv);
@@ -65,37 +79,39 @@ async function cmdInit(argv) {
 
   const { rootDir, trackerDir, binDir } = await resolveTrackerPaths({ home });
 
-  const configPath = path.join(trackerDir, 'config.json');
-  const notifyOriginalPath = path.join(trackerDir, 'codex_notify_original.json');
-  const linkCodeStatePath = path.join(trackerDir, 'link_code_state.json');
+  const configPath = path.join(trackerDir, "config.json");
+  const notifyOriginalPath = path.join(trackerDir, "codex_notify_original.json");
+  const linkCodeStatePath = path.join(trackerDir, "link_code_state.json");
 
   const existingConfig = await readJson(configPath);
   const runtime = resolveRuntimeConfig({
     cli: { baseUrl: opts.baseUrl, dashboardUrl: opts.dashboardUrl },
     config: existingConfig || {},
-    env: process.env
+    env: process.env,
   });
   const baseUrl = runtime.baseUrl;
   let dashboardUrl = runtime.dashboardUrl || DEFAULT_DASHBOARD_URL;
-  const notifyPath = path.join(binDir, 'notify.cjs');
-  const appDir = path.join(trackerDir, 'app');
-  const trackerBinPath = path.join(appDir, 'bin', 'tracker.js');
+  const notifyPath = path.join(binDir, "notify.cjs");
+  const appDir = path.join(trackerDir, "app");
+  const trackerBinPath = path.join(appDir, "bin", "tracker.js");
 
   renderWelcome();
 
   if (opts.dryRun) {
-    process.stdout.write(`${color('Dry run: preview only (no changes applied).', DIM)}\n\n`);
+    process.stdout.write(`${color("Dry run: preview only (no changes applied).", DIM)}\n\n`);
   }
 
   if (isInteractive() && !opts.yes && !opts.dryRun) {
     const choice = await promptMenu({
-      message: '? Proceed with installation?',
-      options: ['Yes, configure my environment', 'No, exit'],
-      defaultIndex: 0
+      message: "? Proceed with installation?",
+      options: ["Yes, configure my environment", "No, exit"],
+      defaultIndex: 0,
     });
-    const normalizedChoice = String(choice || '').trim().toLowerCase();
-    if (normalizedChoice.startsWith('no') || normalizedChoice.includes('exit')) {
-      process.stdout.write('Setup cancelled.\n');
+    const normalizedChoice = String(choice || "")
+      .trim()
+      .toLowerCase();
+    if (normalizedChoice.startsWith("no") || normalizedChoice.includes("exit")) {
+      process.stdout.write("Setup cancelled.\n");
       return;
     }
   }
@@ -106,18 +122,18 @@ async function cmdInit(argv) {
       home,
       trackerDir,
       notifyPath,
-      runtime
+      runtime,
     });
     renderLocalReport({ summary: preview.summary, isDryRun: true });
     if (preview.pendingBrowserAuth) {
-      process.stdout.write('Account linking would be required for full setup.\n');
+      process.stdout.write("Account linking would be required for full setup.\n");
     } else if (!preview.deviceToken) {
-      renderAccountNotLinked({ context: 'dry-run' });
+      renderAccountNotLinked({ context: "dry-run" });
     }
     return;
   }
 
-  const spinner = createSpinner({ text: 'Analyzing and configuring local environment...' });
+  const spinner = createSpinner({ text: "Analyzing and configuring local environment..." });
   spinner.start();
   let setup;
   try {
@@ -134,7 +150,7 @@ async function cmdInit(argv) {
       appDir,
       trackerBinPath,
       runtime,
-      existingConfig
+      existingConfig,
     });
   } catch (err) {
     spinner.stop();
@@ -149,7 +165,12 @@ async function cmdInit(argv) {
 
   if (setup.pendingBrowserAuth) {
     const deviceName = opts.deviceName || os.hostname();
-    const flow = await beginBrowserAuth({ baseUrl, dashboardUrl, timeoutMs: 10 * 60_000, open: false });
+    const flow = await beginBrowserAuth({
+      baseUrl,
+      dashboardUrl,
+      timeoutMs: 10 * 60_000,
+      open: false,
+    });
     const canAutoOpen = !opts.noOpen;
     renderAuthTransition({ authUrl: flow.authUrl, canAutoOpen });
     if (canAutoOpen) {
@@ -157,7 +178,11 @@ async function cmdInit(argv) {
       openInBrowser(flow.authUrl);
     }
     const callback = await flow.waitForCallback();
-    const issued = await issueDeviceTokenWithAccessToken({ baseUrl, accessToken: callback.accessToken, deviceName });
+    const issued = await issueDeviceTokenWithAccessToken({
+      baseUrl,
+      accessToken: callback.accessToken,
+      deviceName,
+    });
     deviceToken = issued.token;
     deviceId = issued.deviceId;
     await writeJson(configPath, { baseUrl, deviceToken, deviceId, installedAt: setup.installedAt });
@@ -172,9 +197,9 @@ async function cmdInit(argv) {
   }
 
   try {
-    spawnInitSync({ trackerBinPath, packageName: 'vibeusage' });
+    spawnInitSync({ trackerBinPath, packageName: "vibeusage" });
   } catch (err) {
-    const msg = err && err.message ? err.message : 'unknown error';
+    const msg = err && err.message ? err.message : "unknown error";
     process.stderr.write(`Initial sync spawn failed: ${msg}\n`);
   }
 }
@@ -183,29 +208,38 @@ function renderWelcome() {
   process.stdout.write(
     [
       ASCII_LOGO,
-      '',
+      "",
       `${BOLD}Welcome to VibeScore CLI${RESET}`,
       DIVIDER,
       `${CYAN}Privacy First: Your content stays local. We only upload token counts and minimal metadata, never prompts or responses.${RESET}`,
       DIVIDER,
-      '',
-      'This tool will:',
-      '  - Analyze your local AI CLI configurations (Codex, Every Code, Claude, Gemini, Opencode, OpenClaw)',
-      '  - Set up lightweight hooks to track your flow state',
-      '  - Link your device to your VibeScore account',
-      '',
-      '(Nothing will be changed until you confirm below)',
-      ''
-    ].join('\n')
+      "",
+      "This tool will:",
+      "  - Analyze your local AI CLI configurations (Codex, Every Code, Claude, Gemini, Opencode, OpenClaw)",
+      "  - Set up lightweight hooks to track your flow state",
+      "  - Link your device to your VibeScore account",
+      "",
+      "(Nothing will be changed until you confirm below)",
+      "",
+    ].join("\n"),
   );
 }
 
 function renderAccountNotLinked({ context } = {}) {
-  if (context === 'dry-run') {
-    process.stdout.write(['', 'Account not linked (dry run).', 'Run init without --dry-run to link your account.', ''].join('\n'));
+  if (context === "dry-run") {
+    process.stdout.write(
+      [
+        "",
+        "Account not linked (dry run).",
+        "Run init without --dry-run to link your account.",
+        "",
+      ].join("\n"),
+    );
     return;
   }
-  process.stdout.write(['', 'Account not linked.', 'Set VIBEUSAGE_DEVICE_TOKEN then re-run init.', ''].join('\n'));
+  process.stdout.write(
+    ["", "Account not linked.", "Set VIBEUSAGE_DEVICE_TOKEN then re-run init.", ""].join("\n"),
+  );
 }
 
 function shouldUseBrowserAuth({ deviceToken, opts }) {
@@ -237,7 +271,7 @@ async function runSetup({
   appDir,
   trackerBinPath,
   runtime,
-  existingConfig
+  existingConfig,
 }) {
   await ensureDir(trackerDir);
   await ensureDir(binDir);
@@ -252,7 +286,7 @@ async function runSetup({
     const deviceName = opts.deviceName || os.hostname();
     const platform = normalizePlatform(process.platform);
     const linkCode = String(opts.linkCode);
-    const linkCodeHash = crypto.createHash('sha256').update(linkCode).digest('hex');
+    const linkCodeHash = crypto.createHash("sha256").update(linkCode).digest("hex");
     const existingLinkState = await readJson(linkCodeStatePath);
     let requestId =
       existingLinkState?.linkCodeHash === linkCodeHash && existingLinkState?.requestId
@@ -263,7 +297,7 @@ async function runSetup({
       await writeJson(linkCodeStatePath, {
         linkCodeHash,
         requestId,
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
       });
       await chmod600IfPossible(linkCodeStatePath);
     }
@@ -272,7 +306,7 @@ async function runSetup({
       linkCode,
       requestId,
       deviceName,
-      platform
+      platform,
     });
     deviceToken = issued.token;
     deviceId = issued.deviceId;
@@ -281,8 +315,8 @@ async function runSetup({
     const deviceName = opts.deviceName || os.hostname();
 
     if (opts.email || opts.password) {
-      const email = opts.email || (await prompt('Email: '));
-      const password = opts.password || (await promptHidden('Password: '));
+      const email = opts.email || (await prompt("Email: "));
+      const password = opts.password || (await promptHidden("Password: "));
       const issued = await issueDeviceTokenWithPassword({ baseUrl, email, password, deviceName });
       deviceToken = issued.token;
       deviceId = issued.deviceId;
@@ -295,7 +329,7 @@ async function runSetup({
     baseUrl,
     deviceToken,
     deviceId,
-    installedAt
+    installedAt,
   };
 
   await writeJson(configPath, config);
@@ -303,7 +337,7 @@ async function runSetup({
 
   await writeFileAtomic(
     notifyPath,
-    buildNotifyHandler({ trackerDir, trackerBinPath, packageName: 'vibeusage' })
+    buildNotifyHandler({ trackerDir, trackerBinPath, packageName: "vibeusage" }),
   );
   await fs.chmod(notifyPath, 0o755).catch(() => {});
 
@@ -311,7 +345,7 @@ async function runSetup({
     home,
     trackerDir,
     notifyPath,
-    notifyOriginalPath
+    notifyOriginalPath,
   });
 
   return {
@@ -319,21 +353,21 @@ async function runSetup({
     pendingBrowserAuth,
     deviceToken,
     deviceId,
-    installedAt
+    installedAt,
   };
 }
 
 function buildIntegrationTargets({ home, trackerDir, notifyPath }) {
-  const codexHome = process.env.CODEX_HOME || path.join(home, '.codex');
-  const codexConfigPath = path.join(codexHome, 'config.toml');
-  const codeHome = process.env.CODE_HOME || path.join(home, '.code');
-  const codeConfigPath = path.join(codeHome, 'config.toml');
-  const notifyOriginalPath = path.join(trackerDir, 'codex_notify_original.json');
-  const codeNotifyOriginalPath = path.join(trackerDir, 'code_notify_original.json');
-  const notifyCmd = ['/usr/bin/env', 'node', notifyPath];
-  const codeNotifyCmd = ['/usr/bin/env', 'node', notifyPath, '--source=every-code'];
-  const claudeDir = path.join(home, '.claude');
-  const claudeSettingsPath = path.join(claudeDir, 'settings.json');
+  const codexHome = process.env.CODEX_HOME || path.join(home, ".codex");
+  const codexConfigPath = path.join(codexHome, "config.toml");
+  const codeHome = process.env.CODE_HOME || path.join(home, ".code");
+  const codeConfigPath = path.join(codeHome, "config.toml");
+  const notifyOriginalPath = path.join(trackerDir, "codex_notify_original.json");
+  const codeNotifyOriginalPath = path.join(trackerDir, "code_notify_original.json");
+  const notifyCmd = ["/usr/bin/env", "node", notifyPath];
+  const codeNotifyCmd = ["/usr/bin/env", "node", notifyPath, "--source=every-code"];
+  const claudeDir = path.join(home, ".claude");
+  const claudeSettingsPath = path.join(claudeDir, "settings.json");
   const claudeHookCommand = buildClaudeHookCommand(notifyPath);
   const geminiConfigDir = resolveGeminiConfigDir({ home, env: process.env });
   const geminiSettingsPath = resolveGeminiSettingsPath({ configDir: geminiConfigDir });
@@ -354,7 +388,7 @@ function buildIntegrationTargets({ home, trackerDir, notifyPath }) {
     geminiConfigDir,
     geminiSettingsPath,
     geminiHookCommand,
-    opencodeConfigDir
+    opencodeConfigDir,
   };
 }
 
@@ -369,89 +403,107 @@ async function applyIntegrationSetup({ home, trackerDir, notifyPath, notifyOrigi
     const result = await upsertCodexNotify({
       codexConfigPath: context.codexConfigPath,
       notifyCmd: context.notifyCmd,
-      notifyOriginalPath: context.notifyOriginalPath
+      notifyOriginalPath: context.notifyOriginalPath,
     });
     summary.push({
-      label: 'Codex CLI',
-      status: result.changed ? 'updated' : 'set',
-      detail: result.changed ? 'Updated config' : 'Config already set'
+      label: "Codex CLI",
+      status: result.changed ? "updated" : "set",
+      detail: result.changed ? "Updated config" : "Config already set",
     });
   } else {
-    summary.push({ label: 'Codex CLI', status: 'skipped', detail: renderSkipDetail(codexProbe) });
+    summary.push({ label: "Codex CLI", status: "skipped", detail: renderSkipDetail(codexProbe) });
   }
 
   const claudeDirExists = await isDir(context.claudeDir);
   if (claudeDirExists) {
     await upsertClaudeHook({
       settingsPath: context.claudeSettingsPath,
-      hookCommand: context.claudeHookCommand
+      hookCommand: context.claudeHookCommand,
     });
-    summary.push({ label: 'Claude', status: 'installed', detail: 'Hooks installed' });
+    summary.push({ label: "Claude", status: "installed", detail: "Hooks installed" });
   } else {
-    summary.push({ label: 'Claude', status: 'skipped', detail: 'Config not found' });
+    summary.push({ label: "Claude", status: "skipped", detail: "Config not found" });
   }
 
   const geminiConfigExists = await isDir(context.geminiConfigDir);
   if (geminiConfigExists) {
     await upsertGeminiHook({
       settingsPath: context.geminiSettingsPath,
-      hookCommand: context.geminiHookCommand
+      hookCommand: context.geminiHookCommand,
     });
-    summary.push({ label: 'Gemini', status: 'installed', detail: 'Hooks installed' });
+    summary.push({ label: "Gemini", status: "installed", detail: "Hooks installed" });
   } else {
-    summary.push({ label: 'Gemini', status: 'skipped', detail: 'Config not found' });
+    summary.push({ label: "Gemini", status: "skipped", detail: "Config not found" });
   }
 
   const opencodeResult = await upsertOpencodePlugin({
     configDir: context.opencodeConfigDir,
-    notifyPath
+    notifyPath,
   });
-  if (opencodeResult?.skippedReason === 'config-missing') {
-    summary.push({ label: 'Opencode Plugin', status: 'skipped', detail: 'Config not found' });
+  if (opencodeResult?.skippedReason === "config-missing") {
+    summary.push({ label: "Opencode Plugin", status: "skipped", detail: "Config not found" });
   } else {
-    summary.push({ label: 'Opencode Plugin', status: opencodeResult?.changed ? 'installed' : 'set', detail: 'Plugin installed' });
+    summary.push({
+      label: "Opencode Plugin",
+      status: opencodeResult?.changed ? "installed" : "set",
+      detail: "Plugin installed",
+    });
   }
 
-  const openclawBefore = await probeOpenclawSessionPluginState({ home, trackerDir, env: process.env });
+  const openclawBefore = await probeOpenclawSessionPluginState({
+    home,
+    trackerDir,
+    env: process.env,
+  });
   const openclawInstall = await installOpenclawSessionPlugin({
     home,
     trackerDir,
-    packageName: 'vibeusage',
-    env: process.env
+    packageName: "vibeusage",
+    env: process.env,
   });
-  if (openclawInstall?.skippedReason === 'openclaw-cli-missing') {
-    summary.push({ label: 'OpenClaw Session Plugin', status: 'skipped', detail: 'OpenClaw CLI not found' });
-  } else if (openclawInstall?.skippedReason === 'openclaw-plugins-install-failed') {
+  if (openclawInstall?.skippedReason === "openclaw-cli-missing") {
     summary.push({
-      label: 'OpenClaw Session Plugin',
-      status: 'skipped',
-      detail: `Install failed${openclawInstall.error ? `: ${openclawInstall.error}` : ''}`
+      label: "OpenClaw Session Plugin",
+      status: "skipped",
+      detail: "OpenClaw CLI not found",
     });
-  } else if (openclawInstall?.skippedReason === 'openclaw-config-unreadable') {
+  } else if (openclawInstall?.skippedReason === "openclaw-plugins-install-failed") {
     summary.push({
-      label: 'OpenClaw Session Plugin',
-      status: 'skipped',
-      detail: openclawInstall.error ? `OpenClaw config unreadable: ${openclawInstall.error}` : 'OpenClaw config unreadable'
+      label: "OpenClaw Session Plugin",
+      status: "skipped",
+      detail: `Install failed${openclawInstall.error ? `: ${openclawInstall.error}` : ""}`,
+    });
+  } else if (openclawInstall?.skippedReason === "openclaw-config-unreadable") {
+    summary.push({
+      label: "OpenClaw Session Plugin",
+      status: "skipped",
+      detail: openclawInstall.error
+        ? `OpenClaw config unreadable: ${openclawInstall.error}`
+        : "OpenClaw config unreadable",
     });
   } else if (openclawInstall?.configured) {
     summary.push({
-      label: 'OpenClaw Session Plugin',
-      status: openclawBefore?.configured ? 'set' : 'installed',
+      label: "OpenClaw Session Plugin",
+      status: openclawBefore?.configured ? "set" : "installed",
       detail: openclawBefore?.configured
-        ? 'Session plugin already linked'
-        : 'Session plugin linked (restart OpenClaw gateway to activate)'
+        ? "Session plugin already linked"
+        : "Session plugin linked (restart OpenClaw gateway to activate)",
     });
   } else {
-    summary.push({ label: 'OpenClaw Session Plugin', status: 'skipped', detail: 'OpenClaw session plugin unavailable' });
+    summary.push({
+      label: "OpenClaw Session Plugin",
+      status: "skipped",
+      detail: "OpenClaw session plugin unavailable",
+    });
   }
 
   const legacyHookState = await probeOpenclawHookState({ home, trackerDir, env: process.env });
   if (legacyHookState?.configured || legacyHookState?.linked || legacyHookState?.enabled) {
     await removeOpenclawHookConfig({ home, trackerDir, env: process.env });
     summary.push({
-      label: 'OpenClaw Hook (legacy)',
-      status: 'updated',
-      detail: 'Removed legacy command hook (migrated to session plugin)'
+      label: "OpenClaw Hook (legacy)",
+      status: "updated",
+      detail: "Removed legacy command hook (migrated to session plugin)",
     });
   }
 
@@ -460,15 +512,15 @@ async function applyIntegrationSetup({ home, trackerDir, notifyPath, notifyOrigi
     const result = await upsertEveryCodeNotify({
       codeConfigPath: context.codeConfigPath,
       notifyCmd: context.codeNotifyCmd,
-      notifyOriginalPath: context.codeNotifyOriginalPath
+      notifyOriginalPath: context.codeNotifyOriginalPath,
     });
     summary.push({
-      label: 'Every Code',
-      status: result.changed ? 'updated' : 'set',
-      detail: result.changed ? 'Updated config' : 'Config already set'
+      label: "Every Code",
+      status: result.changed ? "updated" : "set",
+      detail: result.changed ? "Updated config" : "Config already set",
     });
   } else {
-    summary.push({ label: 'Every Code', status: 'skipped', detail: renderSkipDetail(codeProbe) });
+    summary.push({ label: "Every Code", status: "skipped", detail: renderSkipDetail(codeProbe) });
   }
 
   return summary;
@@ -483,82 +535,96 @@ async function previewIntegrations({ context }) {
     const existing = await readCodexNotify(context.codexConfigPath);
     const matches = arraysEqual(existing, context.notifyCmd);
     summary.push({
-      label: 'Codex CLI',
-      status: matches ? 'set' : 'updated',
-      detail: matches ? 'Already configured' : 'Will update config'
+      label: "Codex CLI",
+      status: matches ? "set" : "updated",
+      detail: matches ? "Already configured" : "Will update config",
     });
   } else {
-    summary.push({ label: 'Codex CLI', status: 'skipped', detail: renderSkipDetail(codexProbe) });
+    summary.push({ label: "Codex CLI", status: "skipped", detail: renderSkipDetail(codexProbe) });
   }
 
   const claudeDirExists = await isDir(context.claudeDir);
   if (claudeDirExists) {
     const configured = await isClaudeHookConfigured({
       settingsPath: context.claudeSettingsPath,
-      hookCommand: context.claudeHookCommand
+      hookCommand: context.claudeHookCommand,
     });
     summary.push({
-      label: 'Claude',
-      status: 'installed',
-      detail: configured ? 'Hooks already installed' : 'Will install hooks'
+      label: "Claude",
+      status: "installed",
+      detail: configured ? "Hooks already installed" : "Will install hooks",
     });
   } else {
-    summary.push({ label: 'Claude', status: 'skipped', detail: 'Config not found' });
+    summary.push({ label: "Claude", status: "skipped", detail: "Config not found" });
   }
 
   const geminiConfigExists = await isDir(context.geminiConfigDir);
   if (geminiConfigExists) {
     const configured = await isGeminiHookConfigured({
       settingsPath: context.geminiSettingsPath,
-      hookCommand: context.geminiHookCommand
+      hookCommand: context.geminiHookCommand,
     });
     summary.push({
-      label: 'Gemini',
-      status: 'installed',
-      detail: configured ? 'Hooks already installed' : 'Will install hooks'
+      label: "Gemini",
+      status: "installed",
+      detail: configured ? "Hooks already installed" : "Will install hooks",
     });
   } else {
-    summary.push({ label: 'Gemini', status: 'skipped', detail: 'Config not found' });
+    summary.push({ label: "Gemini", status: "skipped", detail: "Config not found" });
   }
 
   const opencodeDirExists = await isDir(context.opencodeConfigDir);
   const installed = await isOpencodePluginInstalled({ configDir: context.opencodeConfigDir });
   const opencodeDetail = installed
-    ? 'Plugin already installed'
+    ? "Plugin already installed"
     : opencodeDirExists
-      ? 'Will install plugin'
-      : 'Will create config and install plugin';
+      ? "Will install plugin"
+      : "Will create config and install plugin";
   summary.push({
-    label: 'Opencode Plugin',
-    status: 'installed',
-    detail: opencodeDetail
+    label: "Opencode Plugin",
+    status: "installed",
+    detail: opencodeDetail,
   });
 
-  const openclawState = await probeOpenclawSessionPluginState({ home, trackerDir: context.trackerDir, env: process.env });
-  if (openclawState?.skippedReason === 'openclaw-config-missing') {
-    summary.push({ label: 'OpenClaw Session Plugin', status: 'skipped', detail: 'OpenClaw config not found' });
-  } else if (openclawState?.skippedReason === 'openclaw-config-unreadable') {
+  const openclawState = await probeOpenclawSessionPluginState({
+    home,
+    trackerDir: context.trackerDir,
+    env: process.env,
+  });
+  if (openclawState?.skippedReason === "openclaw-config-missing") {
     summary.push({
-      label: 'OpenClaw Session Plugin',
-      status: 'skipped',
-      detail: openclawState.error ? `OpenClaw config unreadable: ${openclawState.error}` : 'OpenClaw config unreadable'
+      label: "OpenClaw Session Plugin",
+      status: "skipped",
+      detail: "OpenClaw config not found",
+    });
+  } else if (openclawState?.skippedReason === "openclaw-config-unreadable") {
+    summary.push({
+      label: "OpenClaw Session Plugin",
+      status: "skipped",
+      detail: openclawState.error
+        ? `OpenClaw config unreadable: ${openclawState.error}`
+        : "OpenClaw config unreadable",
     });
   } else {
     summary.push({
-      label: 'OpenClaw Session Plugin',
-      status: openclawState?.configured ? 'set' : 'installed',
+      label: "OpenClaw Session Plugin",
+      status: openclawState?.configured ? "set" : "installed",
       detail: openclawState?.configured
-        ? 'Session plugin already linked'
-        : 'Will link session plugin (restart OpenClaw gateway to activate)'
+        ? "Session plugin already linked"
+        : "Will link session plugin (restart OpenClaw gateway to activate)",
     });
   }
 
-  const legacyHookState = await probeOpenclawHookState({ home, trackerDir: context.trackerDir, env: process.env });
+  const legacyHookState = await probeOpenclawHookState({
+    home,
+    trackerDir: context.trackerDir,
+    env: process.env,
+  });
   if (legacyHookState?.configured || legacyHookState?.linked || legacyHookState?.enabled) {
     summary.push({
-      label: 'OpenClaw Hook (legacy)',
-      status: 'updated',
-      detail: 'Will remove legacy command hook during migration'
+      label: "OpenClaw Hook (legacy)",
+      status: "updated",
+      detail: "Will remove legacy command hook during migration",
     });
   }
 
@@ -567,22 +633,22 @@ async function previewIntegrations({ context }) {
     const existing = await readEveryCodeNotify(context.codeConfigPath);
     const matches = arraysEqual(existing, context.codeNotifyCmd);
     summary.push({
-      label: 'Every Code',
-      status: matches ? 'set' : 'updated',
-      detail: matches ? 'Already configured' : 'Will update config'
+      label: "Every Code",
+      status: matches ? "set" : "updated",
+      detail: matches ? "Already configured" : "Will update config",
     });
   } else {
-    summary.push({ label: 'Every Code', status: 'skipped', detail: renderSkipDetail(codeProbe) });
+    summary.push({ label: "Every Code", status: "skipped", detail: renderSkipDetail(codeProbe) });
   }
 
   return summary;
 }
 
 function renderSkipDetail(probe) {
-  if (!probe || probe.reason === 'missing') return 'Config not found';
-  if (probe.reason === 'permission-denied') return 'Permission denied';
-  if (probe.reason === 'not-file') return 'Invalid config';
-  return 'Unavailable';
+  if (!probe || probe.reason === "missing") return "Config not found";
+  if (probe.reason === "permission-denied") return "Permission denied";
+  if (probe.reason === "not-file") return "Invalid config";
+  return "Unavailable";
 }
 
 function arraysEqual(a, b) {
@@ -603,21 +669,21 @@ function parseArgs(argv) {
     noAuth: false,
     noOpen: false,
     yes: false,
-    dryRun: false
+    dryRun: false,
   };
 
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === '--base-url') out.baseUrl = argv[++i] || null;
-    else if (a === '--dashboard-url') out.dashboardUrl = argv[++i] || null;
-    else if (a === '--email') out.email = argv[++i] || null;
-    else if (a === '--password') out.password = argv[++i] || null;
-    else if (a === '--device-name') out.deviceName = argv[++i] || null;
-    else if (a === '--link-code') out.linkCode = argv[++i] || null;
-    else if (a === '--no-auth') out.noAuth = true;
-    else if (a === '--no-open') out.noOpen = true;
-    else if (a === '--yes') out.yes = true;
-    else if (a === '--dry-run') out.dryRun = true;
+    if (a === "--base-url") out.baseUrl = argv[++i] || null;
+    else if (a === "--dashboard-url") out.dashboardUrl = argv[++i] || null;
+    else if (a === "--email") out.email = argv[++i] || null;
+    else if (a === "--password") out.password = argv[++i] || null;
+    else if (a === "--device-name") out.deviceName = argv[++i] || null;
+    else if (a === "--link-code") out.linkCode = argv[++i] || null;
+    else if (a === "--no-auth") out.noAuth = true;
+    else if (a === "--no-open") out.noOpen = true;
+    else if (a === "--yes") out.yes = true;
+    else if (a === "--dry-run") out.dryRun = true;
     else throw new Error(`Unknown option: ${a}`);
   }
   return out;
@@ -629,19 +695,19 @@ function sleep(ms) {
 }
 
 function normalizePlatform(value) {
-  if (value === 'darwin') return 'macos';
-  if (value === 'win32') return 'windows';
-  if (value === 'linux') return 'linux';
-  return 'unknown';
+  if (value === "darwin") return "macos";
+  if (value === "win32") return "windows";
+  if (value === "linux") return "linux";
+  return "unknown";
 }
 
 function buildNotifyHandler({ trackerDir, packageName }) {
   // Keep this file dependency-free: Node built-ins only.
   // It must never block Codex; it spawns sync in the background and exits 0.
-  const queueSignalPath = path.join(trackerDir, 'notify.signal');
-  const originalPath = path.join(trackerDir, 'codex_notify_original.json');
-  const fallbackPkg = packageName || 'vibeusage';
-  const trackerBinPath = path.join(trackerDir, 'app', 'bin', 'tracker.js');
+  const queueSignalPath = path.join(trackerDir, "notify.signal");
+  const originalPath = path.join(trackerDir, "codex_notify_original.json");
+  const fallbackPkg = packageName || "vibeusage";
+  const trackerBinPath = path.join(trackerDir, "app", "bin", "tracker.js");
 
   return `#!/usr/bin/env node
 'use strict';
@@ -671,7 +737,7 @@ for (let i = 0; i < rawArgs.length; i++) {
 const trackerDir = ${JSON.stringify(trackerDir)};
 const signalPath = ${JSON.stringify(queueSignalPath)};
 const codexOriginalPath = ${JSON.stringify(originalPath)};
-const codeOriginalPath = ${JSON.stringify(path.join(trackerDir, 'code_notify_original.json'))};
+const codeOriginalPath = ${JSON.stringify(path.join(trackerDir, "code_notify_original.json"))};
 const trackerBinPath = ${JSON.stringify(trackerBinPath)};
   const depsMarkerPath = path.join(trackerDir, 'app', 'node_modules', '@insforge', 'sdk', 'package.json');
   const configPath = path.join(trackerDir, 'config.json');
@@ -791,11 +857,12 @@ async function probeFile(p) {
   try {
     const st = await fs.stat(p);
     if (st.isFile()) return { exists: true, reason: null };
-    return { exists: false, reason: 'not-file' };
+    return { exists: false, reason: "not-file" };
   } catch (e) {
-    if (e?.code === 'ENOENT' || e?.code === 'ENOTDIR') return { exists: false, reason: 'missing' };
-    if (e?.code === 'EACCES' || e?.code === 'EPERM') return { exists: false, reason: 'permission-denied' };
-    return { exists: false, reason: 'error', code: e?.code || 'unknown' };
+    if (e?.code === "ENOENT" || e?.code === "ENOTDIR") return { exists: false, reason: "missing" };
+    if (e?.code === "EACCES" || e?.code === "EPERM")
+      return { exists: false, reason: "permission-denied" };
+    return { exists: false, reason: "error", code: e?.code || "unknown" };
   }
 }
 
@@ -810,10 +877,10 @@ async function isDir(p) {
 
 async function installLocalTrackerApp({ appDir }) {
   // Copy the current package's runtime (bin + src) into ~/.vibeusage so notify can run sync without npx.
-  const packageRoot = path.resolve(__dirname, '../..');
-  const srcFrom = path.join(packageRoot, 'src');
-  const binFrom = path.join(packageRoot, 'bin', 'tracker.js');
-  const nodeModulesFrom = path.join(packageRoot, 'node_modules');
+  const packageRoot = path.resolve(__dirname, "../..");
+  const srcFrom = path.join(packageRoot, "src");
+  const binFrom = path.join(packageRoot, "bin", "tracker.js");
+  const nodeModulesFrom = path.join(packageRoot, "node_modules");
 
   // When running from the installed local runtime (or when appDir is symlinked to this package),
   // source and destination resolve to the same place. Do not delete appDir in that case.
@@ -821,10 +888,10 @@ async function installLocalTrackerApp({ appDir }) {
     return;
   }
 
-  const srcTo = path.join(appDir, 'src');
-  const binToDir = path.join(appDir, 'bin');
-  const binTo = path.join(binToDir, 'tracker.js');
-  const nodeModulesTo = path.join(appDir, 'node_modules');
+  const srcTo = path.join(appDir, "src");
+  const binToDir = path.join(appDir, "bin");
+  const binTo = path.join(binToDir, "tracker.js");
+  const nodeModulesTo = path.join(appDir, "node_modules");
 
   await fs.rm(appDir, { recursive: true, force: true }).catch(() => {});
   await ensureDir(appDir);
@@ -851,22 +918,22 @@ async function safeRealpath(p) {
 }
 
 function spawnInitSync({ trackerBinPath, packageName }) {
-  const fallbackPkg = packageName || 'vibeusage';
-  const argv = ['sync', '--drain'];
-  const hasLocalRuntime = typeof trackerBinPath === 'string' && fssync.existsSync(trackerBinPath);
+  const fallbackPkg = packageName || "vibeusage";
+  const argv = ["sync", "--drain"];
+  const hasLocalRuntime = typeof trackerBinPath === "string" && fssync.existsSync(trackerBinPath);
   const cmd = hasLocalRuntime
     ? [process.execPath, trackerBinPath, ...argv]
-    : ['npx', '--yes', fallbackPkg, ...argv];
+    : ["npx", "--yes", fallbackPkg, ...argv];
   const child = cp.spawn(cmd[0], cmd.slice(1), {
     detached: true,
-    stdio: 'ignore',
-    env: process.env
+    stdio: "ignore",
+    env: process.env,
   });
-  child.on('error', (err) => {
-    const msg = err && err.message ? err.message : 'unknown error';
-    const detail = isDebugEnabled() ? ` (${msg})` : '';
+  child.on("error", (err) => {
+    const msg = err && err.message ? err.message : "unknown error";
+    const detail = isDebugEnabled() ? ` (${msg})` : "";
     process.stderr.write(`Minor issue: Background sync could not start${detail}.\n`);
-    process.stderr.write('Run: npx --yes vibeusage sync\n');
+    process.stderr.write("Run: npx --yes vibeusage sync\n");
   });
   child.unref();
 }
@@ -887,5 +954,5 @@ async function copyRuntimeDependencies({ from, to }) {
 }
 
 function isDebugEnabled() {
-  return process.env.VIBEUSAGE_DEBUG === '1';
+  return process.env.VIBEUSAGE_DEBUG === "1";
 }

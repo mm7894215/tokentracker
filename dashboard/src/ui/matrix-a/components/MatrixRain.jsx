@@ -1,5 +1,4 @@
 import React, { useEffect, useRef } from "react";
-
 import { isScreenshotModeEnabled } from "../../../lib/screenshot-mode.js";
 
 /**
@@ -15,8 +14,7 @@ export const MatrixRain = () => {
     const screenshotMode = isScreenshotModeEnabled(window.location.search);
 
     const prefersReducedMotion = Boolean(
-      window.matchMedia &&
-        window.matchMedia("(prefers-reduced-motion: reduce)").matches
+      window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches,
     );
 
     const settings = {
@@ -68,16 +66,10 @@ export const MatrixRain = () => {
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
       for (let i = 0; i < drops.length; i++) {
-        const char = characters.charAt(
-          Math.floor(random() * characters.length)
-        );
-        ctx.fillStyle =
-          random() < settings.highlightChance ? "#E8FFE9" : "#00FF41";
+        const char = characters.charAt(Math.floor(random() * characters.length));
+        ctx.fillStyle = random() < settings.highlightChance ? "#E8FFE9" : "#00FF41";
         ctx.fillText(char, i * columnPitch, drops[i] * fontSize);
-        if (
-          drops[i] * fontSize > canvas.height &&
-          random() > settings.resetChance
-        ) {
+        if (drops[i] * fontSize > canvas.height && random() > settings.resetChance) {
           drops[i] = 0;
         }
         drops[i] += settings.speed;

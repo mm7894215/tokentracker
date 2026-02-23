@@ -1,4 +1,4 @@
-const { exchangeLinkCode, issueDeviceToken, signInWithPassword } = require('./vibeusage-api');
+const { exchangeLinkCode, issueDeviceToken, signInWithPassword } = require("./vibeusage-api");
 
 async function issueDeviceTokenWithPassword({ baseUrl, email, password, deviceName }) {
   const accessToken = await signInWithPassword({ baseUrl, email, password });
@@ -11,7 +11,13 @@ async function issueDeviceTokenWithAccessToken({ baseUrl, accessToken, deviceNam
   return issued;
 }
 
-async function issueDeviceTokenWithLinkCode({ baseUrl, linkCode, requestId, deviceName, platform }) {
+async function issueDeviceTokenWithLinkCode({
+  baseUrl,
+  linkCode,
+  requestId,
+  deviceName,
+  platform,
+}) {
   const issued = await exchangeLinkCode({ baseUrl, linkCode, requestId, deviceName, platform });
   return { token: issued.token, deviceId: issued.deviceId };
 }
@@ -19,5 +25,5 @@ async function issueDeviceTokenWithLinkCode({ baseUrl, linkCode, requestId, devi
 module.exports = {
   issueDeviceTokenWithPassword,
   issueDeviceTokenWithAccessToken,
-  issueDeviceTokenWithLinkCode
+  issueDeviceTokenWithLinkCode,
 };

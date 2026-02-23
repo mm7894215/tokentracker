@@ -1,8 +1,8 @@
-'use strict';
+"use strict";
 
-const { applyCanaryFilter } = require('./canary');
-const { toBigInt } = require('./numbers');
-const { forEachPage } = require('./pagination');
+const { applyCanaryFilter } = require("./canary");
+const { toBigInt } = require("./numbers");
+const { forEachPage } = require("./pagination");
 
 function createTotals() {
   return {
@@ -11,7 +11,7 @@ function createTotals() {
     input_tokens: 0n,
     cached_input_tokens: 0n,
     output_tokens: 0n,
-    reasoning_output_tokens: 0n
+    reasoning_output_tokens: 0n,
   };
 }
 
@@ -30,23 +30,25 @@ async function fetchRollupRows({ edgeClient, userId, fromDay, toDay, source, mod
   const { error } = await forEachPage({
     createQuery: () => {
       let query = edgeClient.database
-        .from('vibeusage_tracker_daily_rollup')
-        .select('day,source,model,total_tokens,billable_total_tokens,input_tokens,cached_input_tokens,output_tokens,reasoning_output_tokens')
-        .eq('user_id', userId)
-        .gte('day', fromDay)
-        .lte('day', toDay);
-      if (source) query = query.eq('source', source);
-      if (model) query = query.eq('model', model);
+        .from("vibeusage_tracker_daily_rollup")
+        .select(
+          "day,source,model,total_tokens,billable_total_tokens,input_tokens,cached_input_tokens,output_tokens,reasoning_output_tokens",
+        )
+        .eq("user_id", userId)
+        .gte("day", fromDay)
+        .lte("day", toDay);
+      if (source) query = query.eq("source", source);
+      if (model) query = query.eq("model", model);
       query = applyCanaryFilter(query, { source, model });
       return query
-        .order('day', { ascending: true })
-        .order('source', { ascending: true })
-        .order('model', { ascending: true });
+        .order("day", { ascending: true })
+        .order("source", { ascending: true })
+        .order("model", { ascending: true });
     },
     onPage: (pageRows) => {
       if (!Array.isArray(pageRows) || pageRows.length === 0) return;
       rows.push(...pageRows);
-    }
+    },
   });
   if (error) return { ok: false, error };
   return { ok: true, rows };
@@ -62,13 +64,13 @@ function sumRollupRows(rows) {
 
 function readEnvValue(key) {
   try {
-    if (typeof Deno !== 'undefined' && Deno?.env?.get) {
+    if (typeof Deno !== "undefined" && Deno?.env?.get) {
       const value = Deno.env.get(key);
       if (value !== undefined) return value;
     }
   } catch (_e) {}
   try {
-    if (typeof process !== 'undefined' && process?.env) {
+    if (typeof process !== "undefined" && process?.env) {
       return process.env[key];
     }
   } catch (_e) {}
@@ -85,5 +87,5 @@ module.exports = {
   addRowTotals,
   fetchRollupRows,
   sumRollupRows,
-  isRollupEnabled
+  isRollupEnabled,
 };

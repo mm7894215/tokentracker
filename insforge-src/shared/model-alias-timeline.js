@@ -1,13 +1,13 @@
-'use strict';
+"use strict";
 
-const { normalizeModel } = require('./model');
-const { normalizeUsageModelKey } = require('./model-identity');
+const { normalizeModel } = require("./model");
+const { normalizeUsageModelKey } = require("./model-identity");
 
-const DEFAULT_MODEL = 'unknown';
+const DEFAULT_MODEL = "unknown";
 
 function extractDateKey(value) {
   if (value instanceof Date) return value.toISOString().slice(0, 10);
-  if (typeof value === 'string' && value.length >= 10) return value.slice(0, 10);
+  if (typeof value === "string" && value.length >= 10) return value.slice(0, 10);
   return null;
 }
 
@@ -26,13 +26,17 @@ function resolveIdentityAtDate({ rawModel, usageKey, dateKey, timeline } = {}) {
   if (normalizedKey) candidates.push(normalizedKey);
 
   for (const key of candidates) {
-    const entries = timeline && typeof timeline.get === 'function' ? timeline.get(key) : null;
+    const entries = timeline && typeof timeline.get === "function" ? timeline.get(key) : null;
     if (!Array.isArray(entries)) continue;
     let match = null;
     for (const entry of entries) {
       if (entry.effective_from && normalizedDateKey && entry.effective_from <= normalizedDateKey) {
         match = entry;
-      } else if (entry.effective_from && normalizedDateKey && entry.effective_from > normalizedDateKey) {
+      } else if (
+        entry.effective_from &&
+        normalizedDateKey &&
+        entry.effective_from > normalizedDateKey
+      ) {
         break;
       }
     }
@@ -49,7 +53,7 @@ function buildAliasTimeline({ usageModels, aliasRows } = {}) {
   const normalized = new Set(
     Array.isArray(usageModels)
       ? usageModels.map((model) => normalizeUsageModelKey(model)).filter(Boolean)
-      : []
+      : [],
   );
   const timeline = new Map();
   const rows = Array.isArray(aliasRows) ? aliasRows : [];
@@ -59,12 +63,12 @@ function buildAliasTimeline({ usageModels, aliasRows } = {}) {
     if (!usageKey || !canonical) continue;
     if (normalized.size && !normalized.has(usageKey)) continue;
     const display = normalizeModel(row?.display_name) || canonical;
-    const effective = extractDateKey(row?.effective_from || '');
+    const effective = extractDateKey(row?.effective_from || "");
     if (!effective) continue;
     const entry = {
       model_id: canonical,
       model: display,
-      effective_from: effective
+      effective_from: effective,
     };
     const list = timeline.get(usageKey);
     if (list) {
@@ -89,12 +93,12 @@ async function fetchAliasRows({ edgeClient, usageModels, effectiveDate } = {}) {
   const dateKeyNext = nextDateKey(dateKey) || dateKey;
 
   const query = edgeClient.database
-    .from('vibeusage_model_aliases')
-    .select('usage_model,canonical_model,display_name,effective_from')
-    .eq('active', true)
-    .in('usage_model', models)
-    .lt('effective_from', dateKeyNext)
-    .order('effective_from', { ascending: true });
+    .from("vibeusage_model_aliases")
+    .select("usage_model,canonical_model,display_name,effective_from")
+    .eq("active", true)
+    .in("usage_model", models)
+    .lt("effective_from", dateKeyNext)
+    .order("effective_from", { ascending: true });
 
   const result = await query;
   const data = Array.isArray(result?.data)
@@ -110,5 +114,5 @@ module.exports = {
   extractDateKey,
   resolveIdentityAtDate,
   buildAliasTimeline,
-  fetchAliasRows
+  fetchAliasRows,
 };

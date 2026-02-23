@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-'use strict';
+"use strict";
 
-const assert = require('node:assert/strict');
+const assert = require("node:assert/strict");
 
 class DatabaseStub {
   constructor() {
@@ -30,15 +30,15 @@ class DatabaseStub {
   }
 
   gte(column, value) {
-    this._filters.push({ op: 'gte', column, value });
+    this._filters.push({ op: "gte", column, value });
     return this;
   }
 
   upsert(rows) {
-    if (this._table === 'vibeusage_pricing_profiles') {
+    if (this._table === "vibeusage_pricing_profiles") {
       this.upserts.push(...rows);
       this.upsertCalls += 1;
-    } else if (this._table === 'vibeusage_pricing_model_aliases') {
+    } else if (this._table === "vibeusage_pricing_model_aliases") {
       this.aliasUpserts.push(...rows);
       this.aliasUpsertCalls += 1;
     }
@@ -59,9 +59,9 @@ class DatabaseStub {
     const target = {
       update: this._updateValues,
       eq: this._eq,
-      lt: { column, value }
+      lt: { column, value },
     };
-    if (this._table === 'vibeusage_pricing_model_aliases') {
+    if (this._table === "vibeusage_pricing_model_aliases") {
       this.aliasRetention = target;
     } else {
       this.retention = target;
@@ -70,7 +70,7 @@ class DatabaseStub {
   }
 
   range() {
-    if (this._table === 'vibeusage_tracker_hourly') {
+    if (this._table === "vibeusage_tracker_hourly") {
       return { data: this.usageRows, error: null };
     }
     return { data: [], error: null };
@@ -79,7 +79,7 @@ class DatabaseStub {
 
 function createClientStub(db) {
   return {
-    database: db
+    database: db,
   };
 }
 
@@ -87,81 +87,81 @@ function buildOpenRouterPayload() {
   return {
     data: [
       {
-        id: 'anthropic/claude-opus-4.5',
+        id: "anthropic/claude-opus-4.5",
         created: 10,
         pricing: {
-          prompt: '0.000001',
-          completion: '0.000002',
-          input_cache_read: '0.0000001',
-          internal_reasoning: '0.000002'
-        }
+          prompt: "0.000001",
+          completion: "0.000002",
+          input_cache_read: "0.0000001",
+          internal_reasoning: "0.000002",
+        },
       },
       {
-        id: 'anthropic/claude-opus-4.1',
+        id: "anthropic/claude-opus-4.1",
         created: 5,
         pricing: {
           prompt: 0.0000015,
-          completion: 0.000003
-        }
+          completion: 0.000003,
+        },
       },
       {
-        id: 'openai/gpt-4o-mini',
+        id: "openai/gpt-4o-mini",
         created: 8,
         pricing: {
           prompt: 0.0000015,
-          completion: 0.000003
-        }
+          completion: 0.000003,
+        },
       },
       {
-        id: 'openai/no-pricing'
-      }
-    ]
+        id: "openai/no-pricing",
+      },
+    ],
   };
 }
 
 async function main() {
-  process.env.INSFORGE_INTERNAL_URL = 'http://insforge:7130';
-  process.env.INSFORGE_ANON_KEY = 'anon';
-  process.env.INSFORGE_SERVICE_ROLE_KEY = 'service-role-key';
-  process.env.OPENROUTER_API_KEY = 'openrouter-key';
-  process.env.VIBESCORE_PRICING_SOURCE = 'openrouter';
+  process.env.INSFORGE_INTERNAL_URL = "http://insforge:7130";
+  process.env.INSFORGE_ANON_KEY = "anon";
+  process.env.INSFORGE_SERVICE_ROLE_KEY = "service-role-key";
+  process.env.OPENROUTER_API_KEY = "openrouter-key";
+  process.env.VIBESCORE_PRICING_SOURCE = "openrouter";
 
   global.Deno = {
     env: {
       get(key) {
         const v = process.env[key];
-        return v == null || v === '' ? null : v;
-      }
-    }
+        return v == null || v === "" ? null : v;
+      },
+    },
   };
 
   const db = new DatabaseStub();
   db.usageRows = [
-    { model: 'claude-opus-4-5-20251101' },
-    { model: 'openai/gpt-4o-mini' },
-    { model: 'unknown' }
+    { model: "claude-opus-4-5-20251101" },
+    { model: "openai/gpt-4o-mini" },
+    { model: "unknown" },
   ];
   global.createClient = () => createClientStub(db);
 
   const payload = buildOpenRouterPayload();
   global.fetch = async (url, options) => {
-    assert.equal(url, 'https://openrouter.ai/api/v1/models');
-    assert.equal(options?.headers?.Authorization, 'Bearer openrouter-key');
+    assert.equal(url, "https://openrouter.ai/api/v1/models");
+    assert.equal(options?.headers?.Authorization, "Bearer openrouter-key");
     return new Response(JSON.stringify(payload), {
       status: 200,
-      headers: { 'Content-Type': 'application/json' }
+      headers: { "Content-Type": "application/json" },
     });
   };
 
-  const sync = require('../../insforge-src/functions/vibeusage-pricing-sync.js');
+  const sync = require("../../insforge-src/functions/vibeusage-pricing-sync.js");
 
-  const req = new Request('http://local/functions/vibeusage-pricing-sync', {
-    method: 'POST',
+  const req = new Request("http://local/functions/vibeusage-pricing-sync", {
+    method: "POST",
     headers: {
-      Authorization: 'Bearer service-role-key',
-      'Content-Type': 'application/json'
+      Authorization: "Bearer service-role-key",
+      "Content-Type": "application/json",
     },
-    body: JSON.stringify({ retention_days: 90 })
+    body: JSON.stringify({ retention_days: 90 }),
   });
 
   const res = await sync(req);
@@ -178,8 +178,8 @@ async function main() {
   assert.equal(db.upsertCalls, 1);
   assert.equal(db.upserts.length, 3);
 
-  const first = db.upserts.find((row) => row.model === 'anthropic/claude-opus-4.5');
-  const second = db.upserts.find((row) => row.model === 'openai/gpt-4o-mini');
+  const first = db.upserts.find((row) => row.model === "anthropic/claude-opus-4.5");
+  const second = db.upserts.find((row) => row.model === "openai/gpt-4o-mini");
 
   assert.equal(first.input_rate_micro_per_million, 1000000);
   assert.equal(first.cached_input_rate_micro_per_million, 100000);
@@ -191,14 +191,14 @@ async function main() {
   assert.equal(second.output_rate_micro_per_million, 3000000);
   assert.equal(second.reasoning_output_rate_micro_per_million, 3000000);
 
-  assert.equal(db.retention.eq.column, 'source');
-  assert.equal(db.retention.eq.value, 'openrouter');
+  assert.equal(db.retention.eq.column, "source");
+  assert.equal(db.retention.eq.value, "openrouter");
   assert.equal(db.retention.update.active, false);
   assert.equal(db.aliasUpsertCalls, 1);
   assert.equal(db.aliasUpserts.length, 1);
-  assert.equal(db.aliasUpserts[0].usage_model, 'claude-opus-4-5-20251101');
-  assert.equal(db.aliasUpserts[0].pricing_model, 'anthropic/claude-opus-4.5');
-  assert.equal(db.aliasUpserts[0].pricing_source, 'openrouter');
+  assert.equal(db.aliasUpserts[0].usage_model, "claude-opus-4-5-20251101");
+  assert.equal(db.aliasUpserts[0].pricing_model, "anthropic/claude-opus-4.5");
+  assert.equal(db.aliasUpserts[0].pricing_source, "openrouter");
 
   process.stdout.write(
     JSON.stringify(
@@ -206,11 +206,11 @@ async function main() {
         ok: true,
         upserts: db.upserts.length,
         alias_upserts: db.aliasUpserts.length,
-        retention: db.retention
+        retention: db.retention,
       },
       null,
-      2
-    ) + '\n'
+      2,
+    ) + "\n",
   );
 }
 

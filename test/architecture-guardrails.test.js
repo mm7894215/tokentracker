@@ -14,10 +14,7 @@ function writeFile(filePath, content) {
 test("guardrails flag client imports and service role keys", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "guardrails-"));
   writeFile(path.join(root, "src", "client.js"), "const x = 'insforge-src/functions';\n");
-  writeFile(
-    path.join(root, "dashboard", "app.jsx"),
-    "const key = process.env.SERVICE_ROLE_KEY;\n"
-  );
+  writeFile(path.join(root, "dashboard", "app.jsx"), "const key = process.env.SERVICE_ROLE_KEY;\n");
 
   const { errors } = runGuardrails({ root });
   const codes = errors.map((err) => err.code).sort();
@@ -28,11 +25,11 @@ test("guardrails flag internal URL usage and non-wrapper SDK imports", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "guardrails-"));
   writeFile(
     path.join(root, "src", "feature.js"),
-    "import { createClient } from '@insforge/sdk';\n"
+    "import { createClient } from '@insforge/sdk';\n",
   );
   writeFile(
     path.join(root, "dashboard", "page.tsx"),
-    "const baseUrl = process.env.INSFORGE_INTERNAL_URL;\n"
+    "const baseUrl = process.env.INSFORGE_INTERNAL_URL;\n",
   );
 
   const { errors } = runGuardrails({ root });
@@ -44,7 +41,7 @@ test("guardrails allow SDK usage in approved wrapper", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "guardrails-"));
   writeFile(
     path.join(root, "src", "lib", "insforge-client.js"),
-    "import { createClient } from '@insforge/sdk';\n"
+    "import { createClient } from '@insforge/sdk';\n",
   );
 
   const { errors } = runGuardrails({ root });
@@ -55,7 +52,7 @@ test("guardrails flag SQL money and timestamp", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "guardrails-"));
   writeFile(
     path.join(root, "schema.sql"),
-    "CREATE TABLE t (created_at timestamp, amount money);\n"
+    "CREATE TABLE t (created_at timestamp, amount money);\n",
   );
 
   const { errors } = runGuardrails({ root });
@@ -68,7 +65,7 @@ test("guardrails allow timestamptz and timestamp with time zone", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "guardrails-"));
   writeFile(
     path.join(root, "schema.sql"),
-    "CREATE TABLE t (created_at timestamptz, audited_at timestamp with time zone);\n"
+    "CREATE TABLE t (created_at timestamptz, audited_at timestamp with time zone);\n",
   );
 
   const { errors } = runGuardrails({ root });
@@ -79,7 +76,7 @@ test("guardrails allow timestamp casts used with AT TIME ZONE", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "guardrails-"));
   writeFile(
     path.join(root, "schema.sql"),
-    "SELECT (current_date::timestamp AT TIME ZONE 'utc') AS from_ts;\n"
+    "SELECT (current_date::timestamp AT TIME ZONE 'utc') AS from_ts;\n",
   );
 
   const { errors } = runGuardrails({ root });

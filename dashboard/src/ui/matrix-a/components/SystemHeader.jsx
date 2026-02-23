@@ -1,5 +1,4 @@
 import React from "react";
-
 import { copy } from "../../../lib/copy";
 
 export function SystemHeader({
@@ -23,9 +22,7 @@ export function SystemHeader({
         ) : null}
       </div>
       {time ? (
-        <div className="text-matrix-primary font-bold text-body tracking-widest">
-          {time}
-        </div>
+        <div className="text-matrix-primary font-bold text-body tracking-widest">{time}</div>
       ) : null}
     </header>
   );

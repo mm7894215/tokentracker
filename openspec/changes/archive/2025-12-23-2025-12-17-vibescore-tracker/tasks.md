@@ -2,7 +2,7 @@
 
 ## MVP-0（规格与落地路径）
 
-- [x] 固化事件模型与字段白名单（只允许 token_count.info.*）
+- [x] 固化事件模型与字段白名单（只允许 token_count.info.\*）
 - [x] 定义本地状态与队列格式（MVP：JSON/JSONL + offset；后续可迁移 SQLite）
 - [x] 定义 InsForge 数据表与 RLS（events / devices / aggregates）
 - [x] 定义 ingest 合约（批量、幂等、错误码）

@@ -41,13 +41,9 @@ export async function fetchLatestTrackerVersion({ allowStale = true } = {}) {
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
   let controller: AbortController | null = null;
   const scheduleTimeout =
-    typeof window !== "undefined" && window.setTimeout
-      ? window.setTimeout
-      : setTimeout;
+    typeof window !== "undefined" && window.setTimeout ? window.setTimeout : setTimeout;
   const clearTimeoutFn =
-    typeof window !== "undefined" && window.clearTimeout
-      ? window.clearTimeout
-      : clearTimeout;
+    typeof window !== "undefined" && window.clearTimeout ? window.clearTimeout : clearTimeout;
   if (typeof AbortController !== "undefined") {
     const localController = new AbortController();
     controller = localController;

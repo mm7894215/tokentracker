@@ -1,4 +1,5 @@
 ## 1. Implementation
+
 - [ ] 1.1 Add session refresh + retry-once flow for authenticated requests
 - [ ] 1.2 Add probe soft-fail path (skip session-expired on 401)
 - [ ] 1.3 Add visibility/focus revalidate hook for session refresh

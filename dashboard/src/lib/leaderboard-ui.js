@@ -37,7 +37,8 @@ export function buildPageItems(page, totalPages) {
 }
 
 export function getPaginationFlags({ page, totalPages }) {
-  const totalKnown = typeof totalPages === "number" && Number.isFinite(totalPages) && totalPages >= 0;
+  const totalKnown =
+    typeof totalPages === "number" && Number.isFinite(totalPages) && totalPages >= 0;
   const safeTotal = totalKnown
     ? clampInt(totalPages, { min: 0, max: 1_000_000, fallback: 0 })
     : null;

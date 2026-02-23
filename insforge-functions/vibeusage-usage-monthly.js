@@ -301,7 +301,11 @@ var require_auth = __commonJS({
     }
     async function getEdgeClientAndUserIdFast({ baseUrl, bearer }) {
       const anonKey = getAnonKey();
-      const edgeClient = createClient({ baseUrl, anonKey: anonKey || void 0, edgeFunctionToken: bearer });
+      const edgeClient = createClient({
+        baseUrl,
+        anonKey: anonKey || void 0,
+        edgeFunctionToken: bearer
+      });
       const local = await verifyUserJwtHs256({ token: bearer });
       const allowRemoteOnly = !local.ok && local?.code === "missing_jwt_secret";
       if (!local.ok && !allowRemoteOnly) {
@@ -410,7 +414,14 @@ var require_auth = __commonJS({
       }
       const publicView = await resolvePublicView({ baseUrl, shareToken: bearer });
       if (!publicView.ok) {
-        return { ok: false, edgeClient: null, userId: null, accessType: null, status: 401, error: "Unauthorized" };
+        return {
+          ok: false,
+          edgeClient: null,
+          userId: null,
+          accessType: null,
+          status: 401,
+          error: "Unauthorized"
+        };
       }
       return {
         ok: true,
@@ -850,7 +861,14 @@ var require_date = __commonJS({
     }
     function getTimeZoneOffsetMinutes(date, timeZone) {
       const parts = getTimeZoneParts(date, timeZone);
-      const asUtc = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second);
+      const asUtc = Date.UTC(
+        parts.year,
+        parts.month - 1,
+        parts.day,
+        parts.hour,
+        parts.minute,
+        parts.second
+      );
       return Math.round((asUtc - date.getTime()) / 6e4);
     }
     function getLocalParts2(date, tzContext) {
@@ -1422,7 +1440,9 @@ var require_usage_rollup = __commonJS({
       const rows = [];
       const { error } = await forEachPage2({
         createQuery: () => {
-          let query = edgeClient.database.from("vibeusage_tracker_daily_rollup").select("day,source,model,total_tokens,billable_total_tokens,input_tokens,cached_input_tokens,output_tokens,reasoning_output_tokens").eq("user_id", userId).gte("day", fromDay).lte("day", toDay);
+          let query = edgeClient.database.from("vibeusage_tracker_daily_rollup").select(
+            "day,source,model,total_tokens,billable_total_tokens,input_tokens,cached_input_tokens,output_tokens,reasoning_output_tokens"
+          ).eq("user_id", userId).gte("day", fromDay).lte("day", toDay);
           if (source) query = query.eq("source", source);
           if (model) query = query.eq("model", model);
           query = applyCanaryFilter(query, { source, model });
@@ -1463,8 +1483,16 @@ var require_usage_aggregate = __commonJS({
     var { toBigInt } = require_numbers();
     var { computeBillableTotalTokens } = require_usage_billable();
     var { addRowTotals } = require_usage_rollup();
-    function resolveBillableTotals({ row, source, totals, billableField = "billable_total_tokens", hasStoredBillable } = {}) {
-      const stored = typeof hasStoredBillable === "boolean" ? hasStoredBillable : Boolean(row && Object.prototype.hasOwnProperty.call(row, billableField) && row[billableField] != null);
+    function resolveBillableTotals({
+      row,
+      source,
+      totals,
+      billableField = "billable_total_tokens",
+      hasStoredBillable
+    } = {}) {
+      const stored = typeof hasStoredBillable === "boolean" ? hasStoredBillable : Boolean(
+        row && Object.prototype.hasOwnProperty.call(row, billableField) && row[billableField] != null
+      );
       const resolvedTotals = totals || row;
       const billable = stored ? toBigInt(row?.[billableField]) : computeBillableTotalTokens({ source, totals: resolvedTotals });
       return { billable, hasStoredBillable: stored };
@@ -1615,10 +1643,7 @@ var { logSlowQuery, withRequestLogging } = require_logging();
 var { isDebugEnabled, withSlowQueryDebugPayload } = require_debug();
 var { initMonthlyBuckets, ingestMonthlyRow } = require_usage_monthly();
 var { buildHourlyUsageQuery } = require_usage_hourly();
-var {
-  buildAliasTimeline,
-  fetchAliasRows
-} = require_model_alias_timeline();
+var { buildAliasTimeline, fetchAliasRows } = require_model_alias_timeline();
 var MAX_MONTHS = 24;
 module.exports = withRequestLogging("vibeusage-usage-monthly", async function(request, logger) {
   const opt = handleOptions(request);

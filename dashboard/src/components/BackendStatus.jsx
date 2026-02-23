@@ -1,14 +1,8 @@
 import React, { useMemo } from "react";
-
 import { useBackendStatus } from "../hooks/use-backend-status";
 import { copy } from "../lib/copy";
 import { ConnectionStatus } from "../ui/matrix-a/components/ConnectionStatus.jsx";
-export function BackendStatus({
-  baseUrl,
-  accessToken,
-  statusOverride,
-  titleOverride,
-}) {
+export function BackendStatus({ baseUrl, accessToken, statusOverride, titleOverride }) {
   const { status, checking, httpStatus, lastCheckedAt, lastOkAt, error, refresh } =
     useBackendStatus({ baseUrl, accessToken });
 
@@ -34,22 +28,10 @@ export function BackendStatus({
       .join(" • ");
 
     return meta;
-  }, [
-    error,
-    host,
-    httpStatus,
-    lastCheckedAt,
-    lastOkAt,
-    status,
-    titleOverride,
-  ]);
+  }, [error, host, httpStatus, lastCheckedAt, lastOkAt, status, titleOverride]);
 
   return (
-    <ConnectionStatus
-      status={uiStatus}
-      title={title}
-      className={checking ? "opacity-80" : ""}
-    />
+    <ConnectionStatus status={uiStatus} title={title} className={checking ? "opacity-80" : ""} />
   );
 }
 

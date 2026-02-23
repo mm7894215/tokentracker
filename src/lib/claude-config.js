@@ -1,9 +1,9 @@
-const fs = require('node:fs/promises');
-const path = require('node:path');
+const fs = require("node:fs/promises");
+const path = require("node:path");
 
-const { ensureDir, readJson, writeJson } = require('./fs');
+const { ensureDir, readJson, writeJson } = require("./fs");
 
-const DEFAULT_EVENT = 'SessionEnd';
+const DEFAULT_EVENT = "SessionEnd";
 
 async function upsertClaudeHook({ settingsPath, hookCommand, event = DEFAULT_EVENT }) {
   const existing = await readJson(settingsPath);
@@ -23,7 +23,7 @@ async function upsertClaudeHook({ settingsPath, hookCommand, event = DEFAULT_EVE
     return { changed: false, backupPath: null };
   }
 
-  const nextEntries = entries.concat([{ hooks: [{ type: 'command', command: hookCommand }] }]);
+  const nextEntries = entries.concat([{ hooks: [{ type: "command", command: hookCommand }] }]);
   const nextHooks = { ...hooks, [event]: nextEntries };
   const nextSettings = { ...settings, hooks: nextHooks };
 
@@ -33,12 +33,12 @@ async function upsertClaudeHook({ settingsPath, hookCommand, event = DEFAULT_EVE
 
 async function removeClaudeHook({ settingsPath, hookCommand, event = DEFAULT_EVENT }) {
   const existing = await readJson(settingsPath);
-  if (!existing) return { removed: false, skippedReason: 'settings-missing' };
+  if (!existing) return { removed: false, skippedReason: "settings-missing" };
 
   const settings = normalizeSettings(existing);
   const hooks = normalizeHooks(settings.hooks);
   const entries = normalizeEntries(hooks[event]);
-  if (entries.length === 0) return { removed: false, skippedReason: 'hook-missing' };
+  if (entries.length === 0) return { removed: false, skippedReason: "hook-missing" };
 
   let removed = false;
   const nextEntries = [];
@@ -48,7 +48,7 @@ async function removeClaudeHook({ settingsPath, hookCommand, event = DEFAULT_EVE
     if (res.entry) nextEntries.push(res.entry);
   }
 
-  if (!removed) return { removed: false, skippedReason: 'hook-missing' };
+  if (!removed) return { removed: false, skippedReason: "hook-missing" };
 
   const nextHooks = { ...hooks };
   if (nextEntries.length > 0) nextHooks[event] = nextEntries;
@@ -64,24 +64,24 @@ async function removeClaudeHook({ settingsPath, hookCommand, event = DEFAULT_EVE
 
 async function isClaudeHookConfigured({ settingsPath, hookCommand, event = DEFAULT_EVENT }) {
   const settings = await readJson(settingsPath);
-  if (!settings || typeof settings !== 'object') return false;
+  if (!settings || typeof settings !== "object") return false;
   const hooks = settings.hooks;
-  if (!hooks || typeof hooks !== 'object') return false;
+  if (!hooks || typeof hooks !== "object") return false;
   const entries = normalizeEntries(hooks[event]);
   return hasHook(entries, hookCommand);
 }
 
 function buildClaudeHookCommand(notifyPath) {
-  const cmd = typeof notifyPath === 'string' ? notifyPath : '';
+  const cmd = typeof notifyPath === "string" ? notifyPath : "";
   return `/usr/bin/env node ${quoteArg(cmd)} --source=claude`;
 }
 
 function normalizeSettings(raw) {
-  return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+  return raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
 }
 
 function normalizeHooks(raw) {
-  return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+  return raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
 }
 
 function normalizeEntries(raw) {
@@ -89,14 +89,14 @@ function normalizeEntries(raw) {
 }
 
 function normalizeCommand(cmd) {
-  if (Array.isArray(cmd)) return cmd.map((v) => String(v)).join('\u0000');
-  if (typeof cmd === 'string') return cmd.trim();
+  if (Array.isArray(cmd)) return cmd.map((v) => String(v)).join("\u0000");
+  if (typeof cmd === "string") return cmd.trim();
   return null;
 }
 
 function hasHook(entries, hookCommand) {
   for (const entry of entries) {
-    if (!entry || typeof entry !== 'object') continue;
+    if (!entry || typeof entry !== "object") continue;
     if (entry.command && commandsEqual(entry.command, hookCommand)) return true;
     const hooks = Array.isArray(entry.hooks) ? entry.hooks : [];
     for (const hook of hooks) {
@@ -107,7 +107,7 @@ function hasHook(entries, hookCommand) {
 }
 
 function stripHookFromEntry(entry, hookCommand) {
-  if (!entry || typeof entry !== 'object') return { entry, removed: false };
+  if (!entry || typeof entry !== "object") return { entry, removed: false };
 
   if (entry.command) {
     if (commandsEqual(entry.command, hookCommand)) return { entry: null, removed: true };
@@ -127,11 +127,11 @@ function stripHookFromEntry(entry, hookCommand) {
 function normalizeEntriesForCommand(entries, hookCommand) {
   let changed = false;
   const nextEntries = entries.map((entry) => {
-    if (!entry || typeof entry !== 'object') return entry;
+    if (!entry || typeof entry !== "object") return entry;
     if (entry.command && commandsEqual(entry.command, hookCommand)) {
-      if (entry.type !== 'command') {
+      if (entry.type !== "command") {
         changed = true;
-        return { ...entry, type: 'command' };
+        return { ...entry, type: "command" };
       }
       return entry;
     }
@@ -139,9 +139,9 @@ function normalizeEntriesForCommand(entries, hookCommand) {
     let hooksChanged = false;
     const nextHooks = entry.hooks.map((hook) => {
       if (hook && commandsEqual(hook.command, hookCommand)) {
-        if (hook.type !== 'command') {
+        if (hook.type !== "command") {
           hooksChanged = true;
-          return { ...hook, type: 'command' };
+          return { ...hook, type: "command" };
         }
       }
       return hook;
@@ -160,7 +160,7 @@ function commandsEqual(a, b) {
 }
 
 function quoteArg(value) {
-  const v = typeof value === 'string' ? value : '';
+  const v = typeof value === "string" ? value : "";
   if (!v) return '""';
   if (/^[A-Za-z0-9_\-./:@]+$/.test(v)) return v;
   return `"${v.replace(/"/g, '\\"')}"`;
@@ -172,7 +172,7 @@ async function writeClaudeSettings({ settingsPath, settings }) {
   try {
     const st = await fs.stat(settingsPath);
     if (st && st.isFile()) {
-      backupPath = `${settingsPath}.bak.${new Date().toISOString().replace(/[:.]/g, '-')}`;
+      backupPath = `${settingsPath}.bak.${new Date().toISOString().replace(/[:.]/g, "-")}`;
       await fs.copyFile(settingsPath, backupPath);
     }
   } catch (_e) {
@@ -186,5 +186,5 @@ module.exports = {
   upsertClaudeHook,
   removeClaudeHook,
   isClaudeHookConfigured,
-  buildClaudeHookCommand
+  buildClaudeHookCommand,
 };

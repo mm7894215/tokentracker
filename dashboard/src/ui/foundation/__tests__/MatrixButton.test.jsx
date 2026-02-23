@@ -21,7 +21,7 @@ it("respects disabled state", async () => {
   render(
     <MatrixButton onClick={onClick} disabled>
       {label}
-    </MatrixButton>
+    </MatrixButton>,
   );
 
   const button = screen.getByRole("button", { name: label });
@@ -44,7 +44,7 @@ it("sets aria-disabled and ignores clicks when rendered as a link with disabled"
   render(
     <MatrixButton as="a" href="#refresh" onClick={onClick} disabled>
       {label}
-    </MatrixButton>
+    </MatrixButton>,
   );
 
   const link = screen.getByRole("link", { name: label });

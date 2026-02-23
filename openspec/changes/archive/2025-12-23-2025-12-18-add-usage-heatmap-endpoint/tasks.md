@@ -9,11 +9,13 @@
 - [x] 写入一份固定的样例 JSON（作为后续验收依据）
 
 Contract freeze（已确认）：
+
 - `week_starts_on` 默认：`sun`（与 GitHub 风格一致）
 - `weeks` 默认：`52`；范围：`1..104`（上限两年）
 - `to` 默认：today(UTC)（格式 `YYYY-MM-DD`；非法返回 400）
 
 样例（截断）：
+
 ```json
 {
   "from": "2025-12-07",
@@ -22,11 +24,7 @@ Contract freeze（已确认）：
   "thresholds": { "t1": "10", "t2": "100", "t3": "100" },
   "active_days": 4,
   "streak_days": 1,
-  "weeks": [
-    [
-      { "day": "2025-12-07", "value": "0", "level": 0 }
-    ]
-  ]
+  "weeks": [[{ "day": "2025-12-07", "value": "0", "level": 0 }]]
 }
 ```
 

@@ -9,10 +9,5 @@ export function shouldShowInstallCard({
 } = {}) {
   if (publicMode || screenshotMode) return false;
   if (forceInstall) return true;
-  return (
-    accessEnabled &&
-    !heatmapLoading &&
-    activeDays === 0 &&
-    !hasActiveDeviceToken
-  );
+  return accessEnabled && !heatmapLoading && activeDays === 0 && !hasActiveDeviceToken;
 }

@@ -1,5 +1,4 @@
 import React from "react";
-
 import { copy } from "../../../lib/copy";
 import { formatCompactNumber } from "../../../lib/format";
 import { TEXTURES } from "./MatrixConstants";
@@ -28,20 +27,12 @@ export const NeuralAdaptiveFleet = React.memo(function NeuralAdaptiveFleet({
     <div className="w-full space-y-4">
       <div className="flex justify-between items-baseline border-b border-matrix-ghost pb-2">
         <div className="flex items-baseline gap-2">
-          <span className="text-heading font-black text-matrix-primary uppercase">
-            {label}
-          </span>
-          <span className="text-caption text-matrix-muted">
-            {usageLabel}
-          </span>
+          <span className="text-heading font-black text-matrix-primary uppercase">{label}</span>
+          <span className="text-caption text-matrix-muted">{usageLabel}</span>
         </div>
         <div className="flex items-baseline space-x-1">
-          <span className="text-body font-black text-matrix-primary">
-            {totalPercent}
-          </span>
-          <span className="text-caption text-matrix-dim font-bold">
-            {percentSymbol}
-          </span>
+          <span className="text-body font-black text-matrix-primary">{totalPercent}</span>
+          <span className="text-caption text-matrix-dim font-bold">{percentSymbol}</span>
         </div>
       </div>
 
@@ -70,10 +61,7 @@ export const NeuralAdaptiveFleet = React.memo(function NeuralAdaptiveFleet({
           const styleConfig = TEXTURES[index % TEXTURES.length];
           const modelKey = model?.id ? String(model.id) : `${model.name}-${index}`;
           return (
-            <div
-              key={modelKey}
-              className="flex items-center space-x-2"
-            >
+            <div key={modelKey} className="flex items-center space-x-2">
               <div
                 className="w-2 h-2 border border-matrix-ghost shrink-0"
                 style={{

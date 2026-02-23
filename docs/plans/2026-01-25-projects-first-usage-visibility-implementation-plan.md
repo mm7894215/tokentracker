@@ -5,6 +5,7 @@
 **Goal:** Capture project usage (all‑time total tokens) at ingest time, derived from CLI usage sources, without any frontend changes.
 
 **Key Decisions (confirmed):**
+
 - **Scope:** Backend + CLI only (no dashboard work).
 - **Project reference:** Repository remote URL (canonicalized) as `project_ref`.
 - **Usage metric:** All‑time totals, including cached/other token types when present.
@@ -22,12 +23,14 @@ CLI computes project‑scoped token deltas per hour bucket, sends them alongside
 **Change ID (proposed):** `2026-01-25-add-project-usage-totals`
 
 **Files:**
+
 - Create: `openspec/changes/2026-01-25-add-project-usage-totals/proposal.md`
 - Create: `openspec/changes/2026-01-25-add-project-usage-totals/tasks.md`
 - Create: `openspec/changes/2026-01-25-add-project-usage-totals/design.md`
 - Create: `openspec/changes/2026-01-25-add-project-usage-totals/specs/vibeusage-projects/spec.md`
 
 **Proposal summary:**
+
 - Add project registry + project usage hourly storage.
 - Extend CLI parsers to emit project‑scoped usage.
 - Extend ingest to upsert project usage + registry.
@@ -39,14 +42,18 @@ CLI computes project‑scoped token deltas per hour bucket, sends them alongside
 ## Task 2: DB schema (OpenSpec SQL)
 
 **Files:**
+
 - Create: `openspec/changes/2026-01-25-add-project-usage-totals/sql/001_create_usage_projects.sql`
 
 **Tables:**
-1) `public.vibeusage_projects`
+
+1. `public.vibeusage_projects`
+
 - Registry for `project_ref` per user
 - Fields: `project_id`, `user_id`, `device_id`, `device_token_id`, `project_key`, `project_ref`, `source`, `first_seen_at`, `last_seen_at`
 
-2) `public.vibeusage_project_usage_hourly`
+2. `public.vibeusage_project_usage_hourly`
+
 - Idempotent hourly project usage
 - Unique key: `(user_id, project_key, hour_start, source)`
 - Fields: `usage_id`, `user_id`, `device_id`, `device_token_id`, `project_key`, `project_ref`, `source`, `hour_start`,
@@ -58,11 +65,13 @@ CLI computes project‑scoped token deltas per hour bucket, sends them alongside
 ## Task 3: CLI emits project‑scoped usage (TDD)
 
 **Files:**
+
 - Modify: `src/lib/rollout.js`
 - Modify: `src/commands/sync.js`
 - Test: `test/rollout-parser.test.js`
 
 **Behavior:**
+
 - Resolve `project_ref` from Git remote URL for each session directory.
 - Aggregate usage deltas per `project_ref` per hour bucket (same hour_start alignment).
 - Emit alongside existing hourly payload, e.g. `project_hourly: []` with the same token fields.
@@ -72,10 +81,12 @@ CLI computes project‑scoped token deltas per hour bucket, sends them alongside
 ## Task 4: Uploader sends project usage payload
 
 **Files:**
+
 - Modify: `src/lib/uploader.js`
 - Test: `test/uploader.test.js`
 
 **Behavior:**
+
 - Include `project_hourly` in upload payload even if there are no hourly buckets (projects‑only upload supported).
 - Keep payload backward compatible for existing ingest (server will accept optional `project_hourly`).
 
@@ -84,10 +95,12 @@ CLI computes project‑scoped token deltas per hour bucket, sends them alongside
 ## Task 5: Ingest stores project usage + registry
 
 **Files:**
+
 - Modify: `insforge-src/functions/vibeusage-ingest.js`
 - Test: `test/edge-functions.test.js`
 
 **Behavior:**
+
 - Parse `project_hourly` buckets, normalize tokens, compute `billable_total_tokens` using existing rules.
 - Upsert `vibeusage_project_usage_hourly` with `on conflict` on `(user_id, project_key, hour_start, source)`.
 - Upsert `vibeusage_projects` to set `first_seen_at/last_seen_at` and track `project_ref`.

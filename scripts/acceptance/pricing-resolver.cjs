@@ -1,9 +1,12 @@
 #!/usr/bin/env node
-'use strict';
+"use strict";
 
-const assert = require('node:assert/strict');
+const assert = require("node:assert/strict");
 
-const { getDefaultPricingProfile, resolvePricingProfile } = require('../../insforge-src/shared/pricing');
+const {
+  getDefaultPricingProfile,
+  resolvePricingProfile,
+} = require("../../insforge-src/shared/pricing");
 
 class DatabaseStub {
   constructor(rows = []) {
@@ -41,7 +44,7 @@ class DatabaseStub {
   }
 
   limit() {
-    if (this._table === 'vibeusage_pricing_model_aliases') {
+    if (this._table === "vibeusage_pricing_model_aliases") {
       return { data: [], error: null };
     }
     return { data: this.rows, error: null };
@@ -50,20 +53,20 @@ class DatabaseStub {
 
 async function main() {
   const profileRow = {
-    model: 'openai/codex-vision',
-    source: 'openrouter',
-    effective_from: '2025-11-30',
+    model: "openai/codex-vision",
+    source: "openrouter",
+    effective_from: "2025-11-30",
     input_rate_micro_per_million: 999000,
     cached_input_rate_micro_per_million: 111000,
     output_rate_micro_per_million: 2220000,
-    reasoning_output_rate_micro_per_million: 3330000
+    reasoning_output_rate_micro_per_million: 3330000,
   };
 
   const edgeClient = { database: new DatabaseStub([profileRow]) };
   const resolved = await resolvePricingProfile({
     edgeClient,
-    effectiveDate: '2025-12-25',
-    model: 'codex-vision'
+    effectiveDate: "2025-12-25",
+    model: "codex-vision",
   });
 
   assert.equal(resolved.model, profileRow.model);
@@ -72,21 +75,23 @@ async function main() {
   assert.equal(resolved.rates_micro_per_million.input, profileRow.input_rate_micro_per_million);
   assert.equal(
     resolved.rates_micro_per_million.cached_input,
-    profileRow.cached_input_rate_micro_per_million
+    profileRow.cached_input_rate_micro_per_million,
   );
-  assert.equal(
-    resolved.rates_micro_per_million.output,
-    profileRow.output_rate_micro_per_million
-  );
+  assert.equal(resolved.rates_micro_per_million.output, profileRow.output_rate_micro_per_million);
   assert.equal(
     resolved.rates_micro_per_million.reasoning_output,
-    profileRow.reasoning_output_rate_micro_per_million
+    profileRow.reasoning_output_rate_micro_per_million,
   );
   assert.equal(edgeClient.database.orCalls, 1);
-  assert.ok(edgeClient.database.lastOr && edgeClient.database.lastOr.includes('model.eq.codex-vision'));
+  assert.ok(
+    edgeClient.database.lastOr && edgeClient.database.lastOr.includes("model.eq.codex-vision"),
+  );
 
   const fallbackClient = { database: new DatabaseStub([]) };
-  const fallback = await resolvePricingProfile({ edgeClient: fallbackClient, effectiveDate: '2025-12-25' });
+  const fallback = await resolvePricingProfile({
+    edgeClient: fallbackClient,
+    effectiveDate: "2025-12-25",
+  });
   const defaultProfile = getDefaultPricingProfile();
 
   assert.deepEqual(fallback, defaultProfile);
@@ -96,11 +101,11 @@ async function main() {
       {
         ok: true,
         resolved_model: resolved.model,
-        fallback_model: fallback.model
+        fallback_model: fallback.model,
       },
       null,
-      2
-    ) + '\n'
+      2,
+    ) + "\n",
   );
 }
 

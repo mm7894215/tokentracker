@@ -30,9 +30,7 @@ export function trimLeadingZeroMonths(rows: any) {
   const items = Array.isArray(rows) ? rows : [];
   if (!items.length) return [];
   const ordered = sortDetailRows(items, { key: "month", dir: "asc" });
-  const firstIndex = ordered.findIndex(
-    (row) => row?.month && hasNonZeroTokens(row)
-  );
+  const firstIndex = ordered.findIndex((row) => row?.month && hasNonZeroTokens(row));
   if (firstIndex === -1) return items;
   return ordered.slice(firstIndex);
 }

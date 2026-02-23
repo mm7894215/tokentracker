@@ -5,11 +5,8 @@ const { test } = require("node:test");
 
 test("AsciiBox allows bodyClassName overrides for content padding", () => {
   const src = fs.readFileSync(
-    path.join(
-      __dirname,
-      "../dashboard/src/ui/foundation/AsciiBox.jsx"
-    ),
-    "utf8"
+    path.join(__dirname, "../dashboard/src/ui/foundation/AsciiBox.jsx"),
+    "utf8",
   );
 
   assert.ok(src.includes("bodyClassName"));

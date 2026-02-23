@@ -34,7 +34,7 @@ function printHelp() {
       "  --cursors-path   Override cursors.json path.",
       "  --help           Show this help.",
       "",
-    ].join("\n")
+    ].join("\n"),
   );
 }
 
@@ -182,7 +182,9 @@ async function main() {
   const summaries = [];
   let totalUnknownTokens = 0;
 
-  for (const [hourStart, group] of Array.from(groups.entries()).sort((a, b) => a[0].localeCompare(b[0]))) {
+  for (const [hourStart, group] of Array.from(groups.entries()).sort((a, b) =>
+    a[0].localeCompare(b[0]),
+  )) {
     if (!group.unknown || group.known.length === 0) continue;
     const unknownTotals = group.unknown.bucket.totals || {};
     const unknownTotalTokens = toNumber(unknownTotals.total_tokens);
@@ -243,7 +245,7 @@ async function main() {
         `Buckets: ${summaries.length}`,
         `Records to append: ${records.length}`,
         `Unknown total tokens: ${totalUnknownTokens}`,
-      ].join("\n") + "\n"
+      ].join("\n") + "\n",
     );
   } else {
     process.stdout.write(`Buckets: ${summaries.length}\n`);
@@ -251,7 +253,7 @@ async function main() {
     const display = limit > 0 ? summaries.slice(0, limit) : [];
     for (const entry of display) {
       process.stdout.write(
-        `${entry.hourStart} -> ${entry.dominantModel} (unknown ${entry.unknownTotal}, merged ${entry.mergedTotal})\n`
+        `${entry.hourStart} -> ${entry.dominantModel} (unknown ${entry.unknownTotal}, merged ${entry.mergedTotal})\n`,
       );
     }
     if (summaries.length > display.length) {

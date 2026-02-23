@@ -3,11 +3,13 @@
 ## Scope
 
 IN:
+
 - Backend-only：Database + Edge Function contract & implementation plan
 - Leaderboard ranking by `total_tokens` for UTC `day / week / month / total`
 - Privacy boundary (no PII, no raw logs)
 
 OUT (MVP):
+
 - UI layout/interaction details（Dashboard 只在后续任务接入）
 - 复杂反作弊（多账号、刷 token）
 - 多租户 / 组织隔离
@@ -17,11 +19,13 @@ OUT (MVP):
 ### Scope
 
 IN:
+
 - 提供 `GET /functions/vibescore-leaderboard`（day/week/month/total）
 - 匿名默认：除非用户显式公开，否则只展示 `Anonymous`
 - 响应包含 `me`（即使不在 Top N）
 
 OUT:
+
 - 任意历史日期筛选（不支持 `from/to`）
 - 公开资料的 UI 编辑入口（后续再做）
 
@@ -44,6 +48,7 @@ OUT:
 4. Edge Function 生成 privacy-safe JSON（不返回 `user_id`，bigint 以 string 返回）
 
 信任边界：
+
 - 跨用户聚合只允许在 DB 的 SECURITY DEFINER 层完成，并且只输出安全字段
 - Edge Function 层不持有 service role key（避免 secret 缺失导致不可用）
 
@@ -116,6 +121,7 @@ OUT:
 - `limit`: `1..100`（optional, default `20`）
 
 约束：
+
 - 仅支持“当前”窗口（Calendar），不支持历史 `to=YYYY-MM-DD`
 - 仅支持 UTC，周起始固定为 Sunday（`week_starts_on=sun`）
   - `period=total` 的 `from/to` 推荐为：`from=system_earliest_day`，`to=today_utc`（仍可调整）
@@ -142,6 +148,7 @@ OUT:
 ```
 
 Notes:
+
 - `total_tokens` 用 string 返回（bigint 安全）
 - 不返回 `user_id`（避免跨表关联）；仅在榜单条目里提供 `is_me`（当前用户可见）
 - 匿名策略：默认 `display_name="Anonymous"`（不加序号）；仅当用户明确公开时，才返回昵称/头像
@@ -152,6 +159,7 @@ Notes:
 ### Principle
 
 把“跨用户聚合读取”固定在 DB 的 `SECURITY DEFINER` 函数里：
+
 - 函数运行在 definer 权限下，绕过 RLS，完成聚合与排序
 - 对外只暴露安全字段（rank/nickname/avatar/totals）
 - Edge Function 只做：参数校验 → 调用只读 view → 输出 JSON
@@ -186,6 +194,7 @@ Notes:
    - `public.vibescore_leaderboard_me_total_current`
 
 这些 views 只是函数调用的薄封装（避免依赖 RPC）：
+
 - entries views：调用 `vibescore_leaderboard_period('<period>', 100)`（view 内固定上限 100）
 - me views：调用 `vibescore_leaderboard_me('<period>')`
 
@@ -205,15 +214,18 @@ Edge Function 侧通过 `.order('rank')` + `.limit(limit)` 做最终裁剪（`li
 Leaderboard 查询是“跨用户 + 时间范围”聚合，现有索引 `(user_id, token_timestamp)` 对该类查询不理想。
 
 建议新增索引（候选）：
+
 - `create index ... on public.vibescore_tracker_events (token_timestamp desc, user_id);`
 
 后续规模变大时的升级路径（Plan B）：
+
 - 引入物化聚合表（daily/weekly/monthly），在 ingest 后异步刷新
 - 或增加定时任务/cron 生成 leaderboard snapshot（减少实时计算）
 
 ## Alternative approach (requires service role key)
 
 Edge Function 使用 `INSFORGE_SERVICE_ROLE_KEY` 创建 service client：
+
 - 直接从 `vibescore_tracker_daily`（或 events）读取跨用户数据
 - 在 JS 里做 group-by / rank
 
@@ -223,11 +235,13 @@ Edge Function 使用 `INSFORGE_SERVICE_ROLE_KEY` 创建 service client：
 ## Security & privacy
 
 Non-negotiables:
+
 - 不返回 email / device_id / 细粒度 token_timestamp / 任何日志内容
 - 不返回 `user_id`
 - `limit` 有硬上限，避免被滥用做全量枚举
 
 可选项（后续再议）：
+
 - 是否需要额外返回 `me.percentile` / `me.total_users`（用于 UI 文案）
 
 ## Test strategy

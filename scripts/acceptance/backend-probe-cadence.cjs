@@ -1,15 +1,12 @@
 #!/usr/bin/env node
-'use strict';
+"use strict";
 
-const assert = require('node:assert/strict');
-const path = require('node:path');
-const { pathToFileURL } = require('node:url');
+const assert = require("node:assert/strict");
+const path = require("node:path");
+const { pathToFileURL } = require("node:url");
 
 async function main() {
-  const modulePath = path.resolve(
-    __dirname,
-    '../../dashboard/src/lib/backend-probe-scheduler.js'
-  );
+  const modulePath = path.resolve(__dirname, "../../dashboard/src/lib/backend-probe-scheduler.js");
   const moduleUrl = pathToFileURL(modulePath).href;
   const {
     createProbeCadence,
@@ -55,8 +52,8 @@ async function main() {
         config: cadence.getConfig(),
       },
       null,
-      2
-    ) + '\n'
+      2,
+    ) + "\n",
   );
 }
 

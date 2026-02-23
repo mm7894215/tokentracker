@@ -15,6 +15,7 @@
 ### Task 1: Public View routing + UI gate (frontend)
 
 **Files:**
+
 - Modify: `dashboard/src/App.jsx`
 - Modify: `dashboard/src/pages/DashboardPage.jsx`
 - Test: `test/public-view.test.js`
@@ -68,6 +69,7 @@ git commit -m "feat: add public view routing and gating"
 ### Task 2: Public View share panel + copy registry
 
 **Files:**
+
 - Modify: `dashboard/src/pages/DashboardPage.jsx`
 - Modify: `dashboard/src/lib/vibescore-api.js`
 - Modify: `dashboard/src/content/copy.csv`
@@ -122,6 +124,7 @@ git commit -m "feat: add public view panel and copy registry"
 ### Task 3: Share link schema + edge functions (backend)
 
 **Files:**
+
 - Create: `insforge-src/functions/vibescore-public-view-issue.js`
 - Create: `insforge-src/functions/vibescore-public-view-revoke.js`
 - Create: `insforge-src/functions/vibescore-public-view-status.js`
@@ -146,7 +149,9 @@ Expected: ENOENT for missing public view functions.
 
 ```js
 // insforge-src/shared/public-view.js
-async function resolvePublicView({ baseUrl, shareToken }) { /* lookup by token_hash */ }
+async function resolvePublicView({ baseUrl, shareToken }) {
+  /* lookup by token_hash */
+}
 ```
 
 ```js
@@ -156,7 +161,7 @@ async function resolvePublicView({ baseUrl, shareToken }) { /* lookup by token_h
 
 ```js
 // insforge-src/functions/vibescore-usage-summary.js
-const { getAccessContext } = require('../shared/auth');
+const { getAccessContext } = require("../shared/auth");
 const auth = await getAccessContext({ baseUrl, bearer, allowPublic: true });
 ```
 
@@ -177,6 +182,7 @@ git commit -m "feat: add public view share tokens"
 ### Task 4: Build + acceptance script + regression
 
 **Files:**
+
 - Create: `scripts/acceptance/public-view-link.cjs`
 - Modify: `docs/deployment/freeze.md`
 
@@ -184,7 +190,7 @@ git commit -m "feat: add public view share tokens"
 
 ```js
 // scripts/acceptance/public-view-link.cjs
-const fn = require('../insforge-functions/vibeusage-public-view-issue');
+const fn = require("../insforge-functions/vibeusage-public-view-issue");
 ```
 
 **Step 2: Run acceptance script to verify failure**
@@ -204,10 +210,12 @@ Expected: PASS
 **Step 5: Regression and freeze**
 
 Run:
+
 - `node --test test/public-view.test.js`
 - `npm run build:insforge:check`
 
 Update:
+
 - `docs/deployment/freeze.md` with Public View entry + commands.
 
 **Step 6: Commit**

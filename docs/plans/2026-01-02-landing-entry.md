@@ -13,6 +13,7 @@
 ### Task 1: Update regression test for landing gate
 
 **Files:**
+
 - Modify: `test/dashboard-session-expired-banner.test.js`
 
 **Step 1: Write the failing test**
@@ -34,6 +35,7 @@ Expected: FAIL because `App.jsx` still includes `!sessionExpired` in the landing
 ### Task 2: Update landing gating in App
 
 **Files:**
+
 - Modify: `dashboard/src/App.jsx`
 
 **Step 1: Write minimal implementation**
@@ -53,6 +55,7 @@ Expected: PASS.
 ### Task 3: Update architecture canvas
 
 **Files:**
+
 - Modify: `architecture.canvas`
 
 **Step 1: Regenerate canvas**

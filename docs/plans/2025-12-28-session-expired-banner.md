@@ -13,6 +13,7 @@
 ### Task 1: Write the failing tests
 
 **Files:**
+
 - Create: `test/dashboard-session-expired-banner.test.js`
 
 **Step 1: Write the failing test**
@@ -77,6 +78,7 @@ Expected: FAIL with missing patterns for session expired logic and copy keys.
 ### Task 2: Add session expired storage helpers
 
 **Files:**
+
 - Modify: `dashboard/src/lib/auth-storage.js`
 
 **Step 1: Write minimal implementation**
@@ -111,7 +113,7 @@ export function setSessionExpired() {
   try {
     localStorage.setItem(
       SESSION_EXPIRED_KEY,
-      JSON.stringify({ expiredAt: new Date().toISOString() })
+      JSON.stringify({ expiredAt: new Date().toISOString() }),
     );
   } catch (_e) {
     return;
@@ -158,6 +160,7 @@ Expected: still FAIL (other logic not implemented yet).
 ### Task 3: Update useAuth to track sessionExpired
 
 **Files:**
+
 - Modify: `dashboard/src/hooks/use-auth.js`
 
 **Step 1: Write minimal implementation**
@@ -193,7 +196,9 @@ export function useAuth() {
     if (!accessToken) return;
 
     clearSessionExpired();
-    const next = { /* existing fields */ };
+    const next = {
+      /* existing fields */
+    };
     saveAuthToStorage(next);
     setAuth(next);
     setSessionExpired(false);
@@ -228,6 +233,7 @@ Expected: still FAIL (App/Dashboard/vibescore-api/copy not updated).
 ### Task 4: Update App gating for sessionExpired
 
 **Files:**
+
 - Modify: `dashboard/src/App.jsx`
 
 **Step 1: Write minimal implementation**
@@ -262,6 +268,7 @@ Expected: still FAIL (banner/copy/vibescore-api).
 ### Task 5: Add session expired banner to DashboardPage
 
 **Files:**
+
 - Modify: `dashboard/src/pages/DashboardPage.jsx`
 
 **Step 1: Write minimal implementation**
@@ -304,6 +311,7 @@ Expected: still FAIL (copy/vibescore-api).
 ### Task 6: Mark session expired on 401 in vibescore-api
 
 **Files:**
+
 - Modify: `dashboard/src/lib/vibescore-api.js`
 
 **Step 1: Write minimal implementation**
@@ -330,6 +338,7 @@ Expected: still FAIL (copy missing).
 ### Task 7: Add copy registry keys
 
 **Files:**
+
 - Modify: `dashboard/src/content/copy.csv`
 
 **Step 1: Add new keys**
@@ -360,6 +369,7 @@ Run: `node scripts/validate-copy-registry.cjs`
 Expected: no errors
 
 **Step 3: Manual check**
+
 - Force a 401 (invalidate token) and confirm banner renders while page stays visible.
 
 ---

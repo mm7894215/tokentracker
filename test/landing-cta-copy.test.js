@@ -12,7 +12,7 @@ const landingViewPath = path.join(
   "ui",
   "matrix-a",
   "views",
-  "LandingView.jsx"
+  "LandingView.jsx",
 );
 
 function read(filePath) {
@@ -28,10 +28,7 @@ test("landing CTA copy keys exist", () => {
   const requiredKeys = ["landing.cta.primary", "landing.cta.secondary"];
 
   for (const key of requiredKeys) {
-    assert.ok(
-      hasCopyKey(csv, key),
-      `expected copy registry to include ${key}`
-    );
+    assert.ok(hasCopyKey(csv, key), `expected copy registry to include ${key}`);
   }
 });
 
@@ -40,9 +37,6 @@ test("LandingView uses CTA copy keys", () => {
   const requiredKeys = ["landing.cta.primary", "landing.cta.secondary"];
 
   for (const key of requiredKeys) {
-    assert.ok(
-      source.includes(`copy(\"${key}\"`),
-      `expected LandingView to use copy key ${key}`
-    );
+    assert.ok(source.includes(`copy(\"${key}\"`), `expected LandingView to use copy key ${key}`);
   }
 });

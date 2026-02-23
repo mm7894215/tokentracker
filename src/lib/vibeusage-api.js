@@ -1,68 +1,75 @@
-'use strict';
+"use strict";
 
-const { createInsforgeClient } = require('./insforge-client');
+const { createInsforgeClient } = require("./insforge-client");
 
 async function signInWithPassword({ baseUrl, email, password }) {
   const client = createInsforgeClient({ baseUrl });
   const { data, error } = await client.auth.signInWithPassword({ email, password });
-  if (error) throw normalizeSdkError(error, 'Sign-in failed');
+  if (error) throw normalizeSdkError(error, "Sign-in failed");
 
   const accessToken = data?.accessToken;
-  if (typeof accessToken !== 'string' || accessToken.length === 0) {
-    throw new Error('Sign-in failed: missing accessToken');
+  if (typeof accessToken !== "string" || accessToken.length === 0) {
+    throw new Error("Sign-in failed: missing accessToken");
   }
 
   return accessToken;
 }
 
-async function issueDeviceToken({ baseUrl, accessToken, deviceName, platform = 'macos' }) {
+async function issueDeviceToken({ baseUrl, accessToken, deviceName, platform = "macos" }) {
   const data = await invokeFunction({
     baseUrl,
     accessToken,
-    slug: 'vibeusage-device-token-issue',
-    method: 'POST',
+    slug: "vibeusage-device-token-issue",
+    method: "POST",
     body: { device_name: deviceName, platform },
-    errorPrefix: 'Device token issue failed'
+    errorPrefix: "Device token issue failed",
   });
 
   const token = data?.token;
   const deviceId = data?.device_id;
-  if (typeof token !== 'string' || token.length === 0) throw new Error('Device token issue failed: missing token');
-  if (typeof deviceId !== 'string' || deviceId.length === 0) {
-    throw new Error('Device token issue failed: missing device_id');
+  if (typeof token !== "string" || token.length === 0)
+    throw new Error("Device token issue failed: missing token");
+  if (typeof deviceId !== "string" || deviceId.length === 0) {
+    throw new Error("Device token issue failed: missing device_id");
   }
 
   return { token, deviceId };
 }
 
-async function exchangeLinkCode({ baseUrl, linkCode, requestId, deviceName, platform = 'macos' }) {
+async function exchangeLinkCode({ baseUrl, linkCode, requestId, deviceName, platform = "macos" }) {
   const data = await invokeFunction({
     baseUrl,
     accessToken: null,
-    slug: 'vibeusage-link-code-exchange',
-    method: 'POST',
+    slug: "vibeusage-link-code-exchange",
+    method: "POST",
     body: {
       link_code: linkCode,
       request_id: requestId,
       device_name: deviceName,
-      platform
+      platform,
     },
-    errorPrefix: 'Link code exchange failed'
+    errorPrefix: "Link code exchange failed",
   });
 
   const token = data?.token;
   const deviceId = data?.device_id;
-  if (typeof token !== 'string' || token.length === 0) {
-    throw new Error('Link code exchange failed: missing token');
+  if (typeof token !== "string" || token.length === 0) {
+    throw new Error("Link code exchange failed: missing token");
   }
-  if (typeof deviceId !== 'string' || deviceId.length === 0) {
-    throw new Error('Link code exchange failed: missing device_id');
+  if (typeof deviceId !== "string" || deviceId.length === 0) {
+    throw new Error("Link code exchange failed: missing device_id");
   }
 
   return { token, deviceId, userId: data?.user_id || null };
 }
 
-async function ingestHourly({ baseUrl, deviceToken, hourly, project_hourly, device_subscriptions }) {
+async function ingestHourly({
+  baseUrl,
+  deviceToken,
+  hourly,
+  project_hourly,
+  device_subscriptions,
+}) {
   const body = { hourly, project_hourly };
   if (Array.isArray(device_subscriptions) && device_subscriptions.length > 0) {
     body.device_subscriptions = device_subscriptions;
@@ -71,16 +78,16 @@ async function ingestHourly({ baseUrl, deviceToken, hourly, project_hourly, devi
   const data = await invokeFunctionWithRetry({
     baseUrl,
     accessToken: deviceToken,
-    slug: 'vibeusage-ingest',
-    method: 'POST',
+    slug: "vibeusage-ingest",
+    method: "POST",
     body,
-    errorPrefix: 'Ingest failed',
-    retry: { maxRetries: 3, baseDelayMs: 500, maxDelayMs: 5000 }
+    errorPrefix: "Ingest failed",
+    retry: { maxRetries: 3, baseDelayMs: 500, maxDelayMs: 5000 },
   });
 
   return {
     inserted: Number(data?.inserted || 0),
-    skipped: Number(data?.skipped || 0)
+    skipped: Number(data?.skipped || 0),
   };
 }
 
@@ -88,16 +95,16 @@ async function syncHeartbeat({ baseUrl, deviceToken }) {
   const data = await invokeFunction({
     baseUrl,
     accessToken: deviceToken,
-    slug: 'vibeusage-sync-ping',
-    method: 'POST',
+    slug: "vibeusage-sync-ping",
+    method: "POST",
     body: {},
-    errorPrefix: 'Sync heartbeat failed'
+    errorPrefix: "Sync heartbeat failed",
   });
 
   return {
     updated: Boolean(data?.updated),
-    last_sync_at: typeof data?.last_sync_at === 'string' ? data.last_sync_at : null,
-    min_interval_minutes: Number(data?.min_interval_minutes || 0)
+    last_sync_at: typeof data?.last_sync_at === "string" ? data.last_sync_at : null,
+    min_interval_minutes: Number(data?.min_interval_minutes || 0),
   };
 }
 
@@ -106,7 +113,7 @@ module.exports = {
   issueDeviceToken,
   exchangeLinkCode,
   ingestHourly,
-  syncHeartbeat
+  syncHeartbeat,
 };
 
 async function invokeFunction({ baseUrl, accessToken, slug, method, body, errorPrefix }) {
@@ -116,7 +123,15 @@ async function invokeFunction({ baseUrl, accessToken, slug, method, body, errorP
   return data;
 }
 
-async function invokeFunctionWithRetry({ baseUrl, accessToken, slug, method, body, errorPrefix, retry }) {
+async function invokeFunctionWithRetry({
+  baseUrl,
+  accessToken,
+  slug,
+  method,
+  body,
+  errorPrefix,
+  retry,
+}) {
   const retryOptions = normalizeRetryOptions(retry);
   let attempt = 0;
 
@@ -137,8 +152,8 @@ function normalizeSdkError(error, errorPrefix) {
   const msg = normalizeBackendErrorMessage(raw);
   const err = new Error(errorPrefix ? `${errorPrefix}: ${msg}` : msg);
   const status = error?.statusCode ?? error?.status;
-  const code = typeof error?.error === 'string' ? error.error.trim() : '';
-  if (typeof status === 'number') err.status = status;
+  const code = typeof error?.error === "string" ? error.error.trim() : "";
+  if (typeof status === "number") err.status = status;
   if (code) err.code = code;
   err.retryable = isRetryableStatus(status) || isRetryableMessage(raw);
   if (msg !== raw) err.originalMessage = raw;
@@ -147,29 +162,29 @@ function normalizeSdkError(error, errorPrefix) {
 }
 
 function extractSdkErrorMessage(error) {
-  if (!error) return 'Unknown error';
-  const message = typeof error.message === 'string' ? error.message.trim() : '';
-  const code = typeof error.error === 'string' ? error.error.trim() : '';
-  if (message && message !== 'InsForgeError') return message;
-  if (code && code !== 'REQUEST_FAILED') return code;
+  if (!error) return "Unknown error";
+  const message = typeof error.message === "string" ? error.message.trim() : "";
+  const code = typeof error.error === "string" ? error.error.trim() : "";
+  if (message && message !== "InsForgeError") return message;
+  if (code && code !== "REQUEST_FAILED") return code;
   if (message) return message;
   if (code) return code;
   return String(error);
 }
 
 function normalizeBackendErrorMessage(message) {
-  if (!isBackendRuntimeDownMessage(message)) return String(message || 'Unknown error');
-  return 'Backend runtime unavailable (InsForge). Please retry later.';
+  if (!isBackendRuntimeDownMessage(message)) return String(message || "Unknown error");
+  return "Backend runtime unavailable (InsForge). Please retry later.";
 }
 
 function isBackendRuntimeDownMessage(message) {
-  const s = String(message || '').toLowerCase();
+  const s = String(message || "").toLowerCase();
   if (!s) return false;
-  if (s.includes('deno:') || s.includes('deno')) return true;
-  if (s.includes('econnreset') || s.includes('econnrefused')) return true;
-  if (s.includes('etimedout')) return true;
-  if (s.includes('timeout') && s.includes('request')) return true;
-  if (s.includes('upstream') && (s.includes('deno') || s.includes('connect'))) return true;
+  if (s.includes("deno:") || s.includes("deno")) return true;
+  if (s.includes("econnreset") || s.includes("econnrefused")) return true;
+  if (s.includes("etimedout")) return true;
+  if (s.includes("timeout") && s.includes("request")) return true;
+  if (s.includes("upstream") && (s.includes("deno") || s.includes("connect"))) return true;
   return false;
 }
 
@@ -178,13 +193,13 @@ function isRetryableStatus(status) {
 }
 
 function isRetryableMessage(message) {
-  const s = String(message || '').toLowerCase();
+  const s = String(message || "").toLowerCase();
   if (!s) return false;
   if (isBackendRuntimeDownMessage(s)) return true;
-  if (s.includes('econnreset') || s.includes('econnrefused')) return true;
-  if (s.includes('etimedout') || s.includes('timeout')) return true;
-  if (s.includes('networkerror') || s.includes('failed to fetch')) return true;
-  if (s.includes('socket hang up') || s.includes('connection reset')) return true;
+  if (s.includes("econnreset") || s.includes("econnrefused")) return true;
+  if (s.includes("etimedout") || s.includes("timeout")) return true;
+  if (s.includes("networkerror") || s.includes("failed to fetch")) return true;
+  if (s.includes("socket hang up") || s.includes("connection reset")) return true;
   return false;
 }
 
@@ -195,7 +210,8 @@ function normalizeRetryOptions(retry) {
   const maxRetries = clampInt(retry.maxRetries, 0, 10);
   const baseDelayMs = clampInt(retry.baseDelayMs ?? 300, 50, 60_000);
   const maxDelayMs = clampInt(retry.maxDelayMs ?? baseDelayMs * 4, baseDelayMs, 120_000);
-  const jitterRatio = typeof retry.jitterRatio === 'number' ? Math.max(0, Math.min(0.5, retry.jitterRatio)) : 0.2;
+  const jitterRatio =
+    typeof retry.jitterRatio === "number" ? Math.max(0, Math.min(0.5, retry.jitterRatio)) : 0.2;
   return { maxRetries, baseDelayMs, maxDelayMs, jitterRatio };
 }
 
@@ -211,7 +227,7 @@ function computeRetryDelayMs({ retryOptions, attempt, err }) {
   const capped = Math.min(retryOptions.maxDelayMs, exp);
   const jitter = capped * retryOptions.jitterRatio * Math.random();
   const backoff = Math.round(capped + jitter);
-  const retryAfter = typeof err?.retryAfterMs === 'number' ? err.retryAfterMs : 0;
+  const retryAfter = typeof err?.retryAfterMs === "number" ? err.retryAfterMs : 0;
   return Math.max(backoff, retryAfter || 0);
 }
 

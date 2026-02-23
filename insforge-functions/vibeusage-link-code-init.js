@@ -301,7 +301,11 @@ var require_auth = __commonJS({
     }
     async function getEdgeClientAndUserIdFast({ baseUrl, bearer }) {
       const anonKey = getAnonKey2();
-      const edgeClient = createClient({ baseUrl, anonKey: anonKey || void 0, edgeFunctionToken: bearer });
+      const edgeClient = createClient({
+        baseUrl,
+        anonKey: anonKey || void 0,
+        edgeFunctionToken: bearer
+      });
       const local = await verifyUserJwtHs256({ token: bearer });
       const allowRemoteOnly = !local.ok && local?.code === "missing_jwt_secret";
       if (!local.ok && !allowRemoteOnly) {
@@ -410,7 +414,14 @@ var require_auth = __commonJS({
       }
       const publicView = await resolvePublicView({ baseUrl, shareToken: bearer });
       if (!publicView.ok) {
-        return { ok: false, edgeClient: null, userId: null, accessType: null, status: 401, error: "Unauthorized" };
+        return {
+          ok: false,
+          edgeClient: null,
+          userId: null,
+          accessType: null,
+          status: 401,
+          error: "Unauthorized"
+        };
       }
       return {
         ok: true,
@@ -632,7 +643,11 @@ module.exports = withRequestLogging("vibeusage-link-code-init", async function(r
   if (!auth.ok) return json({ error: auth.error || "Unauthorized" }, auth.status || 401);
   const serviceRoleKey = getServiceRoleKey();
   const anonKey = getAnonKey();
-  const dbClient = serviceRoleKey ? createClient({ baseUrl, anonKey: anonKey || serviceRoleKey, edgeFunctionToken: serviceRoleKey }) : auth.edgeClient;
+  const dbClient = serviceRoleKey ? createClient({
+    baseUrl,
+    anonKey: anonKey || serviceRoleKey,
+    edgeFunctionToken: serviceRoleKey
+  }) : auth.edgeClient;
   const linkCode = generateLinkCode();
   const codeHash = await sha256Hex(linkCode);
   const sessionId = await sha256Hex(bearer);

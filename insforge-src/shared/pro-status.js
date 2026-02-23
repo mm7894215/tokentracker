@@ -1,6 +1,6 @@
-'use strict';
+"use strict";
 
-const CUTOFF_UTC_ISO = '2025-12-31T15:59:59.000Z';
+const CUTOFF_UTC_ISO = "2025-12-31T15:59:59.000Z";
 const REGISTRATION_YEARS = 99;
 
 function toMs(value) {
@@ -20,8 +20,8 @@ function addUtcYears(iso, years) {
       d.getUTCHours(),
       d.getUTCMinutes(),
       d.getUTCSeconds(),
-      d.getUTCMilliseconds()
-    )
+      d.getUTCMilliseconds(),
+    ),
   );
   return out.toISOString();
 }
@@ -35,7 +35,7 @@ function computeProStatus({ createdAt, entitlements, now }) {
   let expiresAt = null;
 
   if (Number.isFinite(createdMs) && Number.isFinite(cutoffMs) && createdMs <= cutoffMs) {
-    sources.push('registration_cutoff');
+    sources.push("registration_cutoff");
     const regExpiry = addUtcYears(createdAt, REGISTRATION_YEARS);
     if (regExpiry) expiresAt = regExpiry;
   }
@@ -49,7 +49,7 @@ function computeProStatus({ createdAt, entitlements, now }) {
   });
 
   if (activeEntitlements.length > 0) {
-    sources.push('entitlement');
+    sources.push("entitlement");
     const maxTo = activeEntitlements
       .map((row) => toMs(row.effective_to))
       .filter(Number.isFinite)
@@ -69,5 +69,5 @@ function computeProStatus({ createdAt, entitlements, now }) {
 module.exports = {
   CUTOFF_UTC_ISO,
   REGISTRATION_YEARS,
-  computeProStatus
+  computeProStatus,
 };

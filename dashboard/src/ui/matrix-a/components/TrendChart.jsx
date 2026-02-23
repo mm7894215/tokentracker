@@ -1,5 +1,4 @@
 import React from "react";
-
 import { copy } from "../../../lib/copy";
 
 export function TrendChart({

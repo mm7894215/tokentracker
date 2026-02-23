@@ -19,11 +19,7 @@ const IGNORED_DIRS = new Set([
 
 const CLIENT_IMPORT_PATTERNS = ["insforge-src", "insforge-functions"];
 const CLIENT_INTERNAL_PATTERNS = ["INSFORGE_INTERNAL_URL"];
-const SERVICE_ROLE_PATTERNS = [
-  "SERVICE_ROLE_KEY",
-  "INSFORGE_SERVICE_ROLE_KEY",
-  "service_role_key",
-];
+const SERVICE_ROLE_PATTERNS = ["SERVICE_ROLE_KEY", "INSFORGE_SERVICE_ROLE_KEY", "service_role_key"];
 const SDK_ALLOWLIST = new Set([
   path.join("src", "lib", "insforge-client.js"),
   path.join("src", "lib", "insforge-client.ts"),

@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useState } from "react";
-
 import { isScreenshotModeEnabled } from "../../lib/screenshot-mode.js";
 
 /**

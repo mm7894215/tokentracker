@@ -1,6 +1,7 @@
 # Module Brief: Copy Registry Sync (origin/main)
 
 ## Scope
+
 - IN:
   - Provide a local CLI script `copy-sync` with `pull` and `push` subcommands.
   - Treat `origin/main:dashboard/src/content/copy.csv` as the authoritative source.
@@ -11,6 +12,7 @@
   - No runtime hot reload or multi-language features.
 
 ## Interfaces
+
 - CLI:
   - `node scripts/copy-sync.cjs pull [--dry-run] [--apply]`
   - `node scripts/copy-sync.cjs push [--dry-run] [--confirm] [--push-remote]`
@@ -21,6 +23,7 @@
   - Git CLI (`git show`, `git diff`, `git status`).
 
 ## Data Flow & Constraints
+
 - Pull:
   1. Resolve authoritative source (`origin/main` or fallback).
   2. Read official CSV via `git show`.
@@ -33,6 +36,7 @@
   4. If `--confirm`, auto-commit `copy.csv` if needed and optionally push remote.
 
 ## Non-negotiables
+
 - Default to `--dry-run` for both pull and push.
 - Require explicit confirmation for any write or remote push.
 - Abort on schema mismatch or validation failures.
@@ -40,19 +44,23 @@
 - No secrets embedded; rely on user git credentials.
 
 ## Test Strategy
+
 - Unit: schema validation for CSV columns and empty required fields.
 - Integration: `pull --dry-run` and `push --dry-run` diff preview against `origin/main`.
 - Safety: dirty working tree must block push.
 
 ## Milestones
+
 - M1: CLI contract defined and documented (freeze: `proposal.md` + `design.md`).
 - M2: Pull workflow implemented and verified (`--dry-run` and `--apply`).
 - M3: Push workflow implemented and verified (`--dry-run`, `--confirm`, optional `--push-remote`).
 - M4: Docs updated and validation script wired.
 
 ## Plan B Triggers
+
 - Repeated diff failures due to binary/encoding mismatches → fallback to manual copy with validation.
 - Git remote unavailable or permissions error → allow local-only sync and skip remote push.
 
 ## Upgrade Plan (disabled by default)
+
 - If team scale grows or manual sync becomes error-prone, consider a dedicated remote registry service with audit logs.

@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-
-import { getUsageModelBreakdown } from "../lib/vibeusage-api";
-import { isMockEnabled } from "../lib/mock-data";
 import { isAccessTokenReady, resolveAuthAccessToken } from "../lib/auth-token";
+import { isMockEnabled } from "../lib/mock-data";
 import { getTimeZoneCacheKey } from "../lib/timezone";
+import { getUsageModelBreakdown } from "../lib/vibeusage-api";
 
 export function useUsageModelBreakdown({
   baseUrl,
@@ -52,7 +51,7 @@ export function useUsageModelBreakdown({
         // ignore write errors
       }
     },
-    [storageKey]
+    [storageKey],
   );
 
   const clearCache = useCallback(() => {

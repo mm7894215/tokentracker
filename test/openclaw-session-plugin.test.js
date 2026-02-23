@@ -1,8 +1,8 @@
-const assert = require('node:assert/strict');
-const os = require('node:os');
-const path = require('node:path');
-const fs = require('node:fs/promises');
-const { test } = require('node:test');
+const assert = require("node:assert/strict");
+const os = require("node:os");
+const path = require("node:path");
+const fs = require("node:fs/promises");
+const { test } = require("node:test");
 
 const {
   OPENCLAW_SESSION_PLUGIN_ID,
@@ -10,17 +10,25 @@ const {
   ensureOpenclawSessionPluginFiles,
   probeOpenclawSessionPluginState,
   installOpenclawSessionPlugin,
-  removeOpenclawSessionPluginConfig
-} = require('../src/lib/openclaw-session-plugin');
+  removeOpenclawSessionPluginConfig,
+} = require("../src/lib/openclaw-session-plugin");
 
-test('probeOpenclawSessionPluginState detects linked + enabled plugin', async () => {
-  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vibeusage-openclaw-plugin-'));
-  const home = path.join(tmp, 'home');
-  const trackerDir = path.join(home, '.vibeusage', 'tracker');
+test("probeOpenclawSessionPluginState detects linked + enabled plugin", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "vibeusage-openclaw-plugin-"));
+  const home = path.join(tmp, "home");
+  const trackerDir = path.join(home, ".vibeusage", "tracker");
   await fs.mkdir(trackerDir, { recursive: true });
 
-  const { pluginEntryDir, openclawConfigPath } = resolveOpenclawSessionPluginPaths({ home, trackerDir, env: {} });
-  await ensureOpenclawSessionPluginFiles({ pluginDir: path.dirname(pluginEntryDir), trackerDir, packageName: 'vibeusage' });
+  const { pluginEntryDir, openclawConfigPath } = resolveOpenclawSessionPluginPaths({
+    home,
+    trackerDir,
+    env: {},
+  });
+  await ensureOpenclawSessionPluginFiles({
+    pluginDir: path.dirname(pluginEntryDir),
+    trackerDir,
+    packageName: "vibeusage",
+  });
   await fs.mkdir(path.dirname(openclawConfigPath), { recursive: true });
   await fs.writeFile(
     openclawConfigPath,
@@ -28,25 +36,25 @@ test('probeOpenclawSessionPluginState detects linked + enabled plugin', async ()
       {
         plugins: {
           entries: {
-            [OPENCLAW_SESSION_PLUGIN_ID]: { enabled: true }
+            [OPENCLAW_SESSION_PLUGIN_ID]: { enabled: true },
           },
           load: {
-            paths: [pluginEntryDir]
+            paths: [pluginEntryDir],
           },
           installs: {
             [OPENCLAW_SESSION_PLUGIN_ID]: {
-              source: 'path',
+              source: "path",
               sourcePath: pluginEntryDir,
               installPath: pluginEntryDir,
-              version: '0.0.0'
-            }
-          }
-        }
+              version: "0.0.0",
+            },
+          },
+        },
       },
       null,
-      2
-    ) + '\n',
-    'utf8'
+      2,
+    ) + "\n",
+    "utf8",
   );
 
   const state = await probeOpenclawSessionPluginState({ home, trackerDir, env: {} });
@@ -59,36 +67,44 @@ test('probeOpenclawSessionPluginState detects linked + enabled plugin', async ()
   await fs.rm(tmp, { recursive: true, force: true });
 });
 
-test('installOpenclawSessionPlugin returns skipped when openclaw CLI is missing', async () => {
-  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vibeusage-openclaw-plugin-'));
-  const home = path.join(tmp, 'home');
-  const trackerDir = path.join(home, '.vibeusage', 'tracker');
+test("installOpenclawSessionPlugin returns skipped when openclaw CLI is missing", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "vibeusage-openclaw-plugin-"));
+  const home = path.join(tmp, "home");
+  const trackerDir = path.join(home, ".vibeusage", "tracker");
   await fs.mkdir(trackerDir, { recursive: true });
 
   const result = await installOpenclawSessionPlugin({
     home,
     trackerDir,
-    packageName: 'vibeusage',
-    env: { PATH: '', OPENCLAW_CONFIG_PATH: path.join(home, '.openclaw', 'openclaw.json') }
+    packageName: "vibeusage",
+    env: { PATH: "", OPENCLAW_CONFIG_PATH: path.join(home, ".openclaw", "openclaw.json") },
   });
 
   assert.equal(result.configured, false);
-  assert.equal(result.skippedReason, 'openclaw-cli-missing');
+  assert.equal(result.skippedReason, "openclaw-cli-missing");
 
   await fs.rm(tmp, { recursive: true, force: true });
 });
 
-test('removeOpenclawSessionPluginConfig removes linked config and plugin dir', async () => {
-  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vibeusage-openclaw-plugin-'));
-  const home = path.join(tmp, 'home');
-  const trackerDir = path.join(home, '.vibeusage', 'tracker');
+test("removeOpenclawSessionPluginConfig removes linked config and plugin dir", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "vibeusage-openclaw-plugin-"));
+  const home = path.join(tmp, "home");
+  const trackerDir = path.join(home, ".vibeusage", "tracker");
   await fs.mkdir(trackerDir, { recursive: true });
 
-  const { pluginEntryDir, openclawConfigPath } = resolveOpenclawSessionPluginPaths({ home, trackerDir, env: {} });
-  await ensureOpenclawSessionPluginFiles({ pluginDir: path.dirname(pluginEntryDir), trackerDir, packageName: 'vibeusage' });
+  const { pluginEntryDir, openclawConfigPath } = resolveOpenclawSessionPluginPaths({
+    home,
+    trackerDir,
+    env: {},
+  });
+  await ensureOpenclawSessionPluginFiles({
+    pluginDir: path.dirname(pluginEntryDir),
+    trackerDir,
+    packageName: "vibeusage",
+  });
   await fs.mkdir(path.dirname(openclawConfigPath), { recursive: true });
 
-  const keepPath = path.join(tmp, 'keep-plugin-path');
+  const keepPath = path.join(tmp, "keep-plugin-path");
   await fs.mkdir(keepPath, { recursive: true });
 
   await fs.writeFile(
@@ -98,37 +114,37 @@ test('removeOpenclawSessionPluginConfig removes linked config and plugin dir', a
         plugins: {
           entries: {
             [OPENCLAW_SESSION_PLUGIN_ID]: { enabled: true },
-            keep_plugin: { enabled: true }
+            keep_plugin: { enabled: true },
           },
           load: {
-            paths: [pluginEntryDir, keepPath]
+            paths: [pluginEntryDir, keepPath],
           },
           installs: {
             [OPENCLAW_SESSION_PLUGIN_ID]: {
-              source: 'path',
+              source: "path",
               sourcePath: pluginEntryDir,
               installPath: pluginEntryDir,
-              version: '0.0.0'
+              version: "0.0.0",
             },
             keep_plugin: {
-              source: 'path',
+              source: "path",
               sourcePath: keepPath,
               installPath: keepPath,
-              version: '0.0.0'
-            }
-          }
-        }
+              version: "0.0.0",
+            },
+          },
+        },
       },
       null,
-      2
-    ) + '\n',
-    'utf8'
+      2,
+    ) + "\n",
+    "utf8",
   );
 
   const removed = await removeOpenclawSessionPluginConfig({ home, trackerDir, env: {} });
   assert.equal(removed.removed, true);
 
-  const next = JSON.parse(await fs.readFile(openclawConfigPath, 'utf8'));
+  const next = JSON.parse(await fs.readFile(openclawConfigPath, "utf8"));
   assert.equal(Boolean(next?.plugins?.entries?.[OPENCLAW_SESSION_PLUGIN_ID]), false);
   assert.equal(Boolean(next?.plugins?.entries?.keep_plugin), true);
   assert.deepEqual(next?.plugins?.load?.paths, [keepPath]);
@@ -140,19 +156,23 @@ test('removeOpenclawSessionPluginConfig removes linked config and plugin dir', a
   await fs.rm(tmp, { recursive: true, force: true });
 });
 
-test('ensureOpenclawSessionPluginFiles includes agent/session lifecycle hooks', async () => {
-  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vibeusage-openclaw-plugin-'));
-  const home = path.join(tmp, 'home');
-  const trackerDir = path.join(home, '.vibeusage', 'tracker');
+test("ensureOpenclawSessionPluginFiles includes agent/session lifecycle hooks", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "vibeusage-openclaw-plugin-"));
+  const home = path.join(tmp, "home");
+  const trackerDir = path.join(home, ".vibeusage", "tracker");
   await fs.mkdir(trackerDir, { recursive: true });
 
   const { pluginEntryDir } = resolveOpenclawSessionPluginPaths({ home, trackerDir, env: {} });
-  await ensureOpenclawSessionPluginFiles({ pluginDir: path.dirname(pluginEntryDir), trackerDir, packageName: 'vibeusage' });
+  await ensureOpenclawSessionPluginFiles({
+    pluginDir: path.dirname(pluginEntryDir),
+    trackerDir,
+    packageName: "vibeusage",
+  });
 
-  const pkg = JSON.parse(await fs.readFile(path.join(pluginEntryDir, 'package.json'), 'utf8'));
-  assert.deepEqual(pkg.openclaw?.extensions, ['./index.js']);
+  const pkg = JSON.parse(await fs.readFile(path.join(pluginEntryDir, "package.json"), "utf8"));
+  assert.deepEqual(pkg.openclaw?.extensions, ["./index.js"]);
 
-  const index = await fs.readFile(path.join(pluginEntryDir, 'index.js'), 'utf8');
+  const index = await fs.readFile(path.join(pluginEntryDir, "index.js"), "utf8");
   assert.match(index, /api\.on\('agent_end'/);
   assert.match(index, /api\.on\('gateway_start'/);
   assert.match(index, /api\.on\('gateway_stop'/);

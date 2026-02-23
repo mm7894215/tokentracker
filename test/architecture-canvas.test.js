@@ -57,7 +57,10 @@ test("aggregateNodesIfNeeded keeps node count under limit", () => {
 test("buildCanvasModel returns canvas data", async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "vibescore-canvas-"));
   await fs.mkdir(path.join(dir, "src"), { recursive: true });
-  await fs.writeFile(path.join(dir, "src", "index.js"), "import './util.js';\nfunction main() {}\n");
+  await fs.writeFile(
+    path.join(dir, "src", "index.js"),
+    "import './util.js';\nfunction main() {}\n",
+  );
   await fs.writeFile(path.join(dir, "src", "util.js"), "export function helper() {}\n");
 
   const result = await buildCanvasModel({ rootDir: dir });
@@ -72,13 +75,15 @@ test("buildCanvasModel supports focus module filtering", async () => {
   await fs.mkdir(path.join(dir, "dashboard"), { recursive: true });
   await fs.writeFile(
     path.join(dir, "src", "index.js"),
-    "import OpenAI from 'openai';\nimport './util.js';\nexport function main() {}\n"
+    "import OpenAI from 'openai';\nimport './util.js';\nexport function main() {}\n",
   );
   await fs.writeFile(path.join(dir, "src", "util.js"), "export function helper() {}\n");
   await fs.writeFile(path.join(dir, "dashboard", "app.jsx"), "export const App = () => null;\n");
 
   const result = await buildCanvasModel({ rootDir: dir, focusModule: "src" });
-  const fileNodes = result.nodes.filter((node) => node.meta && node.meta.relPath && node.type === "text");
+  const fileNodes = result.nodes.filter(
+    (node) => node.meta && node.meta.relPath && node.type === "text",
+  );
   const relPaths = fileNodes.map((node) => node.meta.relPath);
 
   assert.ok(relPaths.some((p) => p.startsWith("src/")));
@@ -92,7 +97,7 @@ test("architecture canvas lists available modules", async () => {
   await fs.mkdir(path.join(dir, "dashboard"), { recursive: true });
   await fs.writeFile(
     path.join(dir, "src", "index.js"),
-    "import OpenAI from 'openai';\nexport function main() {}\n"
+    "import OpenAI from 'openai';\nexport function main() {}\n",
   );
   await fs.writeFile(path.join(dir, "dashboard", "app.jsx"), "export const App = () => null;\n");
 

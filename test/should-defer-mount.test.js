@@ -3,9 +3,7 @@ const assert = require("node:assert/strict");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 
-const modulePath = pathToFileURL(
-  path.resolve("dashboard/src/pages/should-defer-mount.js")
-).href;
+const modulePath = pathToFileURL(path.resolve("dashboard/src/pages/should-defer-mount.js")).href;
 
 test("shouldDeferMount disables deferral in reduced motion or screenshot mode", async () => {
   const { shouldDeferMount } = await import(modulePath);
@@ -15,7 +13,7 @@ test("shouldDeferMount disables deferral in reduced motion or screenshot mode", 
       prefersReducedMotion: true,
       screenshotMode: false,
     }),
-    false
+    false,
   );
 
   assert.equal(
@@ -23,7 +21,7 @@ test("shouldDeferMount disables deferral in reduced motion or screenshot mode", 
       prefersReducedMotion: false,
       screenshotMode: true,
     }),
-    false
+    false,
   );
 
   assert.equal(
@@ -31,6 +29,6 @@ test("shouldDeferMount disables deferral in reduced motion or screenshot mode", 
       prefersReducedMotion: false,
       screenshotMode: false,
     }),
-    true
+    true,
   );
 });

@@ -22,18 +22,18 @@
 
 ### 对照表（官网模块 vs Matrix UI A / copy.jsx 模块）
 
-| 官网模块（保留） | Matrix UI A 呈现（组件/容器） | 数据接口（来源/说明） |
-| --- | --- | --- |
-| 认证入口（sign-in / sign-up） | `AsciiBox` + `MatrixButton(as="a")` | `buildAuthUrl()`（现有） |
-| 退出登录（sign-out） | `MatrixShell headerRight` + `MatrixButton` | `useAuth().signOut()`（现有） |
-| 查询（From/To + Refresh） | `AsciiBox` + `MatrixInput` + `MatrixButton` | `useUsageData({ from,to })`（现有） |
-| 汇总指标（Total/Input/Output/…） | `AsciiBox` + `DataRow` | `useUsageData().summary`（现有） |
-| 日统计表（排序/滚动） | `AsciiBox` + table（Matrix 样式） | `useUsageData().daily` + `sortDailyRows()`（现有） |
-| Sparkline | `AsciiBox` + `Sparkline` | `useUsageData().daily`（现有） |
-| `/connect` 引导与 redirect 校验 | `MatrixShell` + `AsciiBox` + `MatrixButton(as="a")` | `buildAuthUrl()`（现有） + 原 redirect 校验逻辑（保留） |
-| 开机屏（BootScreen） | `BootScreen` | 纯前端（无后端） |
-| 活动热力图（Heatmap） | `AsciiBox` + `ActivityHeatmap` | `useActivityHeatmap()`（复用现有 daily endpoint；派生算法） |
-| 身份面板（Identity） | `AsciiBox` + `IdentityPanel` | `useAuth()` 的 `name/email/userId`；Rank 先占位 |
+| 官网模块（保留）                 | Matrix UI A 呈现（组件/容器）                       | 数据接口（来源/说明）                                       |
+| -------------------------------- | --------------------------------------------------- | ----------------------------------------------------------- |
+| 认证入口（sign-in / sign-up）    | `AsciiBox` + `MatrixButton(as="a")`                 | `buildAuthUrl()`（现有）                                    |
+| 退出登录（sign-out）             | `MatrixShell headerRight` + `MatrixButton`          | `useAuth().signOut()`（现有）                               |
+| 查询（From/To + Refresh）        | `AsciiBox` + `MatrixInput` + `MatrixButton`         | `useUsageData({ from,to })`（现有）                         |
+| 汇总指标（Total/Input/Output/…） | `AsciiBox` + `DataRow`                              | `useUsageData().summary`（现有）                            |
+| 日统计表（排序/滚动）            | `AsciiBox` + table（Matrix 样式）                   | `useUsageData().daily` + `sortDailyRows()`（现有）          |
+| Sparkline                        | `AsciiBox` + `Sparkline`                            | `useUsageData().daily`（现有）                              |
+| `/connect` 引导与 redirect 校验  | `MatrixShell` + `AsciiBox` + `MatrixButton(as="a")` | `buildAuthUrl()`（现有） + 原 redirect 校验逻辑（保留）     |
+| 开机屏（BootScreen）             | `BootScreen`                                        | 纯前端（无后端）                                            |
+| 活动热力图（Heatmap）            | `AsciiBox` + `ActivityHeatmap`                      | `useActivityHeatmap()`（复用现有 daily endpoint；派生算法） |
+| 身份面板（Identity）             | `AsciiBox` + `IdentityPanel`                        | `useAuth()` 的 `name/email/userId`；Rank 先占位             |
 
 ## 4) 页面迁移（保持功能不变）
 

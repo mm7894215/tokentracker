@@ -13,6 +13,7 @@
 ### Task 1: Add failing test for default max-day value
 
 **Files:**
+
 - Modify: `test/edge-functions.test.js`
 
 **Step 1: Write the failing test**
@@ -47,6 +48,7 @@ Expected: FAIL with actual value `370`.
 ### Task 2: Implement default change
 
 **Files:**
+
 - Modify: `insforge-src/shared/date.js`
 
 **Step 1: Update default to 800**
@@ -73,11 +75,13 @@ Expected: PASS.
 ### Task 3: Update docs/specs and regenerate functions
 
 **Files:**
+
 - Modify: `BACKEND_API.md`
 - Modify: `openspec/specs/vibeusage-tracker/spec.md`
 - Rebuild: `insforge-functions/` (via `npm run build:insforge`)
 
 **Step 1: Update docs**
+
 - `BACKEND_API.md`: change default from `370` to `800`.
 - `openspec/specs/vibeusage-tracker/spec.md`: change default from `370` to `800` in the requirement text.
 

@@ -83,6 +83,7 @@ npx --yes vibeusage init
 4. **Access Token** - For CI/automated environments
 
 **CLI Options:**
+
 - `--yes` - Skip consent prompts in non-interactive environments
 - `--dry-run` - Preview changes without writing files
 - `--link-code <code>` - Authenticate using a link code from dashboard
@@ -90,13 +91,13 @@ npx --yes vibeusage init
 
 **Supported CLI Tools Auto-Configuration:**
 
-| Tool | Config Location | Method |
-|------|----------------|--------|
-| Codex CLI | `~/.codex/config.toml` | `notify` hook |
-| Every Code | `~/.code/config.toml` (or `CODE_HOME`) | `notify` hook |
-| Gemini CLI | `~/.gemini/settings.json` (or `GEMINI_HOME`) | `SessionEnd` hook |
-| Opencode | Global plugins | Message parser plugin |
-| Claude Code | `~/.claude/hooks/` | Hook configuration |
+| Tool        | Config Location                              | Method                |
+| ----------- | -------------------------------------------- | --------------------- |
+| Codex CLI   | `~/.codex/config.toml`                       | `notify` hook         |
+| Every Code  | `~/.code/config.toml` (or `CODE_HOME`)       | `notify` hook         |
+| Gemini CLI  | `~/.gemini/settings.json` (or `GEMINI_HOME`) | `SessionEnd` hook     |
+| Opencode    | Global plugins                               | Message parser plugin |
+| Claude Code | `~/.claude/hooks/`                           | Hook configuration    |
 
 Once `init` completes, all supported CLI tools are automatically configured for data sync. No further intervention required.
 
@@ -137,33 +138,33 @@ npx --yes vibeusage uninstall --purge
 
 ### Log Sources
 
-| Tool | Log Location | Override Env |
-|------|-------------|--------------|
-| Codex CLI | `~/.codex/sessions/**/rollout-*.jsonl` | `CODEX_HOME` |
-| Every Code | `~/.code/sessions/**/rollout-*.jsonl` | `CODE_HOME` |
-| Gemini CLI | `~/.gemini/tmp/**/chats/session-*.json` | `GEMINI_HOME` |
-| Opencode | `~/.opencode/messages/*.json` | - |
-| Claude Code | Parsed from hook output | - |
+| Tool        | Log Location                            | Override Env  |
+| ----------- | --------------------------------------- | ------------- |
+| Codex CLI   | `~/.codex/sessions/**/rollout-*.jsonl`  | `CODEX_HOME`  |
+| Every Code  | `~/.code/sessions/**/rollout-*.jsonl`   | `CODE_HOME`   |
+| Gemini CLI  | `~/.gemini/tmp/**/chats/session-*.json` | `GEMINI_HOME` |
+| Opencode    | `~/.opencode/messages/*.json`           | -             |
+| Claude Code | Parsed from hook output                 | -             |
 
 ## 🔧 Environment Variables
 
 ### Core Settings
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `VIBEUSAGE_HTTP_TIMEOUT_MS` | CLI HTTP timeout in ms (`0` disables, clamped `1000..120000`) | `20000` |
-| `VITE_VIBEUSAGE_HTTP_TIMEOUT_MS` | Dashboard request timeout in ms (`0` disables, clamped `1000..30000`) | `15000` |
-| `VIBEUSAGE_DEBUG` | Enable debug output (`1` or `true` to enable) | - |
-| `VIBEUSAGE_DASHBOARD_URL` | Custom dashboard URL | `https://www.vibeusage.cc` |
-| `VIBEUSAGE_INSFORGE_BASE_URL` | Custom API base URL | `https://5tmappuk.us-east.insforge.app` |
-| `VIBEUSAGE_DEVICE_TOKEN` | Pre-configured device token (for CI) | - |
+| Variable                         | Description                                                           | Default                                 |
+| -------------------------------- | --------------------------------------------------------------------- | --------------------------------------- |
+| `VIBEUSAGE_HTTP_TIMEOUT_MS`      | CLI HTTP timeout in ms (`0` disables, clamped `1000..120000`)         | `20000`                                 |
+| `VITE_VIBEUSAGE_HTTP_TIMEOUT_MS` | Dashboard request timeout in ms (`0` disables, clamped `1000..30000`) | `15000`                                 |
+| `VIBEUSAGE_DEBUG`                | Enable debug output (`1` or `true` to enable)                         | -                                       |
+| `VIBEUSAGE_DASHBOARD_URL`        | Custom dashboard URL                                                  | `https://www.vibeusage.cc`              |
+| `VIBEUSAGE_INSFORGE_BASE_URL`    | Custom API base URL                                                   | `https://5tmappuk.us-east.insforge.app` |
+| `VIBEUSAGE_DEVICE_TOKEN`         | Pre-configured device token (for CI)                                  | -                                       |
 
 ### CLI Tool Overrides
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `CODEX_HOME` | Codex CLI directory override | `~/.codex` |
-| `CODE_HOME` | Every Code directory override | `~/.code` |
+| Variable      | Description                   | Default     |
+| ------------- | ----------------------------- | ----------- |
+| `CODEX_HOME`  | Codex CLI directory override  | `~/.codex`  |
+| `CODE_HOME`   | Every Code directory override | `~/.code`   |
 | `GEMINI_HOME` | Gemini CLI directory override | `~/.gemini` |
 
 ### Deprecated
@@ -276,18 +277,18 @@ When `debug=1` is included in a usage endpoint request, the response adds a `deb
 const res = await fetch(
   `${baseUrl}/functions/vibeusage-usage-summary?from=2025-12-30&to=2025-12-30&debug=1`,
   {
-    headers: { Authorization: `Bearer ${userJwt}` }
-  }
+    headers: { Authorization: `Bearer ${userJwt}` },
+  },
 );
 const data = await res.json();
 
 if (data.debug) {
-  console.debug('usage debug', {
+  console.debug("usage debug", {
     requestId: data.debug.request_id,
     status: data.debug.status,
     queryMs: data.debug.query_ms,
     slowThresholdMs: data.debug.slow_threshold_ms,
-    slowQuery: data.debug.slow_query
+    slowQuery: data.debug.slow_query,
   });
 }
 ```

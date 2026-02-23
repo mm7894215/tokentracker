@@ -13,6 +13,7 @@
 ### Task 0: Sync OpenSpec change into branch
 
 **Files:**
+
 - Add: `openspec/changes/2026-01-01-update-cli-init-auth-copy/**`
 
 **Step 1: Copy change directory into worktree**
@@ -39,21 +40,22 @@ git commit -m "chore: add openspec change for init auth copy"
 ### Task 1: Add failing test for post-consent copy flow order
 
 **Files:**
+
 - Create: `test/init-flow-copy.test.js`
 
 **Step 1: Write the failing test**
 
 ```js
-const assert = require('node:assert/strict');
-const os = require('node:os');
-const path = require('node:path');
-const fs = require('node:fs/promises');
-const { test } = require('node:test');
+const assert = require("node:assert/strict");
+const os = require("node:os");
+const path = require("node:path");
+const fs = require("node:fs/promises");
+const { test } = require("node:test");
 
 function stubInit({ tmp }) {
-  const browserAuthPath = path.join(__dirname, '..', 'src', 'lib', 'browser-auth.js');
-  const insforgePath = path.join(__dirname, '..', 'src', 'lib', 'insforge.js');
-  const initPath = path.join(__dirname, '..', 'src', 'commands', 'init.js');
+  const browserAuthPath = path.join(__dirname, "..", "src", "lib", "browser-auth.js");
+  const insforgePath = path.join(__dirname, "..", "src", "lib", "insforge.js");
+  const initPath = path.join(__dirname, "..", "src", "commands", "init.js");
 
   delete require.cache[browserAuthPath];
   delete require.cache[insforgePath];
@@ -65,11 +67,11 @@ function stubInit({ tmp }) {
     loaded: true,
     exports: {
       beginBrowserAuth: async () => ({
-        authUrl: 'https://auth.example/cli',
-        waitForCallback: async () => ({ accessToken: 'access-token' })
+        authUrl: "https://auth.example/cli",
+        waitForCallback: async () => ({ accessToken: "access-token" }),
       }),
-      openInBrowser: () => {}
-    }
+      openInBrowser: () => {},
+    },
   };
 
   require.cache[insforgePath] = {
@@ -77,64 +79,70 @@ function stubInit({ tmp }) {
     filename: insforgePath,
     loaded: true,
     exports: {
-      issueDeviceTokenWithAccessToken: async () => ({ token: 'device-token', deviceId: 'device-123' }),
+      issueDeviceTokenWithAccessToken: async () => ({
+        token: "device-token",
+        deviceId: "device-123",
+      }),
       issueDeviceTokenWithPassword: async () => {
-        throw new Error('unexpected');
+        throw new Error("unexpected");
       },
       issueDeviceTokenWithLinkCode: async () => {
-        throw new Error('unexpected');
-      }
-    }
+        throw new Error("unexpected");
+      },
+    },
   };
 
   return require(initPath);
 }
 
 function stripAnsi(text) {
-  return String(text || '').replace(/\x1b\[[0-9;]*m/g, '');
+  return String(text || "").replace(/\x1b\[[0-9;]*m/g, "");
 }
 
-test('init emits local report then auth transition and success url', async () => {
-  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vibescore-init-flow-'));
+test("init emits local report then auth transition and success url", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "vibescore-init-flow-"));
   const prevHome = process.env.HOME;
   const prevCodexHome = process.env.CODEX_HOME;
   const prevDashboard = process.env.VIBESCORE_DASHBOARD_URL;
   const prevWrite = process.stdout.write;
 
-  let output = '';
+  let output = "";
 
   try {
     process.env.HOME = tmp;
-    process.env.CODEX_HOME = path.join(tmp, '.codex');
-    process.env.VIBESCORE_DASHBOARD_URL = 'https://dashboard.example';
+    process.env.CODEX_HOME = path.join(tmp, ".codex");
+    process.env.VIBESCORE_DASHBOARD_URL = "https://dashboard.example";
 
     await fs.mkdir(process.env.CODEX_HOME, { recursive: true });
-    await fs.writeFile(path.join(process.env.CODEX_HOME, 'config.toml'), '# empty\n', 'utf8');
+    await fs.writeFile(path.join(process.env.CODEX_HOME, "config.toml"), "# empty\n", "utf8");
 
     process.stdout.write = (chunk) => {
-      output += String(chunk || '');
+      output += String(chunk || "");
       return true;
     };
 
     const { cmdInit } = stubInit({ tmp });
-    await cmdInit(['--yes', '--no-open', '--base-url', 'https://example.invalid']);
+    await cmdInit(["--yes", "--no-open", "--base-url", "https://example.invalid"]);
 
     const clean = stripAnsi(output);
-    const localIdx = clean.indexOf('Local configuration complete.');
-    const statusIdx = clean.indexOf('Integration Status:');
-    const summaryIdx = clean.indexOf('Codex CLI');
-    const nextIdx = clean.indexOf('Next: Registering device...');
-    const openIdx = clean.indexOf('Open the link below');
-    const successIdx = clean.indexOf('You are all set!');
+    const localIdx = clean.indexOf("Local configuration complete.");
+    const statusIdx = clean.indexOf("Integration Status:");
+    const summaryIdx = clean.indexOf("Codex CLI");
+    const nextIdx = clean.indexOf("Next: Registering device...");
+    const openIdx = clean.indexOf("Open the link below");
+    const successIdx = clean.indexOf("You are all set!");
 
-    assert.ok(localIdx !== -1, 'expected local completion line');
-    assert.ok(statusIdx !== -1, 'expected status header');
-    assert.ok(summaryIdx !== -1, 'expected summary line');
-    assert.ok(nextIdx !== -1, 'expected transition line');
-    assert.ok(openIdx !== -1, 'expected auth instruction');
-    assert.ok(successIdx !== -1, 'expected success box');
-    assert.ok(localIdx < statusIdx && statusIdx < summaryIdx && summaryIdx < nextIdx, 'expected ordered flow');
-    assert.ok(clean.includes('View your stats at: https://dashboard.example'));
+    assert.ok(localIdx !== -1, "expected local completion line");
+    assert.ok(statusIdx !== -1, "expected status header");
+    assert.ok(summaryIdx !== -1, "expected summary line");
+    assert.ok(nextIdx !== -1, "expected transition line");
+    assert.ok(openIdx !== -1, "expected auth instruction");
+    assert.ok(successIdx !== -1, "expected success box");
+    assert.ok(
+      localIdx < statusIdx && statusIdx < summaryIdx && summaryIdx < nextIdx,
+      "expected ordered flow",
+    );
+    assert.ok(clean.includes("View your stats at: https://dashboard.example"));
   } finally {
     process.stdout.write = prevWrite;
     if (prevHome === undefined) delete process.env.HOME;
@@ -145,9 +153,9 @@ test('init emits local report then auth transition and success url', async () =>
     else process.env.VIBESCORE_DASHBOARD_URL = prevDashboard;
     await fs.rm(tmp, { recursive: true, force: true });
 
-    const browserAuthPath = path.join(__dirname, '..', 'src', 'lib', 'browser-auth.js');
-    const insforgePath = path.join(__dirname, '..', 'src', 'lib', 'insforge.js');
-    const initPath = path.join(__dirname, '..', 'src', 'commands', 'init.js');
+    const browserAuthPath = path.join(__dirname, "..", "src", "lib", "browser-auth.js");
+    const insforgePath = path.join(__dirname, "..", "src", "lib", "insforge.js");
+    const initPath = path.join(__dirname, "..", "src", "commands", "init.js");
     delete require.cache[browserAuthPath];
     delete require.cache[insforgePath];
     delete require.cache[initPath];
@@ -180,6 +188,7 @@ Skip commit until implementation is complete.
 ### Task 2: Add init-flow copy deck + renderer
 
 **Files:**
+
 - Create: `src/lib/init-flow.js`
 - Modify: `src/lib/cli-ui.js` (only if new helper is needed; avoid if possible)
 
@@ -197,41 +206,35 @@ Expected: FAIL (missing new output lines).
 
 ```js
 // src/lib/init-flow.js
-'use strict';
+"use strict";
 
-const { formatSummaryLine, renderBox, underline } = require('./cli-ui');
+const { formatSummaryLine, renderBox, underline } = require("./cli-ui");
 
-const DIVIDER = '----------------------------------------------';
+const DIVIDER = "----------------------------------------------";
 
 function renderLocalReport({ summary, isDryRun }) {
   const header = isDryRun
-    ? 'Dry run complete. Preview only; no changes were applied.'
-    : 'Local configuration complete.';
-  const lines = [header, '', 'Integration Status:'];
+    ? "Dry run complete. Preview only; no changes were applied."
+    : "Local configuration complete.";
+  const lines = [header, "", "Integration Status:"];
   for (const item of summary || []) lines.push(formatSummaryLine(item));
-  process.stdout.write(`${lines.join('\n')}\n`);
+  process.stdout.write(`${lines.join("\n")}\n`);
 }
 
 function renderAuthTransition({ authUrl, canAutoOpen }) {
-  const lines = ['', DIVIDER, '', 'Next: Registering device...'];
-  if (canAutoOpen) lines.push('Opening your browser to link account...');
-  else lines.push('Open the link below to sign in.');
+  const lines = ["", DIVIDER, "", "Next: Registering device..."];
+  if (canAutoOpen) lines.push("Opening your browser to link account...");
+  else lines.push("Open the link below to sign in.");
   if (authUrl) lines.push(`If it does not open, visit: ${underline(authUrl)}`);
-  lines.push('');
-  process.stdout.write(`${lines.join('\n')}\n`);
+  lines.push("");
+  process.stdout.write(`${lines.join("\n")}\n`);
 }
 
 function renderSuccessBox({ configPath, dashboardUrl }) {
-  const identityLine = 'Account linked.';
-  const lines = [
-    'You are all set!',
-    '',
-    identityLine,
-    `Token saved to: ${configPath}`,
-    ''
-  ];
+  const identityLine = "Account linked.";
+  const lines = ["You are all set!", "", identityLine, `Token saved to: ${configPath}`, ""];
   if (dashboardUrl) lines.push(`View your stats at: ${dashboardUrl}`);
-  lines.push('You can close this terminal window.');
+  lines.push("You can close this terminal window.");
   process.stdout.write(`${renderBox(lines)}\n`);
 }
 
@@ -253,6 +256,7 @@ Skip commit until Task 3 is done.
 ### Task 3: Wire init.js to new flow + dashboard URL
 
 **Files:**
+
 - Modify: `src/commands/init.js`
 
 **Step 1: Write the failing test**
@@ -268,7 +272,7 @@ Expected: FAIL.
 **Step 3: Write minimal implementation**
 
 ```js
-const { renderLocalReport, renderAuthTransition, renderSuccessBox } = require('../lib/init-flow');
+const { renderLocalReport, renderAuthTransition, renderSuccessBox } = require("../lib/init-flow");
 
 // after setup:
 renderLocalReport({ summary: setup.summary, isDryRun: false });
@@ -285,6 +289,7 @@ if (setup.pendingBrowserAuth) {
 ```
 
 Make sure:
+
 - Output order is Local report -> Transition -> Auth -> Success.
 - Keep summary line formatting (`formatSummaryLine`).
 - Do not change consent/welcome copy.
@@ -308,6 +313,7 @@ git commit -m "feat: update init post-consent copy flow"
 ### Task 4: Regression verification
 
 **Files:**
+
 - None (verification only)
 
 **Step 1: Run focused tests**

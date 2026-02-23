@@ -9,9 +9,5 @@ export function getInsforgeBaseUrl() {
 
 export function getInsforgeAnonKey() {
   const env = typeof import.meta !== "undefined" ? import.meta.env : undefined;
-  return (
-    env?.VITE_VIBEUSAGE_INSFORGE_ANON_KEY ||
-    env?.VITE_INSFORGE_ANON_KEY ||
-    ""
-  );
+  return env?.VITE_VIBEUSAGE_INSFORGE_ANON_KEY || env?.VITE_INSFORGE_ANON_KEY || "";
 }

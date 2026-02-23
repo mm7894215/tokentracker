@@ -1,21 +1,21 @@
 // Edge function: vibeusage-debug-auth
 // Diagnostic endpoint to confirm runtime auth prerequisites (no secrets).
 
-'use strict';
+"use strict";
 
-const { handleOptions, json, requireMethod } = require('../shared/http');
-const { getBearerToken, verifyUserJwtHs256 } = require('../shared/auth');
-const { getAnonKey } = require('../shared/env');
+const { handleOptions, json, requireMethod } = require("../shared/http");
+const { getBearerToken, verifyUserJwtHs256 } = require("../shared/auth");
+const { getAnonKey } = require("../shared/env");
 
-module.exports = async function(request) {
+module.exports = async function (request) {
   const opt = handleOptions(request);
   if (opt) return opt;
 
-  const methodErr = requireMethod(request, 'GET');
+  const methodErr = requireMethod(request, "GET");
   if (methodErr) return methodErr;
 
   const anonKey = getAnonKey();
-  const bearer = getBearerToken(request.headers.get('Authorization'));
+  const bearer = getBearerToken(request.headers.get("Authorization"));
 
   if (!anonKey) {
     return json(
@@ -24,9 +24,9 @@ module.exports = async function(request) {
         hasBearer: Boolean(bearer),
         authOk: false,
         userId: null,
-        error: 'Missing anon key'
+        error: "Missing anon key",
       },
-      200
+      200,
     );
   }
 
@@ -37,16 +37,16 @@ module.exports = async function(request) {
         hasBearer: false,
         authOk: false,
         userId: null,
-        error: 'Missing bearer token'
+        error: "Missing bearer token",
       },
-      200
+      200,
     );
   }
 
   const local = await verifyUserJwtHs256({ token: bearer });
   const authOk = local.ok;
   const userId = local.userId;
-  const error = local.ok ? null : local.error || 'Unauthorized';
+  const error = local.ok ? null : local.error || "Unauthorized";
 
   return json(
     {
@@ -54,8 +54,8 @@ module.exports = async function(request) {
       hasBearer: true,
       authOk,
       userId,
-      error
+      error,
     },
-    200
+    200,
   );
 };

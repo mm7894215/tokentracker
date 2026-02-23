@@ -21,7 +21,7 @@ function scanContent({ content, isJsx }) {
   return {
     colors: colors.length,
     rawText: rawTextTokens.length,
-    rawTextTokens: uniqueTokens(rawTextTokens)
+    rawTextTokens: uniqueTokens(rawTextTokens),
   };
 }
 
@@ -32,7 +32,7 @@ function diffAgainstBaseline(current, baseline) {
     const base = baseline.files?.[file];
     if (!base) {
       errors.push(
-        `${file}: new hardcode usage detected (colors=${counts.colors}, rawText=${counts.rawText})`
+        `${file}: new hardcode usage detected (colors=${counts.colors}, rawText=${counts.rawText})`,
       );
       continue;
     }
@@ -65,5 +65,5 @@ module.exports = {
   diffAgainstBaseline,
   extractJsxTextTokens,
   normalizeJsxText,
-  scanContent
+  scanContent,
 };

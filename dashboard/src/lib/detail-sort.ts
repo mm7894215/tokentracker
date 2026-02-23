@@ -52,11 +52,7 @@ function parseDayKey(value: any) {
   }
   const dt = new Date(Date.UTC(year, month - 1, day));
   if (!Number.isFinite(dt.getTime())) return null;
-  if (
-    dt.getUTCFullYear() !== year ||
-    dt.getUTCMonth() + 1 !== month ||
-    dt.getUTCDate() !== day
-  ) {
+  if (dt.getUTCFullYear() !== year || dt.getUTCMonth() + 1 !== month || dt.getUTCDate() !== day) {
     return null;
   }
   return dt.getTime();
@@ -79,9 +75,7 @@ function parseMonthKey(value: any) {
 function parseHourKey(value: any) {
   if (!value) return null;
   const raw = String(value).trim();
-  const match = raw.match(
-    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?Z?$/
-  );
+  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?Z?$/);
   if (!match) return null;
   const year = Number(match[1]);
   const month = Number(match[2]);
@@ -110,8 +104,7 @@ function parseHourKey(value: any) {
 }
 
 function compareDateLike(a: any, b: any, key: any) {
-  const parse =
-    key === "hour" ? parseHourKey : key === "month" ? parseMonthKey : parseDayKey;
+  const parse = key === "hour" ? parseHourKey : key === "month" ? parseMonthKey : parseDayKey;
   const na = parse(a);
   const nb = parse(b);
   if (na != null && nb != null) {
@@ -127,9 +120,7 @@ export function sortDetailRows(rows: any, { key, dir }: SortOptions) {
   const direction = dir === "asc" ? 1 : -1;
   const items = Array.isArray(rows) ? rows : [];
 
-  const cmp = DATE_KEYS.has(key)
-    ? (a: any, b: any) => compareDateLike(a, b, key)
-    : compareIntLike;
+  const cmp = DATE_KEYS.has(key) ? (a: any, b: any) => compareDateLike(a, b, key) : compareIntLike;
   const pickValue = (row: any) => {
     if (key === "total_tokens" && row?.billable_total_tokens != null) {
       return row.billable_total_tokens;

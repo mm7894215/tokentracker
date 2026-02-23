@@ -2,6 +2,7 @@ import React, { Suspense } from "react";
 import { DecodingText } from "../../foundation/DecodingText.jsx";
 import { MatrixButton } from "../../foundation/MatrixButton.jsx";
 import { GithubStar } from "../components/GithubStar.jsx";
+import { ClientLogoRow } from "../components/ClientLogoRow.jsx";
 
 const MatrixRain = React.lazy(() =>
   import("../components/MatrixRain.jsx").then((mod) => ({
@@ -70,16 +71,12 @@ export function LandingView({
             </span>
           </h1>
 
-          <div className="flex flex-col items-center space-y-2">
-            <div className="px-6 py-3 border border-matrix-ghost bg-matrix-panel relative group">
-              <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-matrix-primary"></div>
-              <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-matrix-primary"></div>
-              <p className="text-caption uppercase font-bold text-matrix-bright">
-                {copy("landing.hero.tagline")}
-              </p>
-            </div>
-            {/* 包含 Codex CLI Token 的精准描述 */}
-            <p className="text-caption text-matrix-muted uppercase">
+          <div className="flex flex-col items-center space-y-4">
+            {/* Client Logo Row - 展示支持的 AI Agent 客户端 */}
+            <ClientLogoRow />
+            
+            {/* 副标题描述 */}
+            <p className="text-caption text-matrix-muted uppercase max-w-lg text-center">
               {copy("landing.hero.subtagline")}
             </p>
           </div>

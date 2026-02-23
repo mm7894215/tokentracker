@@ -1,15 +1,15 @@
 #!/usr/bin/env node
-'use strict';
+"use strict";
 
-const fs = require('node:fs');
-const path = require('node:path');
-const os = require('node:os');
-const { spawnSync } = require('node:child_process');
+const fs = require("node:fs");
+const path = require("node:path");
+const os = require("node:os");
+const { spawnSync } = require("node:child_process");
 
-const ROOT = path.resolve(__dirname, '..');
-const COPY_REL = 'dashboard/src/content/copy.csv';
-const COPY_PATH = path.join(ROOT, 'dashboard', 'src', 'content', 'copy.csv');
-const REQUIRED_COLUMNS = ['key', 'module', 'page', 'component', 'slot', 'text'];
+const ROOT = path.resolve(__dirname, "..");
+const COPY_REL = "dashboard/src/content/copy.csv";
+const COPY_PATH = path.join(ROOT, "dashboard", "src", "content", "copy.csv");
+const REQUIRED_COLUMNS = ["key", "module", "page", "component", "slot", "text"];
 
 function printUsage() {
   console.log(`Copy registry sync (origin/main)
@@ -36,10 +36,10 @@ Notes:
 }
 
 function runGit(args, options = {}) {
-  const res = spawnSync('git', args, {
+  const res = spawnSync("git", args, {
     cwd: ROOT,
-    encoding: 'utf8',
-    ...options
+    encoding: "utf8",
+    ...options,
   });
   if (res.error) {
     throw res.error;
@@ -49,15 +49,15 @@ function runGit(args, options = {}) {
 
 function requireGitSuccess(res, context) {
   if (res.status !== 0) {
-    const msg = res.stderr?.trim() || res.stdout?.trim() || 'Unknown git error';
+    const msg = res.stderr?.trim() || res.stdout?.trim() || "Unknown git error";
     throw new Error(`${context}: ${msg}`);
   }
 }
 
 function readSourceCsv() {
-  const refs = ['origin/main', 'main'];
+  const refs = ["origin/main", "main"];
   for (const ref of refs) {
-    const res = runGit(['show', `${ref}:${COPY_REL}`]);
+    const res = runGit(["show", `${ref}:${COPY_REL}`]);
     if (res.status === 0) {
       return { ref, content: res.stdout };
     }
@@ -68,7 +68,7 @@ function readSourceCsv() {
 function parseCsv(raw) {
   const rows = [];
   let row = [];
-  let field = '';
+  let field = "";
   let inQuotes = false;
 
   for (let i = 0; i < raw.length; i += 1) {
@@ -94,23 +94,23 @@ function parseCsv(raw) {
       continue;
     }
 
-    if (ch === ',') {
+    if (ch === ",") {
       row.push(field);
-      field = '';
+      field = "";
       continue;
     }
 
-    if (ch === '\n') {
+    if (ch === "\n") {
       row.push(field);
-      field = '';
-      if (!row.every((cell) => String(cell).trim() === '')) {
+      field = "";
+      if (!row.every((cell) => String(cell).trim() === "")) {
         rows.push(row);
       }
       row = [];
       continue;
     }
 
-    if (ch === '\r') {
+    if (ch === "\r") {
       continue;
     }
 
@@ -118,7 +118,7 @@ function parseCsv(raw) {
   }
 
   row.push(field);
-  if (!row.every((cell) => String(cell).trim() === '')) {
+  if (!row.every((cell) => String(cell).trim() === "")) {
     rows.push(row);
   }
 
@@ -126,33 +126,33 @@ function parseCsv(raw) {
 }
 
 function ensureSchema(raw, label) {
-  const rows = parseCsv(raw || '');
+  const rows = parseCsv(raw || "");
   if (!rows.length) {
     throw new Error(`${label} copy registry is empty.`);
   }
   const header = rows[0].map((cell) => String(cell).trim());
   const missing = REQUIRED_COLUMNS.filter((col) => !header.includes(col));
   if (missing.length) {
-    throw new Error(`${label} copy registry missing columns: ${missing.join(', ')}`);
+    throw new Error(`${label} copy registry missing columns: ${missing.join(", ")}`);
   }
 }
 
 function ensureCleanTree(actionLabel) {
-  const res = runGit(['status', '--porcelain']);
-  requireGitSuccess(res, 'git status');
+  const res = runGit(["status", "--porcelain"]);
+  requireGitSuccess(res, "git status");
   if (res.stdout.trim().length > 0) {
     throw new Error(`Working tree is not clean; aborting ${actionLabel}.`);
   }
 }
 
 function listDirtyPaths() {
-  const res = runGit(['status', '--porcelain']);
-  requireGitSuccess(res, 'git status');
-  const lines = res.stdout.split('\n').filter(Boolean);
+  const res = runGit(["status", "--porcelain"]);
+  requireGitSuccess(res, "git status");
+  const lines = res.stdout.split("\n").filter(Boolean);
   return lines.map((line) => {
     let entry = line.slice(3).trim();
-    if (entry.includes(' -> ')) {
-      entry = entry.split(' -> ').pop();
+    if (entry.includes(" -> ")) {
+      entry = entry.split(" -> ").pop();
     }
     return entry;
   });
@@ -162,46 +162,46 @@ function ensureOnlyCopyChanges() {
   const dirtyPaths = listDirtyPaths();
   const blocked = dirtyPaths.filter((file) => file !== COPY_REL);
   if (blocked.length > 0) {
-    throw new Error(`Working tree has changes outside ${COPY_REL}: ${blocked.join(', ')}`);
+    throw new Error(`Working tree has changes outside ${COPY_REL}: ${blocked.join(", ")}`);
   }
   return dirtyPaths.length > 0;
 }
 
 function autoCommitCopy() {
-  const addRes = runGit(['add', '--', COPY_REL]);
-  requireGitSuccess(addRes, 'git add');
+  const addRes = runGit(["add", "--", COPY_REL]);
+  requireGitSuccess(addRes, "git add");
 
-  const commitRes = runGit(['commit', '-m', 'chore(copy): sync registry']);
+  const commitRes = runGit(["commit", "-m", "chore(copy): sync registry"]);
   if (commitRes.status !== 0) {
-    const output = `${commitRes.stderr || ''}${commitRes.stdout || ''}`.trim();
-    if (output.includes('nothing to commit')) {
+    const output = `${commitRes.stderr || ""}${commitRes.stdout || ""}`.trim();
+    if (output.includes("nothing to commit")) {
       return false;
     }
-    throw new Error(`git commit failed: ${output || 'unknown error'}`);
+    throw new Error(`git commit failed: ${output || "unknown error"}`);
   }
   return true;
 }
 
 function showDiffForPull(sourceContent) {
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'copy-sync-'));
-  const sourcePath = path.join(tempDir, 'copy.csv');
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "copy-sync-"));
+  const sourcePath = path.join(tempDir, "copy.csv");
   const localExists = fs.existsSync(COPY_PATH);
-  const localPath = localExists ? COPY_PATH : path.join(tempDir, 'copy.csv.local');
+  const localPath = localExists ? COPY_PATH : path.join(tempDir, "copy.csv.local");
 
   try {
-    fs.writeFileSync(sourcePath, sourceContent, 'utf8');
+    fs.writeFileSync(sourcePath, sourceContent, "utf8");
     if (!localExists) {
-      fs.writeFileSync(localPath, '', 'utf8');
+      fs.writeFileSync(localPath, "", "utf8");
     }
 
-    const res = runGit(['diff', '--no-index', '--color=always', localPath, sourcePath]);
+    const res = runGit(["diff", "--no-index", "--color=always", localPath, sourcePath]);
     if (res.status > 1) {
-      const msg = res.stderr?.trim() || 'Failed to generate diff.';
+      const msg = res.stderr?.trim() || "Failed to generate diff.";
       throw new Error(msg);
     }
 
     if (res.stdout.trim().length === 0) {
-      console.log('No differences found.');
+      console.log("No differences found.");
     } else {
       process.stdout.write(res.stdout);
     }
@@ -211,14 +211,14 @@ function showDiffForPull(sourceContent) {
 }
 
 function showDiffForPush(ref) {
-  const res = runGit(['diff', '--color=always', ref, '--', COPY_REL]);
+  const res = runGit(["diff", "--color=always", ref, "--", COPY_REL]);
   if (res.status > 1) {
-    const msg = res.stderr?.trim() || 'Failed to generate diff.';
+    const msg = res.stderr?.trim() || "Failed to generate diff.";
     throw new Error(msg);
   }
 
   if (res.stdout.trim().length === 0) {
-    console.log('No differences found.');
+    console.log("No differences found.");
     return false;
   }
 
@@ -227,12 +227,12 @@ function showDiffForPush(ref) {
 }
 
 function runValidation() {
-  const res = spawnSync('node', ['scripts/validate-copy-registry.cjs'], {
+  const res = spawnSync("node", ["scripts/validate-copy-registry.cjs"], {
     cwd: ROOT,
-    encoding: 'utf8'
+    encoding: "utf8",
   });
   if (res.status !== 0) {
-    const msg = res.stderr?.trim() || res.stdout?.trim() || 'Copy registry validation failed.';
+    const msg = res.stderr?.trim() || res.stdout?.trim() || "Copy registry validation failed.";
     throw new Error(msg);
   }
   return res.stdout;
@@ -242,22 +242,25 @@ function backupLocalCopy() {
   if (!fs.existsSync(COPY_PATH)) {
     return null;
   }
-  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const backupPath = `${COPY_PATH}.bak-${stamp}`;
   fs.copyFileSync(COPY_PATH, backupPath);
   return backupPath;
 }
 
 function getCurrentBranch() {
-  const res = runGit(['rev-parse', '--abbrev-ref', 'HEAD']);
-  requireGitSuccess(res, 'git rev-parse');
+  const res = runGit(["rev-parse", "--abbrev-ref", "HEAD"]);
+  requireGitSuccess(res, "git rev-parse");
   return res.stdout.trim();
 }
 
 function ensureNotBehind(ref) {
-  const res = runGit(['rev-list', '--left-right', '--count', `${ref}...HEAD`]);
-  requireGitSuccess(res, 'git rev-list');
-  const parts = res.stdout.trim().split(/\s+/).map((value) => Number(value));
+  const res = runGit(["rev-list", "--left-right", "--count", `${ref}...HEAD`]);
+  requireGitSuccess(res, "git rev-list");
+  const parts = res.stdout
+    .trim()
+    .split(/\s+/)
+    .map((value) => Number(value));
   const behind = parts[0] || 0;
   const ahead = parts[1] || 0;
   if (behind > 0) {
@@ -268,7 +271,7 @@ function ensureNotBehind(ref) {
 
 function main() {
   const args = process.argv.slice(2);
-  if (args.length === 0 || args.includes('--help') || args.includes('-h')) {
+  if (args.length === 0 || args.includes("--help") || args.includes("-h")) {
     printUsage();
     return;
   }
@@ -276,27 +279,27 @@ function main() {
   const command = args[0];
   const flags = new Set(args.slice(1));
 
-  if (!['pull', 'push'].includes(command)) {
+  if (!["pull", "push"].includes(command)) {
     throw new Error(`Unknown command: ${command}`);
   }
 
-  if (command === 'pull') {
-    const apply = flags.has('--apply');
-    const dryRun = flags.has('--dry-run') || !apply;
+  if (command === "pull") {
+    const apply = flags.has("--apply");
+    const dryRun = flags.has("--dry-run") || !apply;
 
     const source = readSourceCsv();
     console.log(`Source of truth: ${source.ref}:${COPY_REL}`);
-    ensureSchema(source.content, 'Source');
+    ensureSchema(source.content, "Source");
     showDiffForPull(source.content);
 
     if (dryRun) {
-      console.log('Dry-run: no changes written. Use --apply to write.');
+      console.log("Dry-run: no changes written. Use --apply to write.");
       return;
     }
 
-    ensureCleanTree('pull --apply');
+    ensureCleanTree("pull --apply");
     const backupPath = backupLocalCopy();
-    fs.writeFileSync(COPY_PATH, source.content, 'utf8');
+    fs.writeFileSync(COPY_PATH, source.content, "utf8");
 
     console.log(`Updated ${COPY_PATH}`);
     if (backupPath) {
@@ -305,13 +308,13 @@ function main() {
     return;
   }
 
-  if (command === 'push') {
-    const confirm = flags.has('--confirm');
-    const dryRun = flags.has('--dry-run') || !confirm;
-    const pushRemote = flags.has('--push-remote');
+  if (command === "push") {
+    const confirm = flags.has("--confirm");
+    const dryRun = flags.has("--dry-run") || !confirm;
+    const pushRemote = flags.has("--push-remote");
 
     if (pushRemote && !confirm) {
-      throw new Error('Use --confirm to allow remote push.');
+      throw new Error("Use --confirm to allow remote push.");
     }
 
     const source = readSourceCsv();
@@ -321,12 +324,12 @@ function main() {
     const hasDiff = showDiffForPush(source.ref);
 
     if (dryRun) {
-      console.log('Dry-run: no push performed. Use --confirm to proceed.');
+      console.log("Dry-run: no push performed. Use --confirm to proceed.");
       return;
     }
 
     if (!hasDiff) {
-      console.log('No copy registry changes to push.');
+      console.log("No copy registry changes to push.");
       return;
     }
 
@@ -334,33 +337,33 @@ function main() {
     if (hasLocalChanges) {
       const committed = autoCommitCopy();
       if (committed) {
-        console.log('Auto-committed copy registry changes.');
+        console.log("Auto-committed copy registry changes.");
       }
     }
 
     if (!pushRemote) {
-      console.log('Confirmed. No remote push requested.');
+      console.log("Confirmed. No remote push requested.");
       return;
     }
 
-    if (source.ref !== 'origin/main') {
-      throw new Error('origin/main is not available; remote push is disabled.');
+    if (source.ref !== "origin/main") {
+      throw new Error("origin/main is not available; remote push is disabled.");
     }
 
     const branch = getCurrentBranch();
-    if (branch !== 'main') {
+    if (branch !== "main") {
       throw new Error(`Remote push requires branch main (current: ${branch}).`);
     }
 
-    const { ahead } = ensureNotBehind('origin/main');
+    const { ahead } = ensureNotBehind("origin/main");
     if (ahead === 0) {
-      console.log('No commits ahead of origin/main. Nothing to push.');
+      console.log("No commits ahead of origin/main. Nothing to push.");
       return;
     }
 
-    const res = runGit(['push', 'origin', 'main']);
-    requireGitSuccess(res, 'git push');
-    process.stdout.write(res.stdout || 'Remote push completed.\n');
+    const res = runGit(["push", "origin", "main"]);
+    requireGitSuccess(res, "git push");
+    process.stdout.write(res.stdout || "Remote push completed.\n");
     return;
   }
 }

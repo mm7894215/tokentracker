@@ -1,9 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-
-import {
-  createPersistentStorage,
-  installSessionPersistenceBridge,
-} from "../insforge-client";
+import { createPersistentStorage, installSessionPersistenceBridge } from "../insforge-client";
 
 const TOKEN_STORAGE_KEY = "vibeusage.insforge.session.v1.insforge-auth-token";
 
@@ -35,9 +31,7 @@ function buildJwt(expSeconds: number) {
   const header = { alg: "HS256", typ: "JWT" };
   const payload = { exp: expSeconds };
   const encode = (value: unknown) =>
-    Buffer.from(JSON.stringify(value))
-      .toString("base64url")
-      .replace(/=/g, "");
+    Buffer.from(JSON.stringify(value)).toString("base64url").replace(/=/g, "");
   return `${encode(header)}.${encode(payload)}.sig`;
 }
 

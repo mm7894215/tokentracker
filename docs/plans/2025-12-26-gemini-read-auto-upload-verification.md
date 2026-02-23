@@ -11,6 +11,7 @@
 ### Task 1: Verify Gemini session discovery + parsing (isolated HOME)
 
 **Files:**
+
 - Modify: none
 - Test: command-based verification
 
@@ -41,6 +42,7 @@ No code changes; skip.
 ### Task 2: Verify notify hook triggers auto sync + upload
 
 **Files:**
+
 - Modify: none
 - Test: command-based verification
 
@@ -91,6 +93,7 @@ No code changes; skip.
 ### Task 3: Report results
 
 **Files:**
+
 - Modify: none
 
 **Step 1: Summarize evidence**

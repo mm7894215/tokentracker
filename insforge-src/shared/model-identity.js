@@ -1,9 +1,9 @@
-'use strict';
+"use strict";
 
-const DEFAULT_MODEL = 'unknown';
+const DEFAULT_MODEL = "unknown";
 
 function normalizeDateKey(value) {
-  if (typeof value !== 'string') return null;
+  if (typeof value !== "string") return null;
   const trimmed = value.trim();
   if (!trimmed) return null;
   return trimmed.length >= 10 ? trimmed.slice(0, 10) : trimmed;
@@ -18,14 +18,14 @@ function nextDateKey(dateKey) {
 }
 
 function normalizeUsageModelKey(value) {
-  if (typeof value !== 'string') return null;
+  if (typeof value !== "string") return null;
   const trimmed = value.trim();
   if (!trimmed) return null;
   return trimmed.toLowerCase();
 }
 
 function normalizeDisplayName(value) {
-  if (typeof value !== 'string') return null;
+  if (typeof value !== "string") return null;
   const trimmed = value.trim();
   return trimmed ? trimmed : null;
 }
@@ -48,21 +48,21 @@ function buildIdentityMap({ usageModels, aliasRows } = {}) {
     if (limitToSet && !normalized.has(usageKey)) continue;
 
     const display = normalizeDisplayName(row?.display_name) || canonical;
-    const effective = String(row?.effective_from || '');
+    const effective = String(row?.effective_from || "");
     const existing = map.get(usageKey);
 
     if (!existing || effective > existing.effective_from) {
       map.set(usageKey, {
         model_id: canonical,
         model: display,
-        effective_from: effective
+        effective_from: effective,
       });
     }
   }
 
   for (const key of normalized) {
     if (!map.has(key)) {
-      map.set(key, { model_id: key, model: key, effective_from: '' });
+      map.set(key, { model_id: key, model: key, effective_from: "" });
     }
   }
 
@@ -75,9 +75,8 @@ function buildIdentityMap({ usageModels, aliasRows } = {}) {
 
 function applyModelIdentity({ rawModel, identityMap } = {}) {
   const normalized = normalizeUsageModelKey(rawModel) || DEFAULT_MODEL;
-  const entry = identityMap && typeof identityMap.get === 'function'
-    ? identityMap.get(normalized)
-    : null;
+  const entry =
+    identityMap && typeof identityMap.get === "function" ? identityMap.get(normalized) : null;
   if (entry) return { model_id: entry.model_id, model: entry.model };
   const display = normalizeDisplayName(rawModel) || DEFAULT_MODEL;
   return { model_id: normalized, model: display };
@@ -93,17 +92,16 @@ async function resolveModelIdentity({ edgeClient, usageModels, effectiveDate } =
     return buildIdentityMap({ usageModels: models, aliasRows: [] });
   }
 
-  const dateKey =
-    normalizeDateKey(effectiveDate) || new Date().toISOString().slice(0, 10);
+  const dateKey = normalizeDateKey(effectiveDate) || new Date().toISOString().slice(0, 10);
   const dateKeyNext = nextDateKey(dateKey) || dateKey;
 
   const query = edgeClient.database
-    .from('vibeusage_model_aliases')
-    .select('usage_model,canonical_model,display_name,effective_from')
-    .eq('active', true)
-    .in('usage_model', models)
-    .lt('effective_from', dateKeyNext)
-    .order('effective_from', { ascending: false });
+    .from("vibeusage_model_aliases")
+    .select("usage_model,canonical_model,display_name,effective_from")
+    .eq("active", true)
+    .in("usage_model", models)
+    .lt("effective_from", dateKeyNext)
+    .order("effective_from", { ascending: false });
 
   const result = await query;
   const data = Array.isArray(result?.data)
@@ -128,17 +126,16 @@ async function resolveUsageModelsForCanonical({ edgeClient, canonicalModel, effe
     return { canonical, usageModels: [canonical] };
   }
 
-  const dateKey =
-    normalizeDateKey(effectiveDate) || new Date().toISOString().slice(0, 10);
+  const dateKey = normalizeDateKey(effectiveDate) || new Date().toISOString().slice(0, 10);
   const dateKeyNext = nextDateKey(dateKey) || dateKey;
 
   const query = edgeClient.database
-    .from('vibeusage_model_aliases')
-    .select('usage_model,canonical_model,effective_from')
-    .eq('active', true)
-    .eq('canonical_model', canonical)
-    .lt('effective_from', dateKeyNext)
-    .order('effective_from', { ascending: false });
+    .from("vibeusage_model_aliases")
+    .select("usage_model,canonical_model,effective_from")
+    .eq("active", true)
+    .eq("canonical_model", canonical)
+    .lt("effective_from", dateKeyNext)
+    .order("effective_from", { ascending: false });
 
   const result = await query;
   const data = Array.isArray(result?.data)
@@ -156,7 +153,7 @@ async function resolveUsageModelsForCanonical({ edgeClient, canonicalModel, effe
   for (const row of data) {
     const usageKey = normalizeUsageModelKey(row?.usage_model);
     if (!usageKey) continue;
-    const effective = String(row?.effective_from || '');
+    const effective = String(row?.effective_from || "");
     const existing = usageMap.get(usageKey);
     if (!existing || effective > existing) usageMap.set(usageKey, effective);
   }
@@ -174,5 +171,5 @@ module.exports = {
   buildIdentityMap,
   applyModelIdentity,
   resolveModelIdentity,
-  resolveUsageModelsForCanonical
+  resolveUsageModelsForCanonical,
 };

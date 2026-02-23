@@ -20,7 +20,7 @@ function assertMissingJwtGuard(source, file) {
   const guardRegex = /if\s*\(\s*!resolvedToken\s*&&\s*!mockEnabled\s*\)\s*return\s*;/;
   assert.ok(
     guardRegex.test(source),
-    `expected missing-JWT guard in ${file} ("if (!resolvedToken && !mockEnabled) return;")`
+    `expected missing-JWT guard in ${file} ("if (!resolvedToken && !mockEnabled) return;")`,
   );
 }
 

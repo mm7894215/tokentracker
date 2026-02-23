@@ -1,5 +1,4 @@
 import React from "react";
-
 import { copy } from "../../../lib/copy";
 import { formatCompactNumber } from "../../../lib/format";
 import { AsciiBox } from "../../foundation/AsciiBox.jsx";
@@ -39,11 +38,7 @@ export const RollingUsagePanel = React.memo(function RollingUsagePanel({
   ];
 
   return (
-    <AsciiBox
-      title={copy("dashboard.rolling.title")}
-      className={className}
-      bodyClassName="py-4"
-    >
+    <AsciiBox title={copy("dashboard.rolling.title")} className={className} bodyClassName="py-4">
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {items.map((item) => (
           <div

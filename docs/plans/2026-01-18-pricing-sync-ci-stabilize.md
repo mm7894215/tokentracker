@@ -27,24 +27,29 @@
 ### Task 1: Verify default branch workflow is correct
 
 **Files:**
+
 - Modify: none
 
 **Step 1: Fetch workflow file from default branch**
 
 Run:
+
 ```
 repo=$(gh repo view --json owner,name --jq '.owner.login + "/" + .name')
 branch=$(gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name')
 gh api -H "Accept: application/vnd.github.raw" "repos/$repo/contents/.github/workflows/vibescore-pricing-sync.yml?ref=$branch" | sed -n '40,90p'
 ```
+
 Expected: curl target is `/functions/vibeusage-pricing-sync`.
 
 **Step 2: Record latest runs**
 
 Run:
+
 ```
 gh run list -w "Sync Pricing Profiles" -L 3
 ```
+
 Expected: at least one recent success on the default branch.
 
 ---
@@ -52,22 +57,27 @@ Expected: at least one recent success on the default branch.
 ### Task 2: Manual regression run for the workflow
 
 **Files:**
+
 - Modify: none
 
 **Step 1: Trigger workflow**
 
 Run:
+
 ```
 gh workflow run "Sync Pricing Profiles" -f retention_days=90
 ```
+
 Expected: workflow dispatch accepted.
 
 **Step 2: Confirm success**
 
 Run:
+
 ```
 gh run list -w "Sync Pricing Profiles" -L 1
 ```
+
 Expected: latest run `completed success`.
 
 ---
@@ -75,30 +85,36 @@ Expected: latest run `completed success`.
 ### Task 3: Deprecate the legacy endpoint in Insforge2
 
 **Files:**
+
 - Modify: none (Insforge2 function change via MCP)
 
 **Step 1: Capture existing function metadata (snapshot)**
 
 Run:
+
 ```
 # MCP: get-function vibescore-pricing-sync
 ```
+
 Expected: function details are returned for audit trail.
 
 **Step 2: Pre‑deprecation check (old endpoint returns 500)**
 
 Run:
+
 ```
 curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/functions/vibescore-pricing-sync" \
   -H "Authorization: Bearer <service_role_key>" \
   -H "Content-Type: application/json" \
   --data '{"retention_days":90}'
 ```
+
 Expected: `500` (current behavior).
 
 **Step 3: Deprecate endpoint**
 
 Choose **one**:
+
 - **Delete function:** MCP `delete-function` with slug `vibescore-pricing-sync`.
 - **Disable function:** MCP `update-function` set status `inactive` (if supported by Insforge2).
 
@@ -112,6 +128,7 @@ Expected: `404` or `410` (document the returned code as the new contract).
 ### Task 4: OpenSpec update (single source of truth)
 
 **Files:**
+
 - Create: `openspec/changes/deprecate-vibescore-pricing-sync/proposal.md`
 - Create: `openspec/changes/deprecate-vibescore-pricing-sync/tasks.md`
 - Create: `openspec/changes/deprecate-vibescore-pricing-sync/specs/vibeusage-tracker/spec.md`
@@ -120,6 +137,7 @@ Expected: `404` or `410` (document the returned code as the new contract).
 **Step 1: Create change scaffold**
 
 Run:
+
 ```
 CHANGE=deprecate-vibescore-pricing-sync
 mkdir -p openspec/changes/$CHANGE/specs/vibeusage-tracker
@@ -128,6 +146,7 @@ mkdir -p openspec/changes/$CHANGE/specs/vibeusage-tracker
 **Step 2: Draft proposal + tasks**
 
 Populate proposal and tasks with:
+
 - Why: old endpoint writes to non‑existent tables.
 - What: remove `vibescore-pricing-sync`, confirm `vibeusage-pricing-sync` is sole endpoint.
 - Impact: pricing sync operations, documentation.
@@ -139,9 +158,11 @@ Add a **MODIFIED** requirement or **ADDED** requirement clarifying the pricing s
 **Step 4: Validate**
 
 Run:
+
 ```
 openspec validate deprecate-vibescore-pricing-sync --strict
 ```
+
 Expected: validation passes.
 
 ---
@@ -149,14 +170,17 @@ Expected: validation passes.
 ### Task 5: Ops docs update
 
 **Files:**
+
 - Modify: `docs/ops/pricing-sync-health.md`
 
 **Step 1: Update env var names to VIBEUSAGE**
+
 - Replace `VIBESCORE_PRICING_SOURCE/MODEL` with `VIBEUSAGE_PRICING_SOURCE/MODEL`.
 - Keep `OPENROUTER_API_KEY` unchanged.
 - Keep curl target `/functions/vibeusage-pricing-sync`.
 
 **Step 2: Add a deprecation note**
+
 - Note that `vibescore-pricing-sync` is removed and should not be used.
 
 ---
@@ -164,19 +188,23 @@ Expected: validation passes.
 ### Task 6: Final verification + commit
 
 **Files:**
+
 - Modify: (from Tasks 4–5)
 
 **Step 1: Re‑run workflow check**
 
 Run:
+
 ```
 gh run list -w "Sync Pricing Profiles" -L 1
 ```
+
 Expected: latest run success.
 
 **Step 2: Commit doc/spec updates**
 
 Run:
+
 ```
 git add openspec/changes/deprecate-vibescore-pricing-sync openspec/specs/vibeusage-tracker/spec.md docs/ops/pricing-sync-health.md
 git commit -m "docs: deprecate vibescore pricing sync"
@@ -185,5 +213,6 @@ git commit -m "docs: deprecate vibescore pricing sync"
 ---
 
 ## Notes
+
 - Do **not** edit `docs/retrospective/**` or `openspec/changes/archive/**` (historical records).
 - If any external caller is detected on the legacy endpoint, pause deprecation and add a migration notice.

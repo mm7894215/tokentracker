@@ -1,43 +1,43 @@
-const assert = require('node:assert/strict');
-const { test } = require('node:test');
+const assert = require("node:assert/strict");
+const { test } = require("node:test");
 
-const { resolveRuntimeConfig } = require('../src/lib/runtime-config');
+const { resolveRuntimeConfig } = require("../src/lib/runtime-config");
 
-test('resolveRuntimeConfig prefers CLI flags over config and env', () => {
-  const config = { baseUrl: 'https://config.example', deviceToken: 'cfg' };
+test("resolveRuntimeConfig prefers CLI flags over config and env", () => {
+  const config = { baseUrl: "https://config.example", deviceToken: "cfg" };
   const result = resolveRuntimeConfig({
-    cli: { baseUrl: 'https://cli.example' },
+    cli: { baseUrl: "https://cli.example" },
     config,
-    env: { VIBEUSAGE_DEVICE_TOKEN: 'env' }
+    env: { VIBEUSAGE_DEVICE_TOKEN: "env" },
   });
 
-  assert.equal(result.baseUrl, 'https://cli.example');
-  assert.equal(result.deviceToken, 'cfg');
-  assert.equal(result.sources.baseUrl, 'cli');
-  assert.equal(result.sources.deviceToken, 'config');
+  assert.equal(result.baseUrl, "https://cli.example");
+  assert.equal(result.deviceToken, "cfg");
+  assert.equal(result.sources.baseUrl, "cli");
+  assert.equal(result.sources.deviceToken, "config");
 });
 
-test('resolveRuntimeConfig ignores non-VIBEUSAGE env inputs', () => {
+test("resolveRuntimeConfig ignores non-VIBEUSAGE env inputs", () => {
   const result = resolveRuntimeConfig({
     env: {
-      VIBESCORE_INSFORGE_BASE_URL: 'https://legacy.example',
-      VIBESCORE_DEVICE_TOKEN: 'legacy',
-      INSFORGE_ANON_KEY: 'legacy'
-    }
+      VIBESCORE_INSFORGE_BASE_URL: "https://legacy.example",
+      VIBESCORE_DEVICE_TOKEN: "legacy",
+      INSFORGE_ANON_KEY: "legacy",
+    },
   });
 
   assert.equal(result.deviceToken, null);
-  assert.equal(result.insforgeAnonKey, '');
-  assert.equal(result.sources.deviceToken, 'default');
+  assert.equal(result.insforgeAnonKey, "");
+  assert.equal(result.sources.deviceToken, "default");
 });
 
-test('resolveRuntimeConfig normalizes timeout and flags', () => {
+test("resolveRuntimeConfig normalizes timeout and flags", () => {
   const result = resolveRuntimeConfig({
     env: {
-      VIBEUSAGE_HTTP_TIMEOUT_MS: '500',
-      VIBEUSAGE_DEBUG: '1',
-      VIBEUSAGE_AUTO_RETRY_NO_SPAWN: '1'
-    }
+      VIBEUSAGE_HTTP_TIMEOUT_MS: "500",
+      VIBEUSAGE_DEBUG: "1",
+      VIBEUSAGE_AUTO_RETRY_NO_SPAWN: "1",
+    },
   });
 
   assert.equal(result.httpTimeoutMs, 1000);
