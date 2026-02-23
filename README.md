@@ -38,7 +38,7 @@ That's it! Your AI token usage will now automatically sync to the [Dashboard](ht
 
 ## ✨ Why VibeUsage?
 
-- 📡 **Multi-Source Unified Tracking** - Support for Codex CLI, Every Code, Gemini CLI, Claude Code, Opencode, and more
+- 📡 **Multi-Source Unified Tracking** - Support for Codex CLI, Every Code, Gemini CLI, Claude Code, Opencode, OpenClaw, and more
 - 🤖 **Multi-Model Statistics** - Unified tracking for GPT-4, Claude, Gemini, o1, and all AI models
 - 📁 **Project AI Footprint** - Track and publicly display token usage per repository, proving AI-assisted development
 - 🏆 **Global Leaderboard** - Weekly/monthly/all-time rankings, grow with the global developer community
@@ -57,6 +57,7 @@ That's it! Your AI token usage will now automatically sync to the [Dashboard](ht
 | **Gemini CLI** | ✅ | Full Support |
 | **Claude Code** | ✅ | Full Support |
 | **Opencode** | ✅ | Full Support |
+| **OpenClaw** | ✅ | Full Support |
 
 Whether you're using GPT-4, Claude 3.5 Sonnet, o1, or Gemini - all token consumption is unified and tracked.
 
@@ -141,6 +142,7 @@ Once `init` completes, all supported CLI tools are automatically configured for 
 | **Gemini CLI** | `~/.gemini/settings.json` (or `GEMINI_HOME`) | `SessionEnd` hook |
 | **Opencode** | Global plugins | Message parser plugin |
 | **Claude Code** | `~/.claude/hooks/` | Hook configuration |
+| **OpenClaw** | Auto-links when installed | Gateway hook (requires restart) |
 
 No further intervention required! 🎉
 
@@ -197,16 +199,17 @@ npx vibeusage uninstall --purge
 
 ```mermaid
 graph LR
-    A[Codex CLI] -->|Rollout Logs| F(Tracker CLI)
-    B[Every Code] -->|Rollout Logs| F
-    C[Gemini CLI] -->|Session Logs| F
-    D[Opencode] -->|Message Logs| F
-    E[Claude Code] -->|Hook Output| F
-    F -->|AI Tokens| G{Core Relay}
-    G --> H[VibeUsage Dashboard]
-    G --> I[AI Analytics Engine]
-    G --> J[Leaderboard Service]
-    G --> K[Public View API]
+    A[Codex CLI] -->|Rollout Logs| G(Tracker CLI)
+    B[Every Code] -->|Rollout Logs| G
+    C[Gemini CLI] -->|Session Logs| G
+    D[Opencode] -->|Message Logs| G
+    E[Claude Code] -->|Hook Output| G
+    F[OpenClaw] -->|Gateway Hook| G
+    G -->|AI Tokens| H{Core Relay}
+    H --> I[VibeUsage Dashboard]
+    H --> J[AI Analytics Engine]
+    H --> K[Leaderboard Service]
+    H --> L[Public View API]
 ```
 
 ### Tech Stack
@@ -242,6 +245,7 @@ graph LR
 | **Gemini CLI** | `~/.gemini/tmp/**/chats/session-*.json` | `GEMINI_HOME` |
 | **Opencode** | `~/.opencode/messages/*.json` | - |
 | **Claude Code** | Parsed from hook output | - |
+| **OpenClaw** | Gateway hook integration | - |
 
 ## ⚙️ Configuration
 

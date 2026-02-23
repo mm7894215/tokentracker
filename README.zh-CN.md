@@ -38,7 +38,7 @@ npx vibeusage init
 
 ## ✨ 为什么选择 VibeUsage？
 
-- 📡 **多来源统一追踪** - 支持 Codex CLI、Every Code、Gemini CLI、Claude Code、Opencode 等多个 AI CLI 工具
+- 📡 **多来源统一追踪** - 支持 Codex CLI、Every Code、Gemini CLI、Claude Code、Opencode、OpenClaw 等多个 AI CLI 工具
 - 🤖 **多模型统计** - 统一追踪 GPT-4、Claude、Gemini、o1 等所有 AI 模型的 token 消耗
 - 📁 **项目 AI 足迹** - 按仓库追踪并公开展示 token 使用量，证明这是 AI 辅助开发的项目
 - 🏆 **全球排行榜** - 周榜/月榜/总榜实时更新，与全球开发者社区一起成长
@@ -57,6 +57,7 @@ npx vibeusage init
 | **Gemini CLI** | ✅ | 完全支持 |
 | **Claude Code** | ✅ | 完全支持 |
 | **Opencode** | ✅ | 完全支持 |
+| **OpenClaw** | ✅ | 完全支持 |
 
 无论你使用 GPT-4、Claude 3.5 Sonnet、o1 还是 Gemini，所有 token 消耗都会被统一追踪。
 
@@ -141,6 +142,7 @@ npx vibeusage init [选项]
 | **Gemini CLI** | `~/.gemini/settings.json`（或 `GEMINI_HOME`） | `SessionEnd` 钩子 |
 | **Opencode** | 全局插件 | 消息解析器插件 |
 | **Claude Code** | `~/.claude/hooks/` | 钩子配置 |
+| **OpenClaw** | 安装时自动链接 | Gateway 钩子（需要重启） |
 
 无需进一步操作！🎉
 
@@ -197,16 +199,17 @@ npx vibeusage uninstall --purge
 
 ```mermaid
 graph LR
-    A[Codex CLI] -->|Rollout 日志| F(Tracker CLI)
-    B[Every Code] -->|Rollout 日志| F
-    C[Gemini CLI] -->|会话日志| F
-    D[Opencode] -->|消息日志| F
-    E[Claude Code] -->|钩子输出| F
-    F -->|AI Tokens| G{核心中继}
-    G --> H[VibeUsage 控制台]
-    G --> I[AI 分析引擎]
-    G --> J[排行榜服务]
-    G --> K[公开视图 API]
+    A[Codex CLI] -->|Rollout 日志| G(Tracker CLI)
+    B[Every Code] -->|Rollout 日志| G
+    C[Gemini CLI] -->|会话日志| G
+    D[Opencode] -->|消息日志| G
+    E[Claude Code] -->|钩子输出| G
+    F[OpenClaw] -->|Gateway 钩子| G
+    G -->|AI Tokens| H{核心中继}
+    H --> I[VibeUsage 控制台]
+    H --> J[AI 分析引擎]
+    H --> K[排行榜服务]
+    H --> L[公开视图 API]
 ```
 
 ### 技术栈
@@ -242,6 +245,7 @@ graph LR
 | **Gemini CLI** | `~/.gemini/tmp/**/chats/session-*.json` | `GEMINI_HOME` |
 | **Opencode** | `~/.opencode/messages/*.json` | - |
 | **Claude Code** | 从钩子输出解析 | - |
+| **OpenClaw** | Gateway 钩子集成 | - |
 
 ## ⚙️ 配置
 
