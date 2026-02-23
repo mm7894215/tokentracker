@@ -17,7 +17,7 @@ const LandingExtras = React.lazy(() =>
 
 // Matrix Card Component - Enhanced cyberpunk aesthetic
 function MatrixCard({ children, className = "", variant = "default", header }) {
-  const baseStyles = "relative overflow-hidden backdrop-blur-sm";
+  const baseStyles = "relative overflow-hidden";
   
   const variants = {
     default: "border border-[#00FF41]/30 bg-black/60",
@@ -105,9 +105,6 @@ function TerminalCommand({ command, copied, onCopy, label, helper }) {
             )}
           </button>
         </div>
-        
-        {/* Glow effect on hover */}
-        <div className="absolute -inset-1 bg-[#00FF41]/5 blur-lg opacity-0 group-hover:opacity-100 transition-opacity duration-500 -z-10" />
       </div>
       
       {helper && (
@@ -306,9 +303,6 @@ export function LandingView({
             href={signUpUrl}
             className="group relative block w-full text-center overflow-hidden"
           >
-            {/* Button glow */}
-            <div className="absolute inset-0 bg-[#00FF41] blur-lg opacity-50 group-hover:opacity-80 transition-opacity duration-300" />
-            
             {/* Button background */}
             <div className="relative bg-[#00FF41] text-black font-black uppercase tracking-[0.3em] py-4 px-6 hover:bg-white transition-colors duration-200">
               <span className="relative z-10">{copy("landing.cta.login_signup")}</span>
