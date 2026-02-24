@@ -15,48 +15,18 @@ const LandingExtras = React.lazy(() =>
   })),
 );
 
-// Matrix Card Component - Enhanced cyberpunk aesthetic
-function MatrixCard({ children, className = "", variant = "default", header }) {
-  const baseStyles = "relative overflow-hidden";
-  
-  const variants = {
-    default: "border border-[#00FF41]/30 bg-black/60",
-    primary: "border border-[#00FF41]/50 bg-[#00FF41]/5",
-    ghost: "border border-[#00FF41]/20 bg-black/40",
-  };
-  
+// Unified Matrix card shell (clean + consistent)
+function MatrixCard({ children, className = "", header }) {
   return (
-    <div className={`${baseStyles} ${variants[variant]} ${className}`}>
-      {/* Scanning line animation */}
-      <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-[#00FF41]/60 to-transparent animate-scan" />
-      </div>
-      
-      {/* Corner accents */}
-      <div className="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-[#00FF41]" />
-      <div className="absolute top-0 right-0 w-4 h-4 border-t-2 border-r-2 border-[#00FF41]" />
-      <div className="absolute bottom-0 left-0 w-4 h-4 border-b-2 border-l-2 border-[#00FF41]" />
-      <div className="absolute bottom-0 right-0 w-4 h-4 border-b-2 border-r-2 border-[#00FF41]" />
-      
-      {/* Header with ASCII art style */}
-      {header && (
-        <div className="relative px-5 py-4 border-b border-[#00FF41]/20">
-          <div className="absolute inset-x-0 bottom-0 h-[1px] bg-gradient-to-r from-transparent via-[#00FF41]/40 to-transparent" />
-          <div className="flex items-center gap-3">
-            <span className="text-[#00FF41]/60 font-mono text-xs">&gt;&gt;</span>
-            {header}
-          </div>
-        </div>
-      )}
-      
-      {/* Content */}
-      <div className="relative p-5">
-        {children}
-      </div>
-      
-      {/* CRT scanline overlay */}
-      <div className="absolute inset-0 pointer-events-none bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.1)_50%)] bg-[length:100%_4px] opacity-30" />
-    </div>
+    <section className={`relative overflow-hidden border border-[#00FF41]/28 bg-[#04130b]/72 ${className}`}>
+      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.12)_50%)] bg-[length:100%_4px] opacity-25" />
+      {header ? (
+        <header className="relative border-b border-[#00FF41]/18 px-5 py-3">
+          <span className="font-mono text-[11px] uppercase tracking-[0.16em] text-[#00FF41]/78">{header}</span>
+        </header>
+      ) : null}
+      <div className="relative p-5">{children}</div>
+    </section>
   );
 }
 
@@ -69,38 +39,32 @@ function TerminalCommand({ command, copied, onCopy, label, helper }) {
           {label}
         </p>
       )}
-      <div className="relative group">
-        {/* Terminal window chrome */}
-        <div className="absolute -inset-[1px] bg-gradient-to-r from-[#00FF41]/20 via-[#00FF41]/5 to-[#00FF41]/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-        
-        <div className="relative flex items-center gap-0 border border-[#00FF41]/30 bg-black/80">
-          {/* Prompt symbol */}
-          <div className="shrink-0 px-3 py-3 border-r border-[#00FF41]/20 bg-[#00FF41]/5">
+      <div className="relative">
+        <div className="relative flex items-center gap-0 border border-[#00FF41]/28 bg-black/80">
+          <div className="shrink-0 px-3 py-3 border-r border-[#00FF41]/18 bg-[#00FF41]/6">
             <span className="text-[#00FF41] font-mono text-sm">$</span>
           </div>
-          
-          {/* Command text */}
+
           <div className="flex-1 min-w-0 px-4 py-3 overflow-x-auto">
             <code className="font-mono text-sm text-[#00FF41] whitespace-nowrap block">
               {command}
             </code>
           </div>
-          
-          {/* Copy button */}
+
           <button
             type="button"
             onClick={onCopy}
-            className="shrink-0 px-4 py-3 border-l border-[#00FF41]/20 text-[#00FF41]/70 hover:text-[#00FF41] hover:bg-[#00FF41]/10 transition-all duration-200"
+            className="shrink-0 px-4 py-3 border-l border-[#00FF41]/18 text-[#00FF41]/70 hover:text-[#00FF41] hover:bg-[#00FF41]/10 transition-colors duration-200"
             title={copied ? "Copied!" : "Copy to clipboard"}
           >
             {copied ? (
               <svg viewBox="0 0 16 16" className="w-4 h-4" fill="currentColor">
-                <path d="M6 10.5L3.5 8l-1 1L6 13l7-7-1-1-6 5.5z"/>
+                <path d="M6 10.5L3.5 8l-1 1L6 13l7-7-1-1-6 5.5z" />
               </svg>
             ) : (
               <svg viewBox="0 0 16 16" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.5">
-                <rect x="5" y="5" width="8" height="8" rx="1"/>
-                <path d="M3 11V3h8" strokeLinecap="round"/>
+                <rect x="5" y="5" width="8" height="8" rx="1" />
+                <path d="M3 11V3h8" strokeLinecap="round" />
               </svg>
             )}
           </button>
@@ -208,18 +172,7 @@ export function LandingView({
         )}
 
         {/* AI Agent Install Card */}
-        <MatrixCard 
-          variant="primary" 
-          className="w-full max-w-2xl"
-          header={
-            <div className="flex items-center gap-3">
-              <span className="text-lg">🤖</span>
-              <h3 className="text-sm font-bold uppercase tracking-[0.15em] text-white">
-                {copy("landing.ai_agent.title")}
-              </h3>
-            </div>
-          }
-        >
+        <MatrixCard className="w-full max-w-2xl" header={copy("landing.ai_agent.title")}>
           <div className="space-y-4">
             <p className="text-sm text-[#00FF41]/70 leading-relaxed">
               {copy("landing.ai_agent.description")}
@@ -235,19 +188,7 @@ export function LandingView({
         </MatrixCard>
 
         {/* Quick Install Card */}
-        <MatrixCard 
-          className="w-full max-w-2xl"
-          header={
-            <div className="flex items-center gap-3">
-              <svg viewBox="0 0 16 16" className="w-4 h-4 text-[#00FF41]" fill="none" stroke="currentColor" strokeWidth="1.5">
-                <path d="M2 4h12M2 8h12M2 12h12" strokeLinecap="round"/>
-              </svg>
-              <h3 className="text-sm font-bold uppercase tracking-[0.15em] text-white">
-                Quick Install
-              </h3>
-            </div>
-          }
-        >
+        <MatrixCard className="w-full max-w-2xl" header="Quick Install">
           <TerminalCommand
             command={installCommand}
             copied={installCopied}
@@ -258,7 +199,7 @@ export function LandingView({
         </MatrixCard>
 
         {/* Screenshot */}
-        <MatrixCard variant="ghost" className="w-full max-w-4xl p-1">
+        <MatrixCard className="w-full max-w-4xl" header="Dashboard Preview">
           <div className="relative overflow-hidden border border-[#00FF41]/20 bg-black/60">
             <img
               src="/landing-dashboard.jpg"
@@ -272,9 +213,9 @@ export function LandingView({
         </MatrixCard>
 
         {/* Features Card */}
-        <MatrixCard className="w-full max-w-2xl">
+        <MatrixCard className="w-full max-w-2xl" header="Feature Brief">
           <div className="space-y-5">
-            <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
+            <h2 className="text-xl sm:text-2xl font-bold text-[#00FF41] tracking-tight">
               {copy("landing.seo.title")}
             </h2>
             <p className="text-sm text-[#00FF41]/70 leading-relaxed">
