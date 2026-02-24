@@ -177,11 +177,6 @@ export function LandingView({
         
         {/* Hero section */}
         <div className="text-center space-y-6">
-          <div className="inline-flex items-center gap-2 px-3 py-1 border border-[#00FF41]/30 bg-[#00FF41]/5 text-[10px] uppercase tracking-[0.3em] text-[#00FF41]/70">
-            <span className="w-1.5 h-1.5 bg-[#00FF41] rounded-full animate-pulse" />
-            System Online
-          </div>
-          
           <h1 className="text-4xl sm:text-6xl md:text-8xl font-black text-white tracking-tighter leading-none select-none">
             <DecodingText text={copy("landing.hero.title_primary")} /> <br />
             <span className="text-[#00FF41]">
