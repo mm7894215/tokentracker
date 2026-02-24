@@ -1,4 +1,4 @@
-import React, { Suspense } from "react";
+import React, { Suspense, useState } from "react";
 import { DecodingText } from "../../foundation/DecodingText.jsx";
 import { MatrixButton } from "../../foundation/MatrixButton.jsx";
 import { GithubStar } from "../components/GithubStar.jsx";
@@ -132,6 +132,13 @@ export function LandingView({
   installCopied,
   onCopyInstallCommand,
 }) {
+  const [aiAgentCopied, setAiAgentCopied] = useState(false);
+  
+  const handleAiAgentCopy = () => {
+    navigator.clipboard.writeText(copy("landing.ai_agent.guide_url"));
+    setAiAgentCopied(true);
+    setTimeout(() => setAiAgentCopied(false), 2000);
+  };
   const extrasSkeleton = (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-3xl">
       <div className="h-44 border border-[#00FF41]/15 bg-[#00FF41]/5 animate-pulse" />
@@ -225,11 +232,8 @@ export function LandingView({
             
             <TerminalCommand
               command={copy("landing.ai_agent.command")}
-              copied={false}
-              onCopy={() => {
-                navigator.clipboard.writeText(copy("landing.ai_agent.guide_url"));
-                window.open(copy("landing.ai_agent.guide_url"), "_blank");
-              }}
+              copied={aiAgentCopied}
+              onCopy={handleAiAgentCopy}
               helper={copy("landing.ai_agent.helper")}
             />
           </div>
