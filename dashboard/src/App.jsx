@@ -2,8 +2,8 @@ import { useAuth as useInsforgeAuth } from "@insforge/react-router";
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { ErrorBoundary } from "./components/ErrorBoundary.jsx";
-import { getAppVersion } from "./lib/app-version";
 import { getSafeSessionStorage, shouldRedirectFromAuthCallback } from "./lib/auth-callback";
+import { ThemeProvider } from "./ui/foundation/ThemeProvider.jsx";
 import { resolveAuthGate } from "./lib/auth-gate";
 import {
   buildRedirectUrl,
@@ -30,7 +30,6 @@ import { fetchLatestTrackerVersion } from "./lib/npm-version";
 import { isScreenshotModeEnabled } from "./lib/screenshot-mode";
 import { LandingPage } from "./pages/LandingPage.jsx";
 import { UpgradeAlertModal } from "./ui/matrix-a/components/UpgradeAlertModal.jsx";
-import { VersionBadge } from "./ui/matrix-a/components/VersionBadge.jsx";
 
 function buildAuthEntryUrl(basePath, nextPath) {
   if (typeof basePath !== "string" || basePath.length === 0) return "/";
@@ -73,7 +72,6 @@ export default function App() {
     if (typeof window === "undefined") return false;
     return isScreenshotModeEnabled(window.location.search);
   }, []);
-  const appVersion = useMemo(() => getAppVersion(import.meta.env), []);
   const [latestVersion, setLatestVersion] = useState(null);
   const [insforgeSession, setInsforgeSession] = useState();
   const [sessionExpired, setSessionExpired] = useState(() => loadSessionExpired());
@@ -107,7 +105,7 @@ export default function App() {
     let active = true;
     const refreshSession = () => {
       return insforgeAuthClient.auth
-        .getCurrentSession()
+        .refreshSession()
         .then(({ data }) => {
           if (!active) return;
           const session = data?.session ?? null;
@@ -325,6 +323,9 @@ export default function App() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (!insforgeLoaded) return;
+    // 本地模式：不跳转
+    const isLocalMode = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+    if (isLocalMode) return;
     const shouldRedirect = shouldRedirectFromAuthCallback({
       pathname: window.location.pathname,
       search: window.location.search,
@@ -342,13 +343,19 @@ export default function App() {
     !mockEnabled &&
     !sessionSoftExpired &&
     (!insforgeLoaded || insforgeSession === undefined);
-  const gate = resolveAuthGate({
+
+  // 本地模式：强制进入 Dashboard
+  const isLocalMode = typeof window !== "undefined" &&
+    (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+
+  const gateRaw = resolveAuthGate({
     publicMode,
     mockEnabled,
     sessionSoftExpired,
     signedIn,
     authPending,
   });
+  const gate = isLocalMode ? "dashboard" : gateRaw;
   const normalizedPath = pathname.replace(/\/+$/, "") || "/";
   const leaderboardProfileMatch = normalizedPath.match(/^\/leaderboard\/u\/([^/]+)$/i);
   const leaderboardProfileUserId = leaderboardProfileMatch ? leaderboardProfileMatch[1] : null;
@@ -386,8 +393,9 @@ export default function App() {
 
   return (
     <ErrorBoundary>
-      {content}
-      {!screenshotMode ? <VersionBadge version={appVersion} /> : null}
+      <ThemeProvider>
+        {content}
+      </ThemeProvider>
     </ErrorBoundary>
   );
 }

@@ -33,7 +33,9 @@ export const GithubStar = ({
           setStars(data.stargazers_count);
         }
       })
-      .catch((err) => console.error("GitHub API fetch failed", err));
+      .catch(() => {
+        // Silently fail - stars will remain null
+      });
   }, [repo]);
 
   const baseClasses =

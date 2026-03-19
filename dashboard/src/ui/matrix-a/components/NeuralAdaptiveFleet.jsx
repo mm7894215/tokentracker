@@ -1,7 +1,80 @@
 import React from "react";
 import { copy } from "../../../lib/copy";
 import { formatCompactNumber } from "../../../lib/format";
-import { TEXTURES } from "./MatrixConstants";
+
+// Brand-aligned color palette for AI models - distinct colors per vendor
+const MODEL_BRAND_COLORS = {
+  // OpenAI / GPT models - Blue family
+  "gpt-5.4": "#3b82f6",
+  "gpt-5.1": "#2563eb",
+  "gpt-5.4-mini": "#60a5fa",
+  "gpt-5.1-codex-mini": "#93c5fd",
+  "gpt-4o": "#3b82f6",
+  "gpt-4": "#2563eb",
+  "gpt-4-turbo": "#60a5fa",
+  "gpt-3.5": "#93c5fd",
+  "o1": "#1d4ed8",
+  "o3": "#1e40af",
+
+  // Anthropic / Claude models - Violet/Purple family
+  "claude-opus-4-6": "#7c3aed",
+  "claude-haiku-4-5": "#8b5cf6",
+  "kimi-for-coding": "#6d28d9",
+  "kimi-k2.5": "#a78bfa",
+  "claude-opus": "#7c3aed",
+  "claude-sonnet": "#8b5cf6",
+  "claude-haiku": "#a78bfa",
+  "claude": "#7c3aed",
+
+  // Google / Gemini models - Teal/Cyan family
+  "gemini-3.1-pro-preview": "#0891b2",
+  "gemini": "#06b6d4",
+  "gemini-pro": "#22d3ee",
+  "gemini-ultra": "#0891b2",
+
+  // Codex - Emerald green
+  "codex": "#059669",
+
+  // Fallback palette for unknown models - diverse colors
+  "fallback": [
+    "#3b82f6", // Blue
+    "#7c3aed", // Violet
+    "#0891b2", // Cyan
+    "#059669", // Emerald
+    "#f59e0b", // Amber
+    "#ef4444", // Red
+    "#ec4899", // Pink
+  ],
+};
+
+function getModelColor(modelName, index = 0) {
+  if (!modelName) return MODEL_BRAND_COLORS.fallback[index % MODEL_BRAND_COLORS.fallback.length];
+
+  const normalizedName = modelName.toLowerCase().replace(/[_\-\s.]/g, "");
+
+  // Direct match
+  for (const [key, color] of Object.entries(MODEL_BRAND_COLORS)) {
+    if (typeof color === "string" && normalizedName.includes(key.toLowerCase().replace(/[_\-\s.]/g, ""))) {
+      return color;
+    }
+  }
+
+  // Partial match for model families
+  if (normalizedName.includes("gpt") || normalizedName.includes("o1") || normalizedName.includes("o3")) {
+    return MODEL_BRAND_COLORS["gpt-5.4"];
+  }
+  if (normalizedName.includes("claude") || normalizedName.includes("kimi")) {
+    return MODEL_BRAND_COLORS["claude-opus-4-6"];
+  }
+  if (normalizedName.includes("gemini")) {
+    return MODEL_BRAND_COLORS["gemini-3.1-pro-preview"];
+  }
+  if (normalizedName.includes("codex")) {
+    return MODEL_BRAND_COLORS["codex"];
+  }
+
+  return MODEL_BRAND_COLORS.fallback[index % MODEL_BRAND_COLORS.fallback.length];
+}
 
 export const NeuralAdaptiveFleet = React.memo(function NeuralAdaptiveFleet({
   label,
@@ -25,61 +98,66 @@ export const NeuralAdaptiveFleet = React.memo(function NeuralAdaptiveFleet({
 
   return (
     <div className="w-full space-y-4">
-      <div className="flex justify-between items-baseline border-b border-matrix-ghost pb-2">
-        <div className="flex items-baseline gap-2">
-          <span className="text-heading font-black text-matrix-primary uppercase">{label}</span>
-          <span className="text-caption text-matrix-muted">{usageLabel}</span>
+      {/* Header with enhanced visual hierarchy */}
+      <div className="flex justify-between items-center pb-3">
+        <div className="flex items-center gap-3">
+          <span className="text-base font-semibold text-oai-gray-900 dark:text-oai-gray-100">{label}</span>
+          <span className="text-xs font-medium text-oai-gray-500 dark:text-oai-gray-400 bg-oai-gray-100/80 dark:bg-oai-gray-800/80 px-2.5 py-1 rounded-full">{usageLabel}</span>
         </div>
-        <div className="flex items-baseline space-x-1">
-          <span className="text-body font-black text-matrix-primary">{totalPercent}</span>
-          <span className="text-caption text-matrix-dim font-bold">{percentSymbol}</span>
+        <div className="flex items-baseline gap-1">
+          <span className="text-2xl font-bold text-oai-black dark:text-oai-white tabular-nums tracking-tight">{totalPercent}</span>
+          <span className="text-sm font-semibold text-oai-gray-400 dark:text-oai-gray-500">{percentSymbol}</span>
         </div>
       </div>
 
-      <div className="h-1 w-full bg-matrix-panel flex overflow-hidden relative">
+      {/* Progress bar - thinner style */}
+      <div className="h-2 w-full bg-oai-gray-100 dark:bg-oai-gray-800 flex overflow-hidden rounded-full">
         {models.map((model, index) => {
-          const styleConfig = TEXTURES[index % TEXTURES.length];
+          const color = getModelColor(model.name, index);
           const modelKey = model?.id ? String(model.id) : `${model.name}-${index}`;
           return (
             <div
               key={modelKey}
-              className="h-full relative transition-all duration-1000 ease-out border-r border-black last:border-none"
+              className="h-full transition-all duration-500 ease-out hover:opacity-80 cursor-pointer"
               style={{
                 width: `${model.share}%`,
-                backgroundColor: styleConfig.bg,
-                backgroundImage: styleConfig.pattern,
-                backgroundSize: styleConfig.size || "auto",
-                boxShadow: index === 0 ? "0 0 10px rgba(0,255,65,0.2)" : "none",
+                backgroundColor: color,
               }}
+              title={`${model.name}: ${model.share}${percentSymbol}`}
             />
           );
         })}
       </div>
 
-      <div className="grid grid-cols-2 gap-y-2 gap-x-6 pl-1">
+      {/* Model legend with enhanced visuals */}
+      <div className="grid grid-cols-2 gap-y-2 gap-x-4">
         {models.map((model, index) => {
-          const styleConfig = TEXTURES[index % TEXTURES.length];
+          const color = getModelColor(model.name, index);
           const modelKey = model?.id ? String(model.id) : `${model.name}-${index}`;
           return (
-            <div key={modelKey} className="flex items-center space-x-2">
+            <div
+              key={modelKey}
+              className="flex items-center gap-2.5 group cursor-pointer hover:bg-oai-gray-50 dark:hover:bg-oai-gray-800 rounded-lg p-1.5 -ml-1.5 transition-all duration-200"
+            >
               <div
-                className="w-2 h-2 border border-matrix-ghost shrink-0"
-                style={{
-                  backgroundColor: styleConfig.bg,
-                  backgroundImage: styleConfig.pattern,
-                  backgroundSize: styleConfig.size || "auto",
-                }}
+                className="w-3 h-3 rounded-full shrink-0 shadow-sm ring-2 ring-white dark:ring-oai-gray-900"
+                style={{ backgroundColor: color }}
               />
-              <div className="flex items-baseline space-x-2 min-w-0">
+              <div className="flex items-baseline gap-1.5 min-w-0">
                 <span
-                  className="text-caption truncate uppercase text-matrix-primary font-bold"
+                  className="text-sm truncate text-oai-gray-700 dark:text-oai-gray-300 font-medium group-hover:text-oai-black dark:group-hover:text-oai-white transition-colors"
                   title={model.name}
                 >
                   {model.name}
                 </span>
-                <span className="text-caption text-matrix-muted font-bold">
-                  {model.share}
-                  {percentSymbol}
+                <span
+                  className="text-xs font-semibold tabular-nums px-1.5 py-0.5 rounded-md"
+                  style={{
+                    backgroundColor: `${color}15`,
+                    color: color,
+                  }}
+                >
+                  {model.share}{percentSymbol}
                 </span>
               </div>
             </div>

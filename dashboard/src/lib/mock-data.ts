@@ -201,6 +201,7 @@ function buildDailyRows({ from, to, seed }: AnyRecord) {
       output_tokens: output,
       cached_input_tokens: cached,
       reasoning_output_tokens: reasoning,
+      conversation_count: 1 + (hash % 5),
     });
   }
 
@@ -300,6 +301,7 @@ function sumDailyRows(rows: AnyRecord[]) {
       acc.output_tokens += Number(row.output_tokens || 0);
       acc.cached_input_tokens += Number(row.cached_input_tokens || 0);
       acc.reasoning_output_tokens += Number(row.reasoning_output_tokens || 0);
+      acc.conversation_count += Number(row.conversation_count || 0);
       return acc;
     },
     {
@@ -309,6 +311,7 @@ function sumDailyRows(rows: AnyRecord[]) {
       output_tokens: 0,
       cached_input_tokens: 0,
       reasoning_output_tokens: 0,
+      conversation_count: 0,
     } as AnyRecord,
   );
 }
@@ -403,7 +406,10 @@ function buildMockRollingWindow({ rows, from, to }: AnyRecord = {}) {
   return {
     from,
     to,
-    totals: { billable_total_tokens: totals.billable_total_tokens },
+    totals: {
+      billable_total_tokens: totals.billable_total_tokens,
+      conversation_count: totals.conversation_count,
+    },
     active_days: activeDays,
     avg_per_active_day: avg,
   };

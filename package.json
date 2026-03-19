@@ -1,12 +1,12 @@
 {
-  "name": "vibeusage",
+  "name": "tokentracker",
   "version": "0.2.23",
-  "description": "Codex CLI token usage tracker (macOS-first, notify-driven).",
-  "license": "MIT",
+  "description": "Token usage tracker for AI agent CLIs (Codex, Claude Code, Gemini, OpenCode, OpenClaw)",
+  "main": "src/cli.js",
   "bin": {
     "tracker": "bin/tracker.js",
-    "vibeusage": "bin/tracker.js",
-    "vibeusage-tracker": "bin/tracker.js"
+    "tokentracker": "bin/tracker.js",
+    "tokentracker-tracker": "bin/tracker.js"
   },
   "files": [
     "bin/",

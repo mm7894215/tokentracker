@@ -92,6 +92,9 @@ export function useTrendData({
     }
   }, [storageKey]);
 
+  const isLocalMode = typeof window !== "undefined" &&
+    (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+
   const refresh = useCallback(async () => {
     if (sharedEnabled) {
       setRows(Array.isArray(sharedRows) ? sharedRows : []);
@@ -103,7 +106,7 @@ export function useTrendData({
       return;
     }
     const resolvedToken = await resolveAuthAccessToken(accessToken);
-    if (!resolvedToken && !mockEnabled) return;
+    if (!resolvedToken && !mockEnabled && !isLocalMode) return;
     setLoading(true);
     setError(null);
     try {
@@ -249,6 +252,7 @@ export function useTrendData({
     now,
     clearCache,
     writeCache,
+    isLocalMode,
   ]);
 
   useEffect(() => {
@@ -261,7 +265,7 @@ export function useTrendData({
       setError(null);
       return;
     }
-    if (!tokenReady && !guestAllowed && !mockEnabled) {
+    if (!tokenReady && !guestAllowed && !mockEnabled && !isLocalMode) {
       setRows([]);
       setRange({ from, to });
       setError(null);
@@ -323,6 +327,7 @@ export function useTrendData({
     guestAllowed,
     cacheAllowed,
     clearCache,
+    isLocalMode,
   ]);
 
   const normalizedSource = mockEnabled ? "mock" : source;

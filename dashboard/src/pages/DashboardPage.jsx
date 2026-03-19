@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { BackendStatus } from "../components/BackendStatus.jsx";
 import { useActivityHeatmap } from "../hooks/use-activity-heatmap.js";
 import { useProjectUsageSummary } from "../hooks/use-project-usage-summary";
 import { useTrendData } from "../hooks/use-trend-data.js";
@@ -12,7 +11,7 @@ import {
 } from "../lib/auth-token";
 import { copy } from "../lib/copy";
 import { getDetailsSortColumns, sortDailyRows } from "../lib/daily";
-import { getRangeForPeriod } from "../lib/date-range";
+import { formatDateUTC, getRangeForPeriod } from "../lib/date-range";
 import { DETAILS_PAGE_SIZE, paginateRows, trimLeadingZeroMonths } from "../lib/details";
 import {
   formatCompactNumber,
@@ -38,12 +37,11 @@ import {
   getUserStatus,
   getPublicViewProfile,
   requestInstallLinkCode,
+  triggerLocalSync,
 } from "../lib/vibeusage-api";
 import { AsciiBox } from "../ui/foundation/AsciiBox.jsx";
 import { MatrixButton } from "../ui/foundation/MatrixButton.jsx";
 import { ActivityHeatmap } from "../ui/matrix-a/components/ActivityHeatmap.jsx";
-import { BootScreen } from "../ui/matrix-a/components/BootScreen.jsx";
-import { GithubStar } from "../ui/matrix-a/components/GithubStar.jsx";
 import { ProjectUsagePanel } from "../ui/matrix-a/components/ProjectUsagePanel.jsx";
 import { DashboardView } from "../ui/matrix-a/views/DashboardView.jsx";
 
@@ -81,9 +79,25 @@ function getHeatmapValue(cell) {
   return cell?.billable_total_tokens ?? cell?.value ?? cell?.total_tokens;
 }
 
+function parseUtcDateKey(yyyyMmDd) {
+  if (typeof yyyyMmDd !== "string" || !yyyyMmDd) return null;
+  const parts = yyyyMmDd.split("-");
+  if (parts.length !== 3) return null;
+  const year = Number(parts[0]);
+  const month = Number(parts[1]) - 1;
+  const day = Number(parts[2]);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null;
+  const date = new Date(Date.UTC(year, month, day));
+  return Number.isFinite(date.getTime()) ? date : null;
+}
+
+function addUtcDays(date, days) {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() + days));
+}
+
 function isProductionHost(hostname) {
   if (!hostname) return false;
-  return hostname === "www.vibeusage.cc";
+  return hostname === "www.tokentracker.cc";
 }
 
 function isForceInstallEnabled() {
@@ -105,7 +119,6 @@ export function DashboardPage({
   signInUrl = "/sign-in",
   signUpUrl = "/sign-up",
 }) {
-  const [booted, setBooted] = useState(false);
   const [costModalOpen, setCostModalOpen] = useState(false);
   const [linkCode, setLinkCode] = useState(null);
   const [linkCodeExpiresAt, setLinkCodeExpiresAt] = useState(null);
@@ -135,6 +148,7 @@ export function DashboardPage({
   const [coreIndexCollapsed, setCoreIndexCollapsed] = useState(true);
   const [installCopied, setInstallCopied] = useState(false);
   const [sessionExpiredCopied, setSessionExpiredCopied] = useState(false);
+  const [manualSyncLoading, setManualSyncLoading] = useState(false);
   const mockEnabled = isMockEnabled();
   const authTokenAllowed = signedIn && !sessionSoftExpired;
   const authAccessToken = useMemo(() => {
@@ -150,10 +164,6 @@ export function DashboardPage({
   const authTokenReady = authTokenAllowed && isAccessTokenReady(effectiveAuthToken);
   const guestAllowed = signedIn && sessionSoftExpired && !publicMode;
 
-  useEffect(() => {
-    const t = window.setTimeout(() => setBooted(true), 900);
-    return () => window.clearTimeout(t);
-  }, []);
 
   useEffect(() => {
     if (!signedIn || mockEnabled) {
@@ -309,12 +319,17 @@ export function DashboardPage({
     };
   }, [baseUrl, publicMode, publicToken]);
 
+  // 本地模式判断
+  const isLocalMode = typeof window !== "undefined" &&
+    (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+
   useEffect(() => {
-    if (!signedIn || mockEnabled || publicMode) {
+    // 本地模式：跳过登录检查，直接获取 userStatus
+    if (!isLocalMode && (!signedIn || mockEnabled || publicMode)) {
       setUserStatus(null);
       return;
     }
-    if (!authTokenReady) {
+    if (!isLocalMode && !authTokenReady) {
       setUserStatus(null);
       return;
     }
@@ -327,7 +342,8 @@ export function DashboardPage({
         resolvedToken = null;
       }
       if (!active) return;
-      if (!resolvedToken) {
+      // 本地模式允许空 token
+      if (!resolvedToken && !isLocalMode) {
         setUserStatus(null);
         return;
       }
@@ -409,7 +425,7 @@ export function DashboardPage({
   const tzOffsetMinutes = useMemo(() => getBrowserTimeZoneOffsetMinutes(), []);
   const mockNow = useMemo(() => getMockNow(), []);
   const cacheKey = publicMode ? null : auth?.userId || auth?.email || "default";
-  const [selectedPeriod, setSelectedPeriod] = useState("week");
+  const [selectedPeriod, setSelectedPeriod] = useState("month");
   const period = screenshotMode ? "total" : selectedPeriod;
   const range = useMemo(
     () =>
@@ -446,6 +462,14 @@ export function DashboardPage({
       }),
     [mockNow, timeZone, tzOffsetMinutes],
   );
+  const dailyBreakdownRange = useMemo(() => {
+    const end = parseUtcDateKey(todayKey) || new Date();
+    const start = addUtcDays(end, -29);
+    return {
+      from: formatDateUTC(start),
+      to: formatDateUTC(end),
+    };
+  }, [todayKey]);
 
   const {
     daily,
@@ -463,6 +487,22 @@ export function DashboardPage({
     to,
     includeDaily: period !== "total",
     cacheKey,
+    timeZone,
+    tzOffsetMinutes,
+    now: mockNow,
+  });
+  const {
+    daily: dailyBreakdownDaily,
+    loading: dailyBreakdownLoading,
+    refresh: refreshDailyBreakdown,
+  } = useUsageData({
+    baseUrl,
+    accessToken,
+    guestAllowed,
+    from: dailyBreakdownRange.from,
+    to: dailyBreakdownRange.to,
+    includeDaily: true,
+    cacheKey: cacheKey ? `${cacheKey}.daily-breakdown` : "daily-breakdown",
     timeZone,
     tzOffsetMinutes,
     now: mockNow,
@@ -487,7 +527,7 @@ export function DashboardPage({
   const {
     entries: projectUsageEntries,
     loading: projectUsageLoading,
-    error: projectUsageError,
+    refresh: refreshProjectUsage,
   } = useProjectUsageSummary({
     baseUrl,
     accessToken,
@@ -551,6 +591,8 @@ export function DashboardPage({
     return "day";
   }, [period]);
   const detailsColumns = useMemo(() => getDetailsSortColumns(detailsDateKey), [detailsDateKey]);
+  const dailyBreakdownDateKey = "day";
+  const dailyBreakdownColumns = useMemo(() => getDetailsSortColumns(dailyBreakdownDateKey), []);
   const [sort, setSort] = useState(() => ({ key: "day", dir: "desc" }));
   useEffect(() => {
     setSort((prev) => {
@@ -575,8 +617,19 @@ export function DashboardPage({
         : [];
       return trimLeadingZeroMonths(rows);
     }
-    return visibleDaily;
-  }, [period, trendRows, visibleDaily]);
+    // 对于 week/month/all/today 等，优先使用 visibleDaily
+    // 如果数据为空或全是 missing，回退到最近30天的 daily 数据
+    const rows = visibleDaily;
+    const hasActualData = rows.some((row) => !row?.missing && !row?.future);
+    if (!hasActualData && daily.length > 0) {
+      // 取最近30天有数据的记录
+      return daily
+        .filter((row) => !row?.future)
+        .slice(-30)
+        .filter((row) => row?.day);
+    }
+    return rows;
+  }, [period, trendRows, visibleDaily, daily]);
   const sortedDetails = useMemo(
     () => sortDailyRows(detailsRows, effectiveSort),
     [detailsRows, effectiveSort],
@@ -606,6 +659,23 @@ export function DashboardPage({
     if (!DETAILS_PAGED_PERIODS.has(period)) return sortedDetails;
     return paginateRows(sortedDetails, detailsPage, DETAILS_PAGE_SIZE);
   }, [detailsPage, period, sortedDetails]);
+
+  // Daily Breakdown 始终显示最近30天的日数据
+  const dailyBreakdownRows = useMemo(() => {
+    return dailyBreakdownDaily
+      .filter((row) => !row?.future && row?.day)
+      .slice(-30);
+  }, [dailyBreakdownDaily]);
+  const dailyBreakdownSort = useMemo(() => {
+    if (DETAILS_DATE_KEYS.has(sort.key)) {
+      return { ...sort, key: dailyBreakdownDateKey };
+    }
+    return sort;
+  }, [sort]);
+  const sortedDailyBreakdownRows = useMemo(
+    () => sortDailyRows(dailyBreakdownRows, dailyBreakdownSort),
+    [dailyBreakdownRows, dailyBreakdownSort],
+  );
   const trendRowsForDisplay = useMemo(() => {
     if (useDailyTrend) return daily;
     if (period === "day") {
@@ -638,6 +708,11 @@ export function DashboardPage({
     return value;
   }
 
+  function renderDailyBreakdownDate(row) {
+    const raw = row?.[dailyBreakdownDateKey];
+    return raw == null ? "" : String(raw);
+  }
+
   function toggleSort(key) {
     setSort((prev) => {
       if (prev.key === key) return { key, dir: prev.dir === "asc" ? "desc" : "asc" };
@@ -655,8 +730,19 @@ export function DashboardPage({
     return effectiveSort.dir === "asc" ? "▲" : "▼";
   }
 
+  function dailyAriaSortFor(key) {
+    if (dailyBreakdownSort.key !== key) return "none";
+    return dailyBreakdownSort.dir === "asc" ? "ascending" : "descending";
+  }
+
+  function dailySortIconFor(key) {
+    if (dailyBreakdownSort.key !== key) return "";
+    return dailyBreakdownSort.dir === "asc" ? "▲" : "▼";
+  }
+
   const activeDays = useMemo(() => {
-    if (!signedIn && !mockEnabled && !publicMode) return 0;
+    // 本地模式下跳过登录检查
+    if (!signedIn && !mockEnabled && !publicMode && !isLocalMode) return 0;
     const serverActive = Number(heatmap?.active_days);
     if (Number.isFinite(serverActive)) return serverActive;
 
@@ -687,14 +773,46 @@ export function DashboardPage({
     return count;
   }, [signedIn, mockEnabled, heatmap?.active_days, heatmap?.weeks, heatmapDaily]);
 
-  const refreshAll = useCallback(() => {
-    refreshUsage();
-    refreshHeatmap();
-    refreshTrend();
-    refreshModelBreakdown();
-  }, [refreshHeatmap, refreshModelBreakdown, refreshTrend, refreshUsage]);
+  const refreshAll = useCallback(async () => {
+    await Promise.all([
+      refreshUsage(),
+      refreshHeatmap(),
+      refreshTrend(),
+      refreshModelBreakdown(),
+      refreshProjectUsage(),
+      refreshDailyBreakdown(),
+    ]);
+  }, [
+    refreshDailyBreakdown,
+    refreshHeatmap,
+    refreshModelBreakdown,
+    refreshProjectUsage,
+    refreshTrend,
+    refreshUsage,
+  ]);
 
-  const usageLoadingState = usageLoading || heatmapLoading || trendLoading || modelBreakdownLoading;
+  const handleUsageRefresh = useCallback(async () => {
+    setManualSyncLoading(true);
+    try {
+      if (isLocalMode) {
+        await triggerLocalSync();
+      }
+      await refreshAll();
+    } catch (error) {
+      console.error("[DashboardPage] Refresh failed:", error);
+    } finally {
+      setManualSyncLoading(false);
+    }
+  }, [isLocalMode, refreshAll]);
+
+  const usageLoadingState =
+    manualSyncLoading ||
+    usageLoading ||
+    dailyBreakdownLoading ||
+    heatmapLoading ||
+    trendLoading ||
+    modelBreakdownLoading ||
+    projectUsageLoading;
   const usageSourceLabel = useMemo(
     () =>
       copy("shared.data_source", {
@@ -802,19 +920,13 @@ export function DashboardPage({
   }, [publicMode, userStatus]);
 
   const activityHeatmapBlock = (
-    <AsciiBox
-      title={copy("dashboard.activity.title")}
-      subtitle={accessEnabled ? copy("dashboard.activity.subtitle") : "—"}
-      className="min-w-0 overflow-hidden"
-    >
-      <ActivityHeatmap
-        heatmap={heatmap}
-        timeZoneLabel={timeZoneLabel}
-        timeZoneShortLabel={timeZoneShortLabel}
-        hideLegend={screenshotMode}
-        defaultToLatestMonth={screenshotMode}
-      />
-    </AsciiBox>
+    <ActivityHeatmap
+      heatmap={heatmap}
+      timeZoneLabel={timeZoneLabel}
+      timeZoneShortLabel={timeZoneShortLabel}
+      hideLegend={screenshotMode}
+      defaultToLatestMonth={screenshotMode}
+    />
   );
 
   const rangeLabel = useMemo(() => {
@@ -1003,11 +1115,6 @@ export function DashboardPage({
       }
     }
   }, [captureScreenshotBlob, isCapturing, screenshotTwitterUrl]);
-  const footerLeftContent = screenshotMode
-    ? null
-    : accessEnabled
-      ? copy("dashboard.footer.active", { range: timeZoneRangeLabel })
-      : copy("dashboard.footer.auth");
   const periodsForDisplay = useMemo(() => (screenshotMode ? [] : PERIODS), [screenshotMode]);
 
   const metricsRows = useMemo(
@@ -1056,18 +1163,6 @@ export function DashboardPage({
   const topModels = useMemo(
     () => buildTopModels(modelBreakdown, { limit: 3, copyFn: copy }),
     [modelBreakdown],
-  );
-  const projectUsageBlock = useMemo(
-    () => (
-      <ProjectUsagePanel
-        entries={projectUsageEntries}
-        limit={projectUsageLimit}
-        onLimitChange={setProjectUsageLimit}
-        loading={projectUsageLoading}
-        error={projectUsageError}
-      />
-    ),
-    [projectUsageEntries, projectUsageLimit, projectUsageLoading, projectUsageError],
   );
 
   const openCostModal = useCallback(() => setCostModalOpen(true), []);
@@ -1206,66 +1301,25 @@ export function DashboardPage({
     return [parts[0], parts.slice(1).join("{{cmd}}")];
   }, [dailyEmptyTemplate]);
 
-  const headerStatus =
-    authTokenAllowed && authTokenReady ? (
-      <BackendStatus baseUrl={baseUrl} accessToken={effectiveAuthToken} />
-    ) : null;
-
-  const headerRight = (
-    <div className="ml-auto flex w-max min-w-max items-center gap-2 sm:gap-3 md:gap-4">
-      <GithubStar isFixed={false} size="header" className="hidden sm:inline-flex" />
-      {!publicMode && signedIn ? (
-        <MatrixButton as="a" size="header" href="/leaderboard">
-          {copy("leaderboard.nav.open")}
-        </MatrixButton>
-      ) : null}
-
-      {publicMode ? (
-        signedIn ? (
-          <MatrixButton onClick={signOut} size="header">
-            {copy("dashboard.sign_out")}
-          </MatrixButton>
-        ) : (
-          <MatrixButton as="a" size="header" href={signInUrl}>
-            {copy("landing.nav.login")}
-          </MatrixButton>
-        )
-      ) : signedIn ? (
-        <MatrixButton onClick={signOut} size="header">
-          {copy("dashboard.sign_out")}
-        </MatrixButton>
-      ) : (
-        <span className="text-[10px] opacity-60">{copy("dashboard.not_signed_in")}</span>
-      )}
-    </div>
-  );
-
-  if (!booted) {
-    return <BootScreen onSkip={() => setBooted(true)} />;
-  }
+  // Header 和 Footer 已简化，不显示登录/GitHub等
+  const headerStatus = null;
+  const headerRight = null;
+  const footerLeftContent = null;
 
   const showExpiredGate = sessionSoftExpired && !publicMode;
-  const requireAuthGate = !signedIn && !mockEnabled && !sessionSoftExpired;
+  // 使用上面定义的 isLocalMode
+  const requireAuthGate = !signedIn && !mockEnabled && !sessionSoftExpired && !isLocalMode;
   const showAuthGate = requireAuthGate && !publicMode;
 
   return (
     <DashboardView
       copy={copy}
-      headerStatus={headerStatus}
-      headerRight={headerRight}
-      footerLeftContent={footerLeftContent}
       screenshotMode={screenshotMode}
       publicViewInvalid={publicViewInvalid}
       publicViewInvalidTitle={publicViewInvalidTitle}
       publicViewInvalidBody={publicViewInvalidBody}
       showExpiredGate={showExpiredGate}
       showAuthGate={showAuthGate}
-      sessionExpiredCopied={sessionExpiredCopied}
-      sessionExpiredCopiedLabel={sessionExpiredCopiedLabel}
-      sessionExpiredCopyLabel={sessionExpiredCopyLabel}
-      handleCopySessionExpired={handleCopySessionExpired}
-      signInUrl={signInUrl}
-      signUpUrl={signUpUrl}
       screenshotTitleLine1={screenshotTitleLine1}
       screenshotTitleLine2={screenshotTitleLine2}
       identityDisplayName={identityDisplayName}
@@ -1273,7 +1327,9 @@ export function DashboardPage({
       activeDays={activeDays}
       identitySubscriptions={identitySubscriptions}
       identityScrambleDurationMs={identityScrambleDurationMs}
-      projectUsageBlock={projectUsageBlock}
+      projectUsageEntries={projectUsageEntries}
+      projectUsageLimit={projectUsageLimit}
+      setProjectUsageLimit={setProjectUsageLimit}
       topModels={topModels}
       signedIn={signedIn}
       publicMode={publicMode}
@@ -1321,7 +1377,7 @@ export function DashboardPage({
       coreIndexExpandLabel={coreIndexExpandLabel}
       coreIndexCollapseAria={coreIndexCollapseAria}
       coreIndexExpandAria={coreIndexExpandAria}
-      refreshAll={refreshAll}
+      refreshAll={handleUsageRefresh}
       usageLoadingState={usageLoadingState}
       usageError={usageError}
       rangeLabel={rangeLabel}
@@ -1337,8 +1393,14 @@ export function DashboardPage({
       toggleSort={toggleSort}
       sortIconFor={sortIconFor}
       pagedDetails={pagedDetails}
+      dailyBreakdownRows={sortedDailyBreakdownRows}
+      dailyBreakdownColumns={dailyBreakdownColumns}
+      dailyBreakdownAriaSortFor={dailyAriaSortFor}
+      dailyBreakdownSortIconFor={dailySortIconFor}
+      dailyBreakdownDateKey={dailyBreakdownDateKey}
       detailsDateKey={detailsDateKey}
       renderDetailDate={renderDetailDate}
+      renderDailyBreakdownDate={renderDailyBreakdownDate}
       renderDetailCell={renderDetailCell}
       DETAILS_PAGED_PERIODS={DETAILS_PAGED_PERIODS}
       detailsPageCount={detailsPageCount}

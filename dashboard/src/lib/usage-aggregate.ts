@@ -22,6 +22,7 @@ export function sumDailyRowsToTotals(rows: any) {
     cached_input_tokens: 0n,
     output_tokens: 0n,
     reasoning_output_tokens: 0n,
+    conversation_count: 0n,
   };
 
   for (const row of Array.isArray(rows) ? rows : []) {
@@ -31,6 +32,7 @@ export function sumDailyRowsToTotals(rows: any) {
     totals.cached_input_tokens += toBigIntValue(row?.cached_input_tokens);
     totals.output_tokens += toBigIntValue(row?.output_tokens);
     totals.reasoning_output_tokens += toBigIntValue(row?.reasoning_output_tokens);
+    totals.conversation_count += toBigIntValue(row?.conversation_count);
   }
 
   return {
@@ -40,5 +42,6 @@ export function sumDailyRowsToTotals(rows: any) {
     cached_input_tokens: totals.cached_input_tokens.toString(),
     output_tokens: totals.output_tokens.toString(),
     reasoning_output_tokens: totals.reasoning_output_tokens.toString(),
+    conversation_count: totals.conversation_count.toString(),
   };
 }

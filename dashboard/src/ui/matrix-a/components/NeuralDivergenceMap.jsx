@@ -1,6 +1,5 @@
 import React from "react";
 import { copy } from "../../../lib/copy";
-import { AsciiBox } from "../../foundation/AsciiBox.jsx";
 import { NeuralAdaptiveFleet } from "./NeuralAdaptiveFleet.jsx";
 
 export const NeuralDivergenceMap = React.memo(function NeuralDivergenceMap({
@@ -10,14 +9,15 @@ export const NeuralDivergenceMap = React.memo(function NeuralDivergenceMap({
   footer = copy("dashboard.model_breakdown.footer"),
 }) {
   const count = fleetData.length;
-  // 单个时全宽(cols-1)，多个时双列(cols-2)
   const gridClass = count === 1 ? "grid grid-cols-1" : "grid grid-cols-1 md:grid-cols-2";
 
   return (
-    <AsciiBox title={title} className={className}>
-      <div className={`${gridClass} gap-6 py-1 overflow-y-auto no-scrollbar`}>
+    <div className={`rounded-xl border border-oai-gray-200 dark:border-oai-gray-800 bg-white dark:bg-oai-gray-900 p-5 ${className}`}>
+      <h3 className="text-sm font-medium text-oai-gray-500 dark:text-oai-gray-400 uppercase tracking-wide mb-4">
+        {title}
+      </h3>
+      <div className={`${gridClass} gap-5`}>
         {fleetData.map((fleet, index) => {
-          // 如果总数是奇数且大于1，则让第一个元素（主要的主力CLI）横跨两列，做Hero展示
           const isFirstAndOdd = count > 1 && count % 2 !== 0 && index === 0;
           const itemClass = isFirstAndOdd ? "md:col-span-2" : "";
 
@@ -33,11 +33,6 @@ export const NeuralDivergenceMap = React.memo(function NeuralDivergenceMap({
           );
         })}
       </div>
-      {footer ? (
-        <div className="mt-auto pt-3 border-t border-matrix-ghost text-caption uppercase text-center italic leading-none text-matrix-dim">
-          {footer}
-        </div>
-      ) : null}
-    </AsciiBox>
+    </div>
   );
 });

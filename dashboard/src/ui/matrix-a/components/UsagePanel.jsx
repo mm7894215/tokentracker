@@ -1,9 +1,6 @@
-import { Button } from "@base-ui/react/button";
 import React from "react";
 import { copy } from "../../../lib/copy";
-import { AsciiBox } from "../../foundation/AsciiBox.jsx";
-import { MatrixButton } from "../../foundation/MatrixButton.jsx";
-import { ScrambleText } from "../../foundation/ScrambleText.jsx";
+import { Button, Counter } from "../../openai/components";
 
 function normalizePeriods(periods) {
   if (!Array.isArray(periods)) return [];
@@ -13,6 +10,14 @@ function normalizePeriods(periods) {
     }
     return { key: p.key, label: p.label || String(p.key).toUpperCase() };
   });
+}
+
+function parseAnimatedCounterValue(displayValue) {
+  if (typeof displayValue !== "string") return null;
+  const match = displayValue.replace(/,/g, "").match(/-?\d+(?:\.\d+)?/);
+  if (!match) return null;
+  const parsed = Number(match[0]);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 export const UsagePanel = React.memo(function UsagePanel({
@@ -27,7 +32,6 @@ export const UsagePanel = React.memo(function UsagePanel({
   summaryCostValue,
   onCostInfo,
   costInfoLabel = copy("usage.cost_info.label"),
-  costInfoIcon = copy("usage.cost_info.icon"),
   summarySubLabel,
   breakdown,
   breakdownCollapsed = false,
@@ -43,18 +47,15 @@ export const UsagePanel = React.memo(function UsagePanel({
   rangeLabel,
   rangeTimeZoneLabel,
   statusLabel,
-  summaryAnimate = true,
-  summaryScrambleDurationMs = 2200,
   hideHeader = false,
   className = "",
 }) {
   const tabs = normalizePeriods(periods);
   const toggleLabel = breakdownCollapsed ? expandLabel : collapseLabel;
   const toggleAriaLabel = breakdownCollapsed ? expandAriaLabel : collapseAriaLabel;
+  const summaryCounterValue = parseAnimatedCounterValue(String(summaryValue ?? ""));
+  const showAnimatedSummary = summaryCounterValue != null;
   const showBreakdownToggle = Boolean(onToggleBreakdown && toggleLabel);
-  const costLabelText = typeof costInfoIcon === "string" ? costInfoIcon : "";
-  const costLabelMatch = costLabelText.match(/^\[\s*(.+?)\s*\]$/);
-  const costLabelCore = costLabelMatch ? costLabelMatch[1] : null;
   const breakdownRows =
     breakdown && breakdown.length
       ? breakdown
@@ -84,131 +85,110 @@ export const UsagePanel = React.memo(function UsagePanel({
           .filter(Boolean);
 
   return (
-    <AsciiBox title={title} className={className}>
+    <div className={`rounded-xl border border-oai-gray-200 dark:border-oai-gray-800 bg-white dark:bg-oai-gray-900 p-5 ${className}`}>
       {!hideHeader ? (
-        <div className="flex flex-wrap items-center justify-between border-b border-matrix-ghost mb-3 pb-2 gap-4 px-2">
-          <div className="flex flex-wrap gap-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <div className="flex flex-wrap gap-1">
             {tabs.map((p) => (
-              <Button
+              <button
                 key={p.key}
                 type="button"
-                className={`text-caption uppercase font-bold ${
+                className={`text-xs font-medium px-2 py-1 rounded transition-colors ${
                   period === p.key
-                    ? "text-matrix-bright border-b-2 border-matrix-primary"
-                    : "text-matrix-muted"
+                    ? "text-oai-black dark:text-oai-white bg-oai-gray-100 dark:bg-oai-gray-800"
+                    : "text-oai-gray-500 dark:text-oai-gray-400 hover:text-oai-black dark:hover:text-oai-white hover:bg-oai-gray-50 dark:hover:bg-oai-gray-800"
                 }`}
                 onClick={() => onPeriodChange?.(p.key)}
               >
                 {p.label}
-              </Button>
+              </button>
             ))}
           </div>
-          {onRefresh || statusLabel ? (
-            <div className="flex items-center gap-3">
-              {statusLabel ? (
-                <span className="text-caption uppercase font-bold text-matrix-primary">
-                  {statusLabel}
-                </span>
-              ) : null}
-              {showBreakdownToggle ? (
-                <MatrixButton
-                  className="px-2 py-1"
-                  aria-label={toggleAriaLabel}
-                  title={toggleAriaLabel}
-                  onClick={onToggleBreakdown}
-                >
-                  {toggleLabel}
-                </MatrixButton>
-              ) : null}
-              {onRefresh ? (
-                <MatrixButton primary disabled={loading} onClick={onRefresh}>
-                  {loading ? copy("usage.button.loading") : copy("usage.button.refresh")}
-                </MatrixButton>
-              ) : null}
-            </div>
-          ) : null}
+          <div className="flex items-center gap-2">
+            {showBreakdownToggle && (
+              <Button size="sm" variant="ghost" onClick={onToggleBreakdown}>
+                {toggleLabel}
+              </Button>
+            )}
+            {onRefresh && (
+              <Button variant="secondary" size="sm" disabled={loading} onClick={onRefresh}>
+                ↻
+              </Button>
+            )}
+          </div>
         </div>
       ) : null}
 
       {error ? (
-        <div className="text-caption text-red-400/90 px-2 py-1">
+        <div className="text-sm text-red-400 px-2 py-2 bg-red-500/10 rounded-lg border border-red-500/20 mb-4">
           {copy("shared.error.prefix", { error })}
         </div>
       ) : null}
 
       {showSummary || useSummaryLayout ? (
-        <div className="flex-1 flex flex-col items-center justify-center space-y-6 opacity-90 py-4">
-          <div className="text-center relative">
-            <div className="text-heading text-matrix-muted mb-2">{summaryLabel}</div>
-            <div className="text-5xl md:text-8xl font-black text-white tracking-[-0.06em] tabular-nums leading-none glow-text select-none -translate-y-[5px]">
-              {summaryValue && summaryValue !== "—" ? (
-                <span className="relative inline-block leading-none">
-                  {summaryAnimate ? (
-                    <ScrambleText
-                      text={summaryValue}
-                      durationMs={summaryScrambleDurationMs}
-                      startScrambled
-                      respectReducedMotion
-                    />
-                  ) : (
-                    summaryValue
-                  )}
-                </span>
+        <div className="flex-1 flex flex-col items-center justify-center space-y-8 py-8">
+          <div className="text-center animate-fade-in">
+            <div className="text-xs text-oai-gray-500 dark:text-oai-gray-400 uppercase tracking-wide mb-4">
+              {summaryLabel}
+            </div>
+            <div className="text-display-sm md:text-display font-bold text-oai-black dark:text-oai-white tracking-tighter tabular-nums leading-none">
+              {showAnimatedSummary ? (
+                <Counter
+                  value={summaryCounterValue}
+                  displayValue={summaryValue}
+                  fontSize={72}
+                  padding={8}
+                  gap={1}
+                  textColor="var(--oai-black, #111827)"
+                  fontWeight={700}
+                  gradientHeight={12}
+                  gradientFrom="rgba(255,255,255,0.96)"
+                  gradientTo="rgba(255,255,255,0)"
+                  counterStyle={{
+                    paddingLeft: 0,
+                    paddingRight: 0,
+                    gap: "0.01em",
+                  }}
+                  digitStyle={{ width: "0.9ch" }}
+                />
               ) : (
                 summaryValue
               )}
             </div>
             {summaryCostValue ? (
-              <div className="flex items-center justify-center gap-3 mt-4 md:mt-6">
+              <div className="flex items-center justify-center gap-2 mt-6">
                 <span className="sr-only">{copy("usage.metric.total_cost")}</span>
-                <span className="text-xl md:text-2xl font-bold text-gold leading-none drop-shadow-[0_0_10px_rgba(255,215,0,0.5)]">
+                <span className="text-xl md:text-2xl font-semibold text-oai-brand">
                   {summaryCostValue}
                 </span>
                 {onCostInfo ? (
-                  <Button
+                  <button
                     type="button"
                     onClick={onCostInfo}
                     title={costInfoLabel}
                     aria-label={costInfoLabel}
-                    className="group inline-flex items-center gap-1 text-[10px] uppercase font-black text-gold tracking-[0.25em] transition-all hover:text-gold/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-gold/60"
+                    className="w-6 h-6 rounded-full bg-oai-gray-100 text-oai-gray-500 hover:bg-oai-brand hover:text-white transition-all text-xs font-medium flex items-center justify-center"
                   >
-                    {costLabelCore ? (
-                      <>
-                        <span className="transition-transform duration-150 group-hover:-translate-x-0.5">
-                          [
-                        </span>
-                        <span className="group-hover:animate-pulse">{costLabelCore}</span>
-                        <span className="transition-transform duration-150 group-hover:translate-x-0.5">
-                          ]
-                        </span>
-                      </>
-                    ) : (
-                      <span>{costInfoIcon}</span>
-                    )}
-                  </Button>
+                    ?
+                  </button>
                 ) : null}
               </div>
             ) : null}
             {summarySubLabel ? (
-              <div className="text-caption text-matrix-muted mt-2">{summarySubLabel}</div>
+              <div className="text-sm text-oai-gray-500 mt-3 font-medium">{summarySubLabel}</div>
             ) : null}
           </div>
 
           {!breakdownCollapsed && breakdownRows.length ? (
-            <div className="w-full px-6">
-              <div className="grid grid-cols-2 gap-3 border-t border-b border-matrix-ghost py-4 relative">
-                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1px] h-full bg-matrix-ghost"></div>
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-4 h-[1px] bg-matrix-dim"></div>
-
+            <div className="w-full max-w-lg">
+              <div className="grid grid-cols-2 gap-3">
                 {breakdownRows.map((row, idx) => (
                   <div
                     key={`${row.label}-${idx}`}
-                    className="flex flex-col items-center p-3 bg-matrix-panel border border-matrix-ghost"
+                    className="flex flex-col items-center py-3"
                   >
-                    <span className="text-caption text-matrix-muted uppercase mb-1">
-                      {row.label}
-                    </span>
-                    <span className="text-body font-bold text-matrix-primary tracking-tight">
+                    <span className="text-xs text-oai-gray-400 dark:text-oai-gray-500 mb-1">{row.label}</span>
+                    <span className="text-lg font-semibold text-oai-black dark:text-oai-white tabular-nums">
                       {row.value}
                     </span>
                   </div>
@@ -218,34 +198,18 @@ export const UsagePanel = React.memo(function UsagePanel({
           ) : null}
         </div>
       ) : (
-        <div className="flex flex-col gap-4 px-4 py-2">
+        <div className="grid grid-cols-2 gap-5">
           {metrics.map((row, idx) => (
-            <div
-              key={`${row.label}-${idx}`}
-              className="border border-matrix-ghost bg-matrix-panel p-4 text-center"
-            >
-              <div className="text-caption uppercase text-matrix-muted mb-2">{row.label}</div>
-              <div
-                className={`text-body font-black text-matrix-bright glow-text ${
-                  row.valueClassName || ""
-                }`}
-              >
+            <div key={`${row.label}-${idx}`} className="text-center py-2">
+              <div className="text-xs text-oai-gray-400 dark:text-oai-gray-500 mb-1">{row.label}</div>
+              <div className={`text-lg font-semibold text-oai-black dark:text-oai-white ${row.valueClassName || ""}`}>
                 {row.value}
               </div>
-              {row.subValue ? (
-                <div className="text-caption text-matrix-muted mt-2">{row.subValue}</div>
-              ) : null}
             </div>
           ))}
         </div>
       )}
 
-      {rangeLabel ? (
-        <div className="mt-3 text-caption uppercase text-matrix-dim font-bold px-2">
-          {copy("usage.range_label", { range: rangeLabel })}
-          {rangeTimeZoneLabel ? ` ${rangeTimeZoneLabel}` : ""}
-        </div>
-      ) : null}
-    </AsciiBox>
+    </div>
   );
 });

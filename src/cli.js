@@ -41,15 +41,15 @@ function printHelp() {
   // Keep this short; npx users want quick guidance.
   process.stdout.write(
     [
-      "vibeusage",
+      "tokentracker",
       "",
       "Usage:",
-      "  npx vibeusage [--debug] init [--yes] [--dry-run] [--no-open] [--link-code <code>]",
-      "  npx vibeusage [--debug] sync [--auto] [--drain] [--from-openclaw]",
-      "  npx vibeusage [--debug] status [--probe-keychain] [--probe-keychain-details]",
-      "  npx vibeusage [--debug] diagnostics [--out diagnostics.json]",
-      "  npx vibeusage [--debug] doctor [--json] [--out doctor.json] [--base-url <url>]",
-      "  npx vibeusage [--debug] uninstall [--purge]",
+      "  npx tokentracker [--debug] init [--yes] [--dry-run] [--no-open] [--link-code <code>]",
+      "  npx tokentracker [--debug] sync [--auto] [--drain] [--from-openclaw]",
+      "  npx tokentracker [--debug] status [--probe-keychain] [--probe-keychain-details]",
+      "  npx tokentracker [--debug] diagnostics [--out diagnostics.json]",
+      "  npx tokentracker [--debug] doctor [--json] [--out doctor.json] [--base-url <url>]",
+      "  npx tokentracker [--debug] uninstall [--purge]",
       "",
       "Notes:",
       "  - init: consent first, local setup next, browser sign-in last.",

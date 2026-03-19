@@ -19,7 +19,7 @@ async function issueDeviceToken({ baseUrl, accessToken, deviceName, platform = "
   const data = await invokeFunction({
     baseUrl,
     accessToken,
-    slug: "vibeusage-device-token-issue",
+    slug: "tokentracker-device-token-issue",
     method: "POST",
     body: { device_name: deviceName, platform },
     errorPrefix: "Device token issue failed",

@@ -4,7 +4,7 @@ function loadInsforgeSdk() {
   try {
     return require("@insforge/sdk");
   } catch (err) {
-    const wrapped = new Error("Missing dependency @insforge/sdk. Please reinstall vibeusage.");
+    const wrapped = new Error("Missing dependency @insforge/sdk. Please reinstall tokentracker.");
     wrapped.cause = err;
     throw wrapped;
   }

@@ -19,9 +19,13 @@ export function useProjectUsageSummary({
   const mockEnabled = isMockEnabled();
   const tokenReady = isAccessTokenReady(accessToken);
 
+  const isLocalMode = typeof window !== "undefined" &&
+    (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+
   const refresh = useCallback(async () => {
     const resolvedToken = await resolveAuthAccessToken(accessToken);
-    if (!resolvedToken && !mockEnabled) {
+    // 本地模式允许空 token
+    if (!resolvedToken && !mockEnabled && !isLocalMode) {
       setEntries([]);
       setError(null);
       setLoading(false);
@@ -48,17 +52,18 @@ export function useProjectUsageSummary({
     } finally {
       setLoading(false);
     }
-  }, [accessToken, baseUrl, from, limit, mockEnabled, source, timeZone, to, tzOffsetMinutes]);
+  }, [accessToken, baseUrl, from, limit, mockEnabled, source, timeZone, to, tzOffsetMinutes, isLocalMode]);
 
   useEffect(() => {
-    if (!tokenReady && !mockEnabled) {
+    // 本地模式跳过 token 检查
+    if (!tokenReady && !mockEnabled && !isLocalMode) {
       setEntries([]);
       setError(null);
       setLoading(false);
       return;
     }
     refresh();
-  }, [mockEnabled, refresh, tokenReady]);
+  }, [mockEnabled, refresh, tokenReady, isLocalMode]);
 
   return { entries, loading, error, refresh };
 }

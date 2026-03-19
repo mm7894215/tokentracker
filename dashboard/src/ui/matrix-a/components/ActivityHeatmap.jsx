@@ -1,11 +1,28 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useMemo } from "react";
 import { buildActivityHeatmap } from "../../../lib/activity-heatmap";
 import { copy } from "../../../lib/copy";
+import { useTheme } from "../../../hooks/useTheme.js";
 
-const OPACITY_BY_LEVEL = [0.12, 0.32, 0.5, 0.7, 1];
 const CELL_SIZE = 12;
 const CELL_GAP = 3;
 const LABEL_WIDTH = 26;
+
+const HEATMAP_COLORS_LIGHT = [
+  "#ecfdf5", // level 0
+  "#a7f3d0", // level 1
+  "#6ee7b7", // level 2
+  "#34d399", // level 3
+  "#10b981", // level 4
+];
+
+const HEATMAP_COLORS_DARK = [
+  "#064e3b", // level 0 - darkest emerald
+  "#065f46", // level 1
+  "#059669", // level 2
+  "#10b981", // level 3
+  "#34d399", // level 4 - brightest
+];
+
 const MONTH_LABELS = [
   copy("heatmap.month.jan"),
   copy("heatmap.month.feb"),
@@ -27,14 +44,8 @@ function formatTokenValue(value) {
     return Number.isFinite(value) ? Math.round(value).toLocaleString() : "0";
   }
   if (typeof value === "string") {
-    const s = value.trim();
-    if (/^[0-9]+$/.test(s)) {
-      try {
-        return BigInt(s).toLocaleString();
-      } catch (_e) {}
-    }
-    const n = Number(s);
-    return Number.isFinite(n) ? Math.round(n).toLocaleString() : s;
+    const n = Number(value);
+    return Number.isFinite(n) ? Math.round(n).toLocaleString() : value;
   }
   return "0";
 }
@@ -43,12 +54,8 @@ function parseUtcDate(value) {
   if (typeof value !== "string") return null;
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
   if (!m) return null;
-  const year = Number(m[1]);
-  const month = Number(m[2]) - 1;
-  const day = Number(m[3]);
-  const dt = new Date(Date.UTC(year, month, day));
-  if (!Number.isFinite(dt.getTime())) return null;
-  return dt;
+  const dt = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+  return Number.isFinite(dt.getTime()) ? dt : null;
 }
 
 function addUtcDays(date, days) {
@@ -56,42 +63,37 @@ function addUtcDays(date, days) {
 }
 
 function diffUtcDays(a, b) {
-  const ms =
-    Date.UTC(b.getUTCFullYear(), b.getUTCMonth(), b.getUTCDate()) -
-    Date.UTC(a.getUTCFullYear(), a.getUTCMonth(), a.getUTCDate());
-  return Math.floor(ms / 86400000);
+  return Math.floor(
+    (Date.UTC(b.getUTCFullYear(), b.getUTCMonth(), b.getUTCDate()) -
+      Date.UTC(a.getUTCFullYear(), a.getUTCMonth(), a.getUTCDate())) /
+      86400000
+  );
 }
 
 function getWeekStart(date, weekStartsOn) {
   const desired = weekStartsOn === "mon" ? 1 : 0;
   const dow = date.getUTCDay();
-  const delta = (dow - desired + 7) % 7;
-  return addUtcDays(date, -delta);
+  return addUtcDays(date, -((dow - desired + 7) % 7));
 }
 
-function buildFullYearMonthMarkers({ weeksCount, to, weekStartsOn }) {
+function buildMonthMarkers(weeksCount, to, weekStartsOn) {
   if (!weeksCount) return [];
   const end = parseUtcDate(to) || new Date();
-  const endMonth = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), 1));
   const months = [];
   for (let i = 11; i >= 0; i -= 1) {
-    months.push(new Date(Date.UTC(endMonth.getUTCFullYear(), endMonth.getUTCMonth() - i, 1)));
+    months.push(new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth() - i, 1)));
   }
 
   const endWeekStart = getWeekStart(end, weekStartsOn);
   const startAligned = addUtcDays(endWeekStart, -(weeksCount - 1) * 7);
 
   const markers = [];
-  const usedIndexes = new Set();
-  for (const monthStart of months) {
-    const weekIndex = Math.floor(diffUtcDays(startAligned, monthStart) / 7);
-    if (weekIndex < 0 || weekIndex >= weeksCount) continue;
-    if (usedIndexes.has(weekIndex)) continue;
-    usedIndexes.add(weekIndex);
-    markers.push({
-      label: MONTH_LABELS[monthStart.getUTCMonth()],
-      index: weekIndex,
-    });
+  const used = new Set();
+  for (const month of months) {
+    const idx = Math.floor(diffUtcDays(startAligned, month) / 7);
+    if (idx < 0 || idx >= weeksCount || used.has(idx)) continue;
+    used.add(idx);
+    markers.push({ label: MONTH_LABELS[month.getUTCMonth()], index: idx });
   }
   return markers;
 }
@@ -101,14 +103,19 @@ export function ActivityHeatmap({
   timeZoneLabel,
   timeZoneShortLabel,
   hideLegend = false,
-  defaultToLatestMonth = false,
 }) {
+  const { resolvedTheme } = useTheme();
+  const isDark = resolvedTheme === "dark";
+  const heatmapColors = isDark ? HEATMAP_COLORS_DARK : HEATMAP_COLORS_LIGHT;
+
   const weekStartsOn = heatmap?.week_starts_on === "mon" ? "mon" : "sun";
-  const normalizedHeatmap = useMemo(() => {
-    const sourceWeeks = Array.isArray(heatmap?.weeks) ? heatmap.weeks : [];
-    if (!sourceWeeks.length) return { weeks: [] };
+
+  const normalized = useMemo(() => {
+    const source = Array.isArray(heatmap?.weeks) ? heatmap.weeks : [];
+    if (!source.length) return { weeks: [] };
+
     const rows = [];
-    for (const week of sourceWeeks) {
+    for (const week of source) {
       for (const cell of Array.isArray(week) ? week : []) {
         if (!cell?.day) continue;
         rows.push({
@@ -118,448 +125,138 @@ export function ActivityHeatmap({
         });
       }
     }
-    const desiredWeeks = Math.max(52, sourceWeeks.length);
-    const rebuilt = buildActivityHeatmap({
+
+    return buildActivityHeatmap({
       dailyRows: rows,
-      weeks: desiredWeeks,
+      weeks: Math.max(52, source.length),
       to: heatmap?.to,
       weekStartsOn,
     });
-    return rebuilt;
   }, [heatmap?.to, heatmap?.weeks, weekStartsOn]);
 
-  const weeks = normalizedHeatmap?.weeks || [];
+  const weeks = normalized?.weeks || [];
+
   const dayLabels =
     weekStartsOn === "mon"
-      ? [
-          copy("heatmap.day.mon"),
-          copy("heatmap.day.tue"),
-          copy("heatmap.day.wed"),
-          copy("heatmap.day.thu"),
-          copy("heatmap.day.fri"),
-          copy("heatmap.day.sat"),
-          copy("heatmap.day.sun"),
-        ]
-      : [
-          copy("heatmap.day.sun"),
-          copy("heatmap.day.mon"),
-          copy("heatmap.day.tue"),
-          copy("heatmap.day.wed"),
-          copy("heatmap.day.thu"),
-          copy("heatmap.day.fri"),
-          copy("heatmap.day.sat"),
-        ];
+      ? ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d) => copy(`heatmap.day.${d.toLowerCase()}`))
+      : ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => copy(`heatmap.day.${d.toLowerCase()}`));
 
   const monthMarkers = useMemo(
-    () =>
-      buildFullYearMonthMarkers({
-        weeksCount: weeks.length,
-        to: normalizedHeatmap?.to,
-        weekStartsOn,
-      }),
-    [normalizedHeatmap?.to, weekStartsOn, weeks.length],
+    () => buildMonthMarkers(weeks.length, normalized?.to, weekStartsOn),
+    [normalized?.to, weeks.length, weekStartsOn]
   );
-  const latestMonthIndex = useMemo(() => {
-    if (!monthMarkers.length) return null;
-    return monthMarkers[monthMarkers.length - 1]?.index ?? null;
-  }, [monthMarkers]);
-
-  const scrollRef = useRef(null);
-  const trackRef = useRef(null);
-  const thumbRef = useRef(null);
-  const hasAutoScrolledRef = useRef(false);
-
-  const [scrollState, setScrollState] = useState({
-    left: 0,
-    width: 1, // 0..1 ratio of viewport width to content width
-    overflow: false,
-  });
-
-  const [isDraggingContent, setIsDraggingContent] = useState(false);
-  const [isDraggingScrollbar, setIsDraggingScrollbar] = useState(false);
-  const [isHoveringHeatmap, setIsHoveringHeatmap] = useState(false);
-
-  // Refs for drag math to avoid closure staleness
-  const dragContentRef = useRef(null);
-  const dragScrollbarRef = useRef(null);
-
-  // Update Scroll State (syncs custom scrollbar with native scroll)
-  const updateScrollState = useCallback(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const { clientWidth, scrollWidth, scrollLeft } = el;
-    const maxScroll = scrollWidth - clientWidth;
-
-    const overflow = maxScroll > 1;
-    const widthRatio = scrollWidth > 0 ? clientWidth / scrollWidth : 1;
-    const leftRatio = maxScroll > 0 ? scrollLeft / maxScroll : 0;
-
-    setScrollState({
-      left: Math.max(0, Math.min(1, leftRatio)),
-      width: Math.max(0, Math.min(1, widthRatio)),
-      overflow,
-    });
-  }, []);
-
-  // Initialize and listen to scroll/resize
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-
-    updateScrollState();
-
-    const onScroll = () => requestAnimationFrame(updateScrollState);
-    const onResize = () => requestAnimationFrame(updateScrollState);
-
-    el.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("resize", onResize);
-
-    return () => {
-      el.removeEventListener("scroll", onScroll);
-      window.removeEventListener("resize", onResize);
-    };
-  }, [updateScrollState, weeks.length]);
-
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    if (!weeks.length) {
-      if (defaultToLatestMonth) {
-        el.dataset.latestMonthReady = "false";
-      }
-      hasAutoScrolledRef.current = false;
-      updateScrollState();
-      return;
-    }
-    if (hasAutoScrolledRef.current) return;
-    if (defaultToLatestMonth) {
-      el.dataset.latestMonthReady = "false";
-    }
-    if (el.scrollWidth <= el.clientWidth + 1) {
-      updateScrollState();
-      if (defaultToLatestMonth) {
-        el.dataset.latestMonthReady = "true";
-      }
-      hasAutoScrolledRef.current = true;
-      return;
-    }
-
-    const snapToLatest = () => {
-      const maxScroll = el.scrollWidth - el.clientWidth;
-      let targetScroll = maxScroll;
-      if (
-        defaultToLatestMonth &&
-        typeof latestMonthIndex === "number" &&
-        Number.isFinite(latestMonthIndex)
-      ) {
-        const columnWidth = CELL_SIZE + CELL_GAP;
-        targetScroll = Math.min(maxScroll, Math.max(0, latestMonthIndex * columnWidth));
-      }
-      el.scrollLeft = targetScroll;
-      updateScrollState();
-      if (defaultToLatestMonth) {
-        el.dataset.latestMonthReady = "true";
-      }
-      hasAutoScrolledRef.current = true;
-    };
-
-    // Wait two frames to ensure layout settles before snapping.
-    requestAnimationFrame(() => requestAnimationFrame(snapToLatest));
-  }, [defaultToLatestMonth, latestMonthIndex, updateScrollState, weeks.length]);
-
-  // --- CONTENT DRAG HANDLERS ---
-  const handleContentPointerMoveGlobal = useCallback((e) => {
-    if (!dragContentRef.current) return;
-    const el = scrollRef.current;
-    if (!el) return;
-
-    const dx = e.clientX - dragContentRef.current.startX;
-    el.scrollLeft = dragContentRef.current.startScroll - dx;
-    e.preventDefault();
-  }, []);
-
-  const handleContentPointerUp = useCallback(
-    (e) => {
-      dragContentRef.current = null;
-      setIsDraggingContent(false);
-      window.removeEventListener("pointermove", handleContentPointerMoveGlobal);
-      window.removeEventListener("pointerup", handleContentPointerUp);
-    },
-    [handleContentPointerMoveGlobal],
-  );
-
-  const onContentPointerDown = useCallback(
-    (e) => {
-      if (e.button !== 0) return; // Left click only
-      const el = scrollRef.current;
-      if (!el) return;
-
-      setIsDraggingContent(true);
-      dragContentRef.current = {
-        startX: e.clientX,
-        startScroll: el.scrollLeft,
-      };
-
-      // Attach to window to handle drags outside component
-      window.addEventListener("pointermove", handleContentPointerMoveGlobal);
-      window.addEventListener("pointerup", handleContentPointerUp);
-
-      // We don't use setPointerCapture here to allow window listeners to work more naturally
-      // but touch-action: none on the element is crucial (already added)
-    },
-    [handleContentPointerMoveGlobal, handleContentPointerUp],
-  );
-
-  // --- SCROLLBAR DRAG HANDLERS ---
-  const handleThumbPointerMoveGlobal = useCallback((e) => {
-    if (!dragScrollbarRef.current) return;
-    const el = scrollRef.current;
-    if (!el) return;
-
-    const dx = e.clientX - dragScrollbarRef.current.startX;
-    // dx is pixels moved by mouse. Multiply by ratio to get scroll pixels.
-    el.scrollLeft = dragScrollbarRef.current.startScroll + dx * dragScrollbarRef.current.ratio;
-    e.preventDefault();
-  }, []);
-
-  const handleThumbPointerUp = useCallback(
-    (e) => {
-      dragScrollbarRef.current = null;
-      setIsDraggingScrollbar(false);
-
-      // Re-enable transition
-      const thumb = thumbRef.current;
-      if (thumb) {
-        thumb.style.transition = "left 100ms linear";
-      }
-
-      window.removeEventListener("pointermove", handleThumbPointerMoveGlobal);
-      window.removeEventListener("pointerup", handleThumbPointerUp);
-    },
-    [handleThumbPointerMoveGlobal],
-  );
-
-  const onThumbPointerDown = useCallback(
-    (e) => {
-      if (e.button !== 0) return;
-      const el = scrollRef.current;
-      const track = trackRef.current;
-      const thumb = thumbRef.current;
-      if (!el || !track || !thumb) return;
-
-      // Calculate the scrollable pixels in the track
-      const trackRect = track.getBoundingClientRect();
-      const thumbRect = thumb.getBoundingClientRect();
-      const availableTrack = trackRect.width - thumbRect.width;
-      const maxScroll = el.scrollWidth - el.clientWidth;
-
-      if (availableTrack <= 0 || maxScroll <= 0) return;
-
-      setIsDraggingScrollbar(true);
-      // Disable transition temporarily for instant follow
-      thumb.style.transition = "none";
-
-      dragScrollbarRef.current = {
-        startX: e.clientX,
-        startScroll: el.scrollLeft,
-        ratio: maxScroll / availableTrack,
-      };
-
-      window.addEventListener("pointermove", handleThumbPointerMoveGlobal);
-      window.addEventListener("pointerup", handleThumbPointerUp);
-      e.preventDefault();
-    },
-    [handleThumbPointerMoveGlobal, handleThumbPointerUp],
-  );
-
-  // --- WHEEL HANDLER ---
-  const handleWheel = useCallback((e) => {
-    const el = scrollRef.current;
-    if (!el) return;
-    // Map vertical wheel to horizontal scroll
-    if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
-      el.scrollLeft += e.deltaY;
-      e.preventDefault();
-    }
-  }, []);
 
   if (!weeks.length) {
-    return <div className="text-caption text-matrix-muted">{copy("heatmap.empty")}</div>;
+    return (
+      <div className="py-8 text-center text-sm text-oai-gray-500">
+        {copy("heatmap.empty")}
+      </div>
+    );
   }
 
-  const gridColumns = {
-    display: "grid",
-    gridTemplateColumns: `${LABEL_WIDTH}px repeat(${weeks.length}, ${CELL_SIZE}px)`,
-    columnGap: `${CELL_GAP}px`,
-  };
-
-  const labelRows = {
-    display: "grid",
-    gridTemplateRows: `repeat(7, ${CELL_SIZE}px)`,
-    rowGap: `${CELL_GAP}px`,
-  };
-
-  const gridRows = {
-    display: "grid",
-    gridAutoFlow: "column",
-    gridTemplateRows: `repeat(7, ${CELL_SIZE}px)`,
-    gap: `${CELL_GAP}px`,
-  };
-
-  const contentWidth =
-    LABEL_WIDTH + weeks.length * CELL_SIZE + Math.max(0, weeks.length - 1) * CELL_GAP;
-
-  const showScrollbar = scrollState.overflow && (isHoveringHeatmap || isDraggingScrollbar);
+  const gridCols = LABEL_WIDTH + weeks.length * CELL_SIZE + Math.max(0, weeks.length - 1) * CELL_GAP;
 
   return (
-    <div
-      className="flex flex-col gap-2"
-      onMouseEnter={() => setIsHoveringHeatmap(true)}
-      onMouseLeave={() => setIsHoveringHeatmap(false)}
-    >
-      <div className="relative group">
-        <div className="absolute inset-y-0 left-0 w-6 pointer-events-none heatmap-scroll-hint-left z-10"></div>
-        <div className="absolute inset-y-0 right-0 w-10 pointer-events-none heatmap-scroll-hint-right z-10"></div>
+    <div className="rounded-xl border border-oai-gray-200 dark:border-oai-gray-800 bg-white dark:bg-oai-gray-900 p-5">
+      {/* Header */}
+      <div className="flex items-baseline justify-between mb-3">
+        <h3 className="text-sm font-medium text-oai-gray-500 dark:text-oai-gray-400 uppercase tracking-wide">
+          {copy("heatmap.title")}
+        </h3>
+        <span className="text-xs text-oai-gray-400 dark:text-oai-gray-500">{timeZoneShortLabel || copy("heatmap.legend.utc")}</span>
+      </div>
 
-        {/* Scroll Container: Hide native scrollbar but allow scrolling */}
-        <div
-          ref={scrollRef}
-          data-heatmap-scroll="true"
-          className="w-full max-w-full overflow-x-scroll no-scrollbar select-none pb-2 outline-none"
-          tabIndex={0}
-          aria-label={copy("heatmap.aria_label")}
-          onWheel={handleWheel}
-          style={{ scrollbarWidth: "none" }} // Firefox
-        >
+      {/* Heatmap */}
+      <div
+        className="overflow-x-auto pb-2 oai-scrollbar"
+      >
+        <div style={{ minWidth: gridCols }}>
+          {/* Month labels */}
           <div
-            className={`inline-flex flex-col min-w-max outline-none ${
-              isDraggingContent ? "cursor-grabbing" : "cursor-grab"
-            }`}
-            style={{ touchAction: "none", minWidth: contentWidth }}
-            onPointerDown={onContentPointerDown}
-            // Move and Up are handled by window listeners now
+            className="grid text-[10px] uppercase text-oai-gray-400 dark:text-oai-gray-500 mb-1"
+            style={{
+              gridTemplateColumns: `${LABEL_WIDTH}px repeat(${weeks.length}, ${CELL_SIZE}px)`,
+              columnGap: CELL_GAP,
+            }}
           >
-            <div style={gridColumns} className="text-caption uppercase text-matrix-muted mb-2">
-              <span></span>
-              {monthMarkers.map((label) => (
-                <span
-                  key={`${label.label}-${label.index}`}
-                  style={{ gridColumnStart: label.index + 2 }}
-                  className="whitespace-nowrap"
-                >
-                  {label.label}
+            <span />
+            {monthMarkers.map((m) => (
+              <span key={`${m.label}-${m.index}`} style={{ gridColumnStart: m.index + 2 }} className="whitespace-nowrap">
+                {m.label}
+              </span>
+            ))}
+          </div>
+
+          {/* Grid */}
+          <div
+            className="grid"
+            style={{
+              gridTemplateColumns: `${LABEL_WIDTH}px repeat(${weeks.length}, ${CELL_SIZE}px)`,
+              columnGap: CELL_GAP,
+            }}
+          >
+            {/* Day labels */}
+            <div
+              className="grid text-[10px] text-oai-gray-400 dark:text-oai-gray-500 sticky left-0 bg-white dark:bg-oai-gray-900 pr-2"
+              style={{ gridTemplateRows: `repeat(7, ${CELL_SIZE}px)`, rowGap: CELL_GAP }}
+            >
+              {dayLabels.map((l) => (
+                <span key={l} className="leading-none">
+                  {l}
                 </span>
               ))}
             </div>
 
-            <div style={gridColumns}>
-              <div
-                style={labelRows}
-                className="text-caption uppercase text-matrix-muted sticky left-0 z-10 bg-matrix-panel pr-2"
-              >
-                {dayLabels.map((label) => (
-                  <span key={label} className="leading-none">
-                    {label}
-                  </span>
-                ))}
-              </div>
-
-              <div style={gridRows}>
-                {weeks.map((week, wIdx) =>
-                  (Array.isArray(week) ? week : []).map((cell, dIdx) => {
-                    const key = cell?.day || `empty-${wIdx}-${dIdx}`;
-                    if (!cell) {
-                      return (
-                        <span
-                          key={key}
-                          className="rounded-[2px] border border-transparent"
-                          style={{ width: CELL_SIZE, height: CELL_SIZE }}
-                        ></span>
-                      );
-                    }
-
-                    const level = Number(cell.level) || 0;
-                    const opacity = OPACITY_BY_LEVEL[level] ?? 0.3;
-                    const color = level === 0 ? "rgba(0,255,65,0.08)" : `rgba(0,255,65,${opacity})`;
-
-                    const tzDetail =
-                      timeZoneLabel || timeZoneShortLabel || copy("heatmap.legend.utc");
-                    return (
-                      <span
-                        key={key}
-                        title={copy("heatmap.tooltip", {
-                          day: cell.day,
-                          value: formatTokenValue(cell.value),
-                          unit: copy("heatmap.unit.tokens"),
-                          tz: tzDetail,
-                        })}
-                        className="rounded-[2px] border border-matrix-ghost"
-                        style={{
-                          width: CELL_SIZE,
-                          height: CELL_SIZE,
-                          background: color,
-                        }}
-                      ></span>
-                    );
-                  }),
-                )}
-              </div>
+            {/* Cells */}
+            <div
+              className="grid"
+              style={{
+                gridAutoFlow: "column",
+                gridTemplateRows: `repeat(7, ${CELL_SIZE}px)`,
+                gap: CELL_GAP,
+              }}
+            >
+              {weeks.map((week, wi) =>
+                (Array.isArray(week) ? week : []).map((cell, di) => {
+                  const key = cell?.day || `e-${wi}-${di}`;
+                  if (!cell) {
+                    return <span key={key} style={{ width: CELL_SIZE, height: CELL_SIZE }} />;
+                  }
+                  const level = Number(cell.level) || 0;
+                  const color = heatmapColors[level] || heatmapColors[0];
+                  const tz = timeZoneLabel || timeZoneShortLabel || copy("heatmap.legend.utc");
+                  return (
+                    <span
+                      key={key}
+                      title={copy("heatmap.tooltip", {
+                        day: cell.day,
+                        value: formatTokenValue(cell.value),
+                        unit: copy("heatmap.unit.tokens"),
+                        tz,
+                      })}
+                      className="rounded-[2px] transition-transform hover:scale-125 hover:z-10"
+                      style={{ width: CELL_SIZE, height: CELL_SIZE, background: color }}
+                    />
+                  );
+                })
+              )}
             </div>
           </div>
         </div>
       </div>
 
-      {/* Custom Scrollbar Track */}
-      <div
-        ref={trackRef}
-        className="heatmap-scrollbar-track relative h-[6px] rounded-full bg-matrix-panelStrong border border-matrix-ghost overflow-visible mt-1 transition-opacity duration-150"
-        style={{
-          opacity: showScrollbar ? 1 : 0,
-          pointerEvents: showScrollbar ? "auto" : "none",
-        }}
-      >
-        {/* Scrollbar Thumb */}
-        <div
-          ref={thumbRef}
-          className={`absolute top-0 bottom-0 rounded-full bg-[#00FF41]/50 hover:bg-[#00FF41]/70 shadow-[0_0_10px_rgba(0,255,65,0.4)] ${
-            isDraggingScrollbar ? "cursor-grabbing" : "cursor-grab"
-          }`}
-          style={{
-            left: `${scrollState.left * 100 * (1 - scrollState.width)}%`,
-            width: `${scrollState.width * 100}%`,
-            transition: isDraggingScrollbar ? "none" : "left 100ms linear",
-            touchAction: "none",
-          }}
-          onPointerDown={onThumbPointerDown}
-          // specific move/up listeners not needed on element due to global win listeners
-        />
-      </div>
-
-      {!hideLegend ? (
-        <div className="flex justify-between items-center text-caption border-t border-matrix-ghost pt-2 text-matrix-muted font-bold uppercase">
-          <div className="flex items-center gap-2">
-            <span>{copy("heatmap.legend.less")}</span>
-            <div className="flex gap-1">
-              {[0, 1, 2, 3, 4].map((level) => (
-                <span
-                  key={level}
-                  className="rounded-[2px] border border-matrix-ghost"
-                  style={{
-                    width: 10,
-                    height: 10,
-                    background:
-                      level === 0
-                        ? "rgba(0,255,65,0.08)"
-                        : `rgba(0,255,65,${OPACITY_BY_LEVEL[level]})`,
-                  }}
-                ></span>
-              ))}
-            </div>
-            <span>{copy("heatmap.legend.more")}</span>
+      {/* Legend */}
+      {!hideLegend && (
+        <div className="flex items-center justify-center gap-2 mt-3">
+          <span className="text-[10px] text-oai-gray-400 dark:text-oai-gray-500">{copy("heatmap.legend.less")}</span>
+          <div className="flex gap-0.5">
+            {heatmapColors.map((c, i) => (
+              <span key={i} className="rounded-[1px]" style={{ width: 10, height: 10, background: c }} />
+            ))}
           </div>
-          <span>{timeZoneShortLabel || copy("heatmap.legend.utc")}</span>
+          <span className="text-[10px] text-oai-gray-400 dark:text-oai-gray-500">{copy("heatmap.legend.more")}</span>
         </div>
-      ) : null}
+      )}
     </div>
   );
 }

@@ -32,6 +32,9 @@ export function useActivityHeatmap({
   const tokenReady = isAccessTokenReady(accessToken);
   const cacheAllowed = !guestAllowed;
 
+  const isLocalMode = typeof window !== "undefined" &&
+    (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+
   const storageKey = useMemo(() => {
     if (!cacheKey) return null;
     const tzKey = getTimeZoneCacheKey({ timeZone, offsetMinutes: tzOffsetMinutes });
@@ -74,7 +77,7 @@ export function useActivityHeatmap({
 
   const refresh = useCallback(async () => {
     const resolvedToken = await resolveAuthAccessToken(accessToken);
-    if (!resolvedToken && !mockEnabled) return;
+    if (!resolvedToken && !mockEnabled && !isLocalMode) return;
     setLoading(true);
     setError(null);
     try {
@@ -258,10 +261,11 @@ export function useActivityHeatmap({
     weeks,
     clearCache,
     writeCache,
+    isLocalMode,
   ]);
 
   useEffect(() => {
-    if (!tokenReady && !guestAllowed && !mockEnabled) {
+    if (!tokenReady && !guestAllowed && !mockEnabled && !isLocalMode) {
       setDaily([]);
       setLoading(false);
       setError(null);
@@ -293,6 +297,7 @@ export function useActivityHeatmap({
     guestAllowed,
     cacheAllowed,
     clearCache,
+    isLocalMode,
   ]);
 
   const normalizedSource = mockEnabled ? "mock" : source === "client" ? "edge" : source;

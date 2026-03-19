@@ -672,6 +672,7 @@ async function parseOpenclawSessionFile({
       output_tokens: Number(usage.output || 0),
       reasoning_output_tokens: 0,
       total_tokens: Number(usage.totalTokens || 0),
+      conversation_count: 1,
     };
 
     if (isAllZeroUsage(delta)) continue;
@@ -781,6 +782,7 @@ async function parseRolloutFile({
 
     const delta = pickDelta(lastUsage, totalUsage, totals);
     if (!delta) continue;
+    delta.conversation_count = 1;
 
     if (totalUsage && typeof totalUsage === "object") {
       totals = totalUsage;
@@ -848,6 +850,7 @@ async function parseClaudeFile({
 
     const delta = normalizeClaudeUsage(usage);
     if (!delta || isAllZeroUsage(delta)) continue;
+    delta.conversation_count = 1;
 
     const bucketStart = toUtcHalfHourStart(tokenTimestamp);
     if (!bucketStart) continue;
@@ -928,6 +931,7 @@ async function parseGeminiFile({
       totals = currentTotals;
       continue;
     }
+    delta.conversation_count = 1;
 
     const bucketStart = toUtcHalfHourStart(timestamp);
     if (!bucketStart) {
@@ -1022,6 +1026,7 @@ async function parseOpencodeMessageFile({
   if (!delta || isAllZeroUsage(delta)) {
     return { messageKey, lastTotals: currentTotals, eventsAggregated: 0, shouldUpdate: true };
   }
+  delta.conversation_count = 1;
 
   const timestampMs = coerceEpochMs(msg?.time?.completed) || coerceEpochMs(msg?.time?.created);
   if (!timestampMs) {
@@ -1177,6 +1182,7 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
             output_tokens: zeroTotals.output_tokens,
             reasoning_output_tokens: zeroTotals.reasoning_output_tokens,
             total_tokens: zeroTotals.total_tokens,
+            conversation_count: zeroTotals.conversation_count,
           }),
         );
       }
@@ -1197,6 +1203,7 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
               output_tokens: zeroTotals.output_tokens,
               reasoning_output_tokens: zeroTotals.reasoning_output_tokens,
               total_tokens: zeroTotals.total_tokens,
+              conversation_count: zeroTotals.conversation_count,
             }),
           );
           unknownBucket.retractedUnknownKey = zeroKey;
@@ -1222,6 +1229,7 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
             output_tokens: totals.output_tokens,
             reasoning_output_tokens: totals.reasoning_output_tokens,
             total_tokens: totals.total_tokens,
+            conversation_count: totals.conversation_count,
           }),
         );
         bucket.queuedKey = key;
@@ -1247,6 +1255,7 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
           output_tokens: zeroTotals.output_tokens,
           reasoning_output_tokens: zeroTotals.reasoning_output_tokens,
           total_tokens: zeroTotals.total_tokens,
+          conversation_count: zeroTotals.conversation_count,
         }),
       );
     }
@@ -1267,6 +1276,7 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
             output_tokens: zeroTotals.output_tokens,
             reasoning_output_tokens: zeroTotals.reasoning_output_tokens,
             total_tokens: zeroTotals.total_tokens,
+            conversation_count: zeroTotals.conversation_count,
           }),
         );
         unknownBucket.retractedUnknownKey = zeroKey;
@@ -1286,6 +1296,7 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
         output_tokens: unknownBucket.totals.output_tokens,
         reasoning_output_tokens: unknownBucket.totals.reasoning_output_tokens,
         total_tokens: unknownBucket.totals.total_tokens,
+        conversation_count: unknownBucket.totals.conversation_count,
       }),
     );
     unknownBucket.queuedKey = outputKey;
@@ -1330,6 +1341,7 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
           output_tokens: group.totals.output_tokens,
           reasoning_output_tokens: group.totals.reasoning_output_tokens,
           total_tokens: group.totals.total_tokens,
+          conversation_count: group.totals.conversation_count,
         }),
       );
       groupQueued[groupKey] = key;
@@ -1382,6 +1394,7 @@ async function enqueueTouchedProjectBuckets({
         output_tokens: totals.output_tokens,
         reasoning_output_tokens: totals.reasoning_output_tokens,
         total_tokens: totals.total_tokens,
+        conversation_count: totals.conversation_count,
       }),
     );
     bucket.queuedKey = queuedKey;
@@ -1635,6 +1648,7 @@ function initTotals() {
     output_tokens: 0,
     reasoning_output_tokens: 0,
     total_tokens: 0,
+    conversation_count: 0,
   };
 }
 
@@ -1644,6 +1658,7 @@ function addTotals(target, delta) {
   target.output_tokens += delta.output_tokens || 0;
   target.reasoning_output_tokens += delta.reasoning_output_tokens || 0;
   target.total_tokens += delta.total_tokens || 0;
+  target.conversation_count += delta.conversation_count || 0;
 }
 
 function totalsKey(totals) {
@@ -1653,6 +1668,7 @@ function totalsKey(totals) {
     totals.output_tokens || 0,
     totals.reasoning_output_tokens || 0,
     totals.total_tokens || 0,
+    totals.conversation_count || 0,
   ].join("|");
 }
 

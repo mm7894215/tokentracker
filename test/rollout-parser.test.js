@@ -508,7 +508,9 @@ test("parseRolloutIncremental splits usage into half-hour buckets", async () => 
     const byBucket = new Map(queued.map((row) => [row.hour_start, row]));
     assert.equal(byBucket.size, 2);
     assert.equal(byBucket.get("2025-12-17T00:00:00.000Z")?.total_tokens, usage1.total_tokens);
+    assert.equal(byBucket.get("2025-12-17T00:00:00.000Z")?.conversation_count, 1);
     assert.equal(byBucket.get("2025-12-17T00:30:00.000Z")?.total_tokens, usage2.total_tokens);
+    assert.equal(byBucket.get("2025-12-17T00:30:00.000Z")?.conversation_count, 1);
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }
@@ -713,6 +715,7 @@ test("parseGeminiIncremental aggregates gemini tokens and model", async () => {
     assert.equal(queued[0].output_tokens, 2);
     assert.equal(queued[0].reasoning_output_tokens, 0);
     assert.equal(queued[0].total_tokens, 14);
+    assert.equal(queued[0].conversation_count, 1);
     assert.equal(typeof queued[0].content, "undefined");
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
@@ -817,6 +820,7 @@ test("parseOpencodeIncremental aggregates message tokens and model", async () =>
     assert.equal(queued[0].output_tokens, 2);
     assert.equal(queued[0].reasoning_output_tokens, 1);
     assert.equal(queued[0].total_tokens, 18);
+    assert.equal(queued[0].conversation_count, 1);
     assert.equal(typeof queued[0].content, "undefined");
 
     const resAgain = await parseOpencodeIncremental({
@@ -1863,9 +1867,11 @@ test("parseClaudeIncremental aggregates usage into half-hour buckets", async () 
     assert.equal(byBucket.get("2025-12-25T01:00:00.000Z")?.input_tokens, 100);
     assert.equal(byBucket.get("2025-12-25T01:00:00.000Z")?.output_tokens, 50);
     assert.equal(byBucket.get("2025-12-25T01:00:00.000Z")?.total_tokens, 150);
+    assert.equal(byBucket.get("2025-12-25T01:00:00.000Z")?.conversation_count, 1);
     assert.equal(byBucket.get("2025-12-25T01:30:00.000Z")?.input_tokens, 200);
     assert.equal(byBucket.get("2025-12-25T01:30:00.000Z")?.output_tokens, 0);
     assert.equal(byBucket.get("2025-12-25T01:30:00.000Z")?.total_tokens, 200);
+    assert.equal(byBucket.get("2025-12-25T01:30:00.000Z")?.conversation_count, 1);
 
     const resAgain = await parseClaudeIncremental({
       projectFiles: [{ path: claudePath, source: "claude" }],

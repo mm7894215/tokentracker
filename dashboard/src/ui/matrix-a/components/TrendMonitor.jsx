@@ -1,14 +1,123 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React from "react";
+import { motion, useReducedMotion } from "motion/react";
 import { copy } from "../../../lib/copy";
-import { AsciiBox } from "../../foundation/AsciiBox.jsx";
 
-// --- Trend Monitor (NeuralFluxMonitor v2.0) ---
-// Industrial TUI style: independent axes, precise grid, physical partitions.
+function interpolateQuantile(sortedValues, ratio) {
+  if (!Array.isArray(sortedValues) || sortedValues.length === 0) return 0;
+  if (sortedValues.length === 1) return sortedValues[0];
+  const index = (sortedValues.length - 1) * ratio;
+  const lower = Math.floor(index);
+  const upper = Math.ceil(index);
+  if (lower === upper) return sortedValues[lower];
+  const weight = index - lower;
+  return sortedValues[lower] + (sortedValues[upper] - sortedValues[lower]) * weight;
+}
+
+export function getTrendMonitorScale(values) {
+  const finiteValues = Array.isArray(values)
+    ? values.filter((value) => Number.isFinite(value) && value > 0).sort((a, b) => a - b)
+    : [];
+
+  if (finiteValues.length === 0) {
+    return {
+      rawMax: 0,
+      effectiveMax: 1,
+      clippedValues: Array.isArray(values) ? values.map(() => 0) : [],
+    };
+  }
+
+  const rawMax = finiteValues.at(-1) ?? 0;
+  let effectiveMax = rawMax;
+
+  if (finiteValues.length >= 4) {
+    const q1 = interpolateQuantile(finiteValues, 0.25);
+    const q3 = interpolateQuantile(finiteValues, 0.75);
+    const iqr = Math.max(q3 - q1, 0);
+    const upperWhisker = q3 + iqr * 1.5;
+    const hasOutlier = rawMax > upperWhisker;
+
+    if (hasOutlier) {
+      effectiveMax = Math.max(upperWhisker, q3, 1);
+    }
+  }
+
+  return {
+    rawMax,
+    effectiveMax: Math.max(effectiveMax, 1),
+    clippedValues: Array.isArray(values)
+      ? values.map((value) => {
+          if (!Number.isFinite(value) || value <= 0) return 0;
+          return Math.min(value, Math.max(effectiveMax, 1));
+        })
+      : [],
+  };
+}
+
+// Individual animated bar
+function TrendBar({ value, displayValue, scale, index, row }) {
+  const shouldReduceMotion = useReducedMotion();
+  const heightPercent = scale.effectiveMax > 0 ? (displayValue / scale.effectiveMax) * 100 : 0;
+  const barHeight = `${Math.max(heightPercent, 2)}%`;
+  const isMissing = row?.missing;
+  const isFuture = row?.future;
+  
+  // Determine bar color based on value relative to max
+  const intensity = scale.rawMax > 0 ? value / scale.rawMax : 0;
+  const isHigh = intensity > 0.75;
+  const isMedium = intensity > 0.4 && intensity <= 0.75;
+
+  return (
+    <motion.div
+      className="group relative flex-1 self-stretch"
+      initial={{ opacity: 0, scaleY: 0 }}
+      animate={{ opacity: 1, scaleY: 1 }}
+      transition={{
+        duration: shouldReduceMotion ? 0 : 0.4,
+        delay: shouldReduceMotion ? 0 : index * 0.03,
+        ease: [0.25, 0.1, 0.25, 1],
+      }}
+      style={{ originY: 1 }}
+    >
+      <div className="absolute inset-x-0 bottom-0" style={{ height: barHeight }}>
+        <div
+          data-trend-bar="true"
+          className="h-full w-full rounded-t cursor-pointer relative overflow-hidden transition-all duration-200 group-hover:brightness-110"
+          style={{
+            minHeight: value > 0 ? "4px" : "2px",
+            opacity: isMissing || isFuture ? 0.2 : 1,
+            background: value > 0
+              ? isHigh
+                ? "linear-gradient(180deg, #34d399 0%, #059669 50%, #047857 100%)"
+                : isMedium
+                  ? "linear-gradient(180deg, #6ee7b7 0%, #10b981 50%, #059669 100%)"
+                  : "linear-gradient(180deg, #a7f3d0 0%, #34d399 50%, #10b981 100%)"
+              : "var(--oai-gray-100)",
+          }}
+          title={`${value.toLocaleString()}`}
+        >
+          {/* Shine effect */}
+          {value > 0 && !shouldReduceMotion && (
+            <div 
+              className="absolute inset-0 opacity-20"
+              style={{
+                background: "linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.5) 50%, transparent 100%)",
+                transform: "skewX(-20deg) translateX(-100%)",
+                animation: "shine 3s ease-in-out infinite",
+              }}
+            />
+          )}
+        </div>
+        {/* Tooltip */}
+        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-oai-black text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-20">
+          {value.toLocaleString()}
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
 export function TrendMonitor({
   rows,
-  data = [],
-  color = "#00FF41",
-  label = copy("trend.monitor.label"),
   from,
   to,
   period,
@@ -16,482 +125,158 @@ export function TrendMonitor({
   showTimeZoneLabel = true,
   className = "",
 }) {
-  const series = Array.isArray(rows) && rows.length ? rows : null;
-  const fallbackValues = data.length > 0 ? data : Array.from({ length: 48 }, () => 0);
-  const seriesValues = series
-    ? series.map((row) => {
-        if (row?.missing || row?.future) return null;
-        const raw = row?.billable_total_tokens ?? row?.total_tokens ?? row?.value;
-        if (raw == null) return null;
-        const n = Number(raw);
-        return Number.isFinite(n) ? n : 0;
-      })
-    : fallbackValues;
-  const seriesLabels = series
-    ? series.map((row) => row?.hour || row?.day || row?.month || row?.label || "")
-    : [];
-  const seriesMeta = series
-    ? series.map((row) => ({
-        missing: Boolean(row?.missing),
-        future: Boolean(row?.future),
-      }))
-    : Array.from({ length: seriesValues.length }, () => ({
-        missing: false,
-        future: false,
-      }));
-  const statsValues = seriesValues.filter((val) => Number.isFinite(val));
-  const max = Math.max(...(statsValues.length ? statsValues : [0]), 100);
-  const avg = statsValues.length ? statsValues.reduce((a, b) => a + b, 0) / statsValues.length : 0;
+  const series = Array.isArray(rows) && rows.length ? rows : [];
 
-  const width = 100;
-  const height = 100;
-  const axisWidthFallback = 8;
-  const [axisWidthView, setAxisWidthView] = useState(axisWidthFallback);
-  const plotWidth = width - axisWidthView;
-  const pointCount = Math.max(seriesValues.length, 1);
-  const DAY_AXIS_POINT_COUNT = 48;
-  const dayStep = DAY_AXIS_POINT_COUNT > 1 ? plotWidth / (DAY_AXIS_POINT_COUNT - 1) : 0;
-  const dayPadding = Math.min(dayStep / 2, plotWidth * 0.12);
-  const xPadding = pointCount > 1 ? dayPadding : plotWidth / 2;
-  const plotSpan = Math.max(plotWidth - xPadding * 2, 0);
-  const stepWithPadding = pointCount > 1 ? plotSpan / (pointCount - 1) : 0;
-  const pointRadius = 2.4;
-  const plotTop = Math.max(6, pointRadius + 3);
-  const plotBottom = Math.max(8, pointRadius + 4);
-  const plotHeight = height - plotTop - plotBottom;
-
-  function parseDate(value) {
-    if (!value) return null;
-    const parts = String(value).trim().split("-");
-    if (parts.length !== 3) return null;
-    const y = Number(parts[0]);
-    const m = Number(parts[1]) - 1;
-    const d = Number(parts[2]);
-    if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) {
-      return null;
-    }
-    return new Date(Date.UTC(y, m, d));
-  }
-
-  function formatAxisDate(dt) {
-    if (!dt) return "";
-    const mm = String(dt.getUTCMonth() + 1).padStart(2, "0");
-    const dd = String(dt.getUTCDate()).padStart(2, "0");
-    return `${mm}-${dd}`;
-  }
-
-  const MONTH_LABELS = [
-    copy("trend.monitor.month.jan"),
-    copy("trend.monitor.month.feb"),
-    copy("trend.monitor.month.mar"),
-    copy("trend.monitor.month.apr"),
-    copy("trend.monitor.month.may"),
-    copy("trend.monitor.month.jun"),
-    copy("trend.monitor.month.jul"),
-    copy("trend.monitor.month.aug"),
-    copy("trend.monitor.month.sep"),
-    copy("trend.monitor.month.oct"),
-    copy("trend.monitor.month.nov"),
-    copy("trend.monitor.month.dec"),
-  ];
-
-  function formatMonth(dt) {
-    if (!dt) return "";
-    const yy = String(dt.getUTCFullYear()).slice(-2);
-    return `${MONTH_LABELS[dt.getUTCMonth()]} ${yy}`;
-  }
-
-  function parseMonth(value) {
-    if (!value) return null;
-    const raw = String(value).trim();
-    const parts = raw.split("-");
-    if (parts.length !== 2) return null;
-    const y = Number(parts[0]);
-    const m = Number(parts[1]) - 1;
-    if (!Number.isFinite(y) || !Number.isFinite(m)) return null;
-    return new Date(Date.UTC(y, m, 1));
-  }
-
-  function pickLabelIndices(length) {
-    if (length <= 1) return [0];
-    const last = length - 1;
-    const steps = [0, 0.25, 0.5, 0.75, 1];
-    return steps.map((ratio) => Math.round(last * ratio));
-  }
-
-  function formatAxisLabel(raw) {
-    if (!raw) return "";
-    if (period === "total") {
-      return formatMonth(parseMonth(raw));
-    }
-    return formatAxisDate(parseDate(raw));
-  }
-
-  function buildXAxisLabels() {
-    if (period === "day") {
-      return [
-        copy("trend.monitor.fallback.hour_00"),
-        copy("trend.monitor.fallback.hour_06"),
-        copy("trend.monitor.fallback.hour_12"),
-        copy("trend.monitor.fallback.hour_18"),
-        copy("trend.monitor.fallback.hour_23"),
-      ];
-    }
-    if (seriesLabels.length > 0) {
-      const indices = pickLabelIndices(seriesLabels.length);
-      const labels = indices.map((idx) => formatAxisLabel(seriesLabels[idx] || ""));
-      if (labels.some((label) => label)) return labels;
-    }
-    const start = parseDate(from);
-    const end = parseDate(to);
-    if (!start || !end || end < start) {
-      return [
-        copy("trend.monitor.fallback.tminus_24"),
-        copy("trend.monitor.fallback.tminus_18"),
-        copy("trend.monitor.fallback.tminus_12"),
-        copy("trend.monitor.fallback.tminus_6"),
-        copy("trend.monitor.now_label"),
-      ];
-    }
-    const totalMs = end.getTime() - start.getTime();
-    const steps = [0, 0.25, 0.5, 0.75, 1];
-    if (period === "total") {
-      return steps.map((ratio) => formatMonth(new Date(start.getTime() + totalMs * ratio)));
-    }
-    return steps.map((ratio) => formatAxisDate(new Date(start.getTime() + totalMs * ratio)));
-  }
-
-  function formatCompact(value) {
-    const n = Number(value) || 0;
-    const abs = Math.abs(n);
-    if (abs >= 1e9) {
-      const fixed = abs >= 1e10 ? 0 : 1;
-      return `${(n / 1e9).toFixed(fixed)}B`;
-    }
-    if (abs >= 1e6) {
-      const fixed = abs >= 1e7 ? 0 : 1;
-      return `${(n / 1e6).toFixed(fixed)}M`;
-    }
-    if (abs >= 1e3) {
-      const fixed = abs >= 1e4 ? 0 : 1;
-      return `${(n / 1e3).toFixed(fixed)}K`;
-    }
-    return String(Math.round(n));
-  }
-
-  function formatFull(value) {
-    const n = Number(value) || 0;
-    return n.toLocaleString();
-  }
-
-  function formatTooltipLabel(label) {
-    if (!label) return timeZoneLabel || "";
-    const isoHour = /^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z?$/;
-    const isoDay = /^\\d{4}-\\d{2}-\\d{2}$/;
-    const isoMonth = /^\\d{4}-\\d{2}$/;
-    const tzLabel = showTimeZoneLabel ? timeZoneLabel || copy("trend.monitor.tooltip.utc") : "";
-
-    if (isoHour.test(label)) {
-      const [date, time] = label.split("T");
-      const hh = time.slice(0, 5);
-      if (!showTimeZoneLabel) {
-        return copy("trend.monitor.tooltip.hour_no_tz", { date, hour: hh });
-      }
-      return copy("trend.monitor.tooltip.hour", { date, hour: hh, tz: tzLabel });
-    }
-    if (isoDay.test(label)) {
-      if (!showTimeZoneLabel) return copy("trend.monitor.tooltip.day_no_tz", { date: label });
-      return copy("trend.monitor.tooltip.day", { date: label, tz: tzLabel });
-    }
-    if (isoMonth.test(label)) {
-      if (!showTimeZoneLabel) return copy("trend.monitor.tooltip.month_no_tz", { date: label });
-      return copy("trend.monitor.tooltip.month", { date: label, tz: tzLabel });
-    }
-    return label;
-  }
-
-  const lineSegments = useMemo(() => {
-    const segments = [];
-    let current = [];
-    seriesValues.forEach((val, i) => {
-      if (!Number.isFinite(val)) {
-        if (current.length) {
-          segments.push(current);
-          current = [];
-        }
-        return;
-      }
-      const x = pointCount > 1 ? xPadding + i * stepWithPadding : plotWidth / 2;
-      const normalizedVal = max > 0 ? val / max : 0;
-      const y = plotTop + (1 - normalizedVal) * plotHeight;
-      current.push({ x, y, index: i, value: val });
-    });
-    if (current.length) segments.push(current);
-    return segments;
-  }, [max, plotHeight, plotTop, plotWidth, pointCount, seriesValues, stepWithPadding, xPadding]);
-  const singlePoints = useMemo(() => {
-    if (!lineSegments.length) return [];
-    return lineSegments
-      .filter((segment) => segment.length === 1)
-      .map((segment, idx) => {
-        const pt = segment[0];
-        const clampedY = Math.min(Math.max(pt.y, plotTop + pointRadius), plotTop + plotHeight);
-        return { key: `single-${idx}`, x: pt.x, y: clampedY };
-      });
-  }, [lineSegments, plotHeight, plotTop, pointRadius]);
-
-  function solveSmoothPath(points) {
-    if (!Array.isArray(points) || points.length === 0) return "";
-    if (points.length === 1) {
-      const pt = points[0];
-      return `M ${pt.x},${pt.y}`;
-    }
-    if (points.length === 2) {
-      const [a, b] = points;
-      return `M ${a.x},${a.y} L ${b.x},${b.y}`;
-    }
-
-    let d = `M ${points[0].x},${points[0].y}`;
-    for (let i = 0; i < points.length - 1; i += 1) {
-      const p0 = points[Math.max(i - 1, 0)];
-      const p1 = points[i];
-      const p2 = points[i + 1];
-      const p3 = points[Math.min(i + 2, points.length - 1)];
-
-      const cp1x = p1.x + (p2.x - p0.x) * 0.16;
-      const cp1y = p1.y + (p2.y - p0.y) * 0.16;
-      const cp2x = p2.x - (p3.x - p1.x) * 0.16;
-      const cp2y = p2.y - (p3.y - p1.y) * 0.16;
-
-      d += ` C ${cp1x},${cp1y} ${cp2x},${cp2y} ${p2.x},${p2.y}`;
-    }
-    return d;
-  }
-
-  const xLabels = useMemo(() => buildXAxisLabels(), [from, period, to]);
-
-  const plotRef = useRef(null);
-  const axisRef = useRef(null);
-  const [hover, setHover] = useState(null);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return undefined;
-    const measure = () => {
-      const plotEl = plotRef.current;
-      const axisEl = axisRef.current;
-      if (!plotEl || !axisEl) return;
-      const plotRect = plotEl.getBoundingClientRect();
-      const axisRect = axisEl.getBoundingClientRect();
-      if (!plotRect.width) return;
-      const next = (axisRect.width / plotRect.width) * width;
-      const clamped = Math.max(4, Math.min(width - 1, next));
-      setAxisWidthView((prev) => (Math.abs(prev - clamped) > 0.2 ? clamped : prev));
-    };
-    measure();
-    if (typeof ResizeObserver !== "undefined") {
-      const observer = new ResizeObserver(measure);
-      if (plotRef.current) observer.observe(plotRef.current);
-      if (axisRef.current) observer.observe(axisRef.current);
-      return () => observer.disconnect();
-    }
-    window.addEventListener("resize", measure);
-    return () => window.removeEventListener("resize", measure);
-  }, [width]);
-
-  function handleMove(e) {
-    const el = plotRef.current;
-    if (!el || seriesValues.length === 0) return;
-    const rect = el.getBoundingClientRect();
-    const axisWidthPx =
-      axisRef.current?.getBoundingClientRect().width ?? (axisWidthView / width) * rect.width;
-    const plotWidthPx = rect.width - axisWidthPx;
-    const rawX = Math.min(Math.max(e.clientX - rect.left, 0), plotWidthPx);
-    const xPaddingPx = plotWidth > 0 ? (xPadding / plotWidth) * plotWidthPx : 0;
-    const plotSpanPx = Math.max(plotWidthPx - xPaddingPx * 2, 0);
-    const denom = Math.max(seriesValues.length - 1, 1);
-    const clamped = Math.min(Math.max(rawX - xPaddingPx, 0), plotSpanPx);
-    const ratio = plotSpanPx > 0 ? clamped / plotSpanPx : 0;
-    const index = Math.round(ratio * denom);
-    const meta = seriesMeta[index] || {};
-    if (meta.future) {
-      setHover(null);
-      return;
-    }
-    const rawValue = seriesValues[index];
-    const value = Number.isFinite(rawValue) ? rawValue : 0;
-    const snappedX = denom > 0 ? xPaddingPx + (index / denom) * plotSpanPx : plotWidthPx / 2;
-    const labelText = seriesLabels[index] || "";
-    const yRatio = max > 0 ? 1 - value / max : 1;
-    const yPx = (plotTop / height) * rect.height + yRatio * (plotHeight / height) * rect.height;
-    setHover({
-      index,
-      value,
-      label: labelText,
-      x: snappedX,
-      y: yPx,
-      rectWidth: rect.width,
-      axisWidthPx,
-      plotWidthPx,
-      missing: Boolean(meta.missing),
-    });
-  }
-
-  function handleLeave() {
-    setHover(null);
-  }
+  const seriesValues = series.map((row) => {
+    if (row?.missing || row?.future) return 0;
+    const raw = row?.billable_total_tokens ?? row?.total_tokens ?? row?.value;
+    if (raw == null) return 0;
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : 0;
+  });
+  const scale = getTrendMonitorScale(seriesValues);
 
   return (
-    <AsciiBox title={label} className={`w-full ${className}`} bodyClassName="flex flex-col gap-3">
-      <div className="flex items-center justify-between text-caption text-matrix-muted px-1">
-        <div className="flex gap-3">
-          <span>{copy("trend.monitor.max_label", { value: Math.round(max) })}</span>
-          <span>{copy("trend.monitor.avg_label", { value: Math.round(avg) })}</span>
-        </div>
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4, delay: 0.3 }}
+      className={`rounded-xl border border-oai-gray-200 dark:border-oai-gray-800 bg-white dark:bg-oai-gray-900 p-5 ${className}`}
+    >
+      <div className="mb-3">
+        <h3 className="text-sm font-medium text-oai-gray-500 dark:text-oai-gray-400 uppercase tracking-wide">
+          {copy("trend.monitor.label")}
+        </h3>
+        {showTimeZoneLabel && timeZoneLabel && (
+          <p className="text-sm text-oai-gray-400 dark:text-oai-gray-500 mt-0.5">{timeZoneLabel}</p>
+        )}
       </div>
+      <div className="space-y-3">
+        <div className="relative">
+          {/* Grid lines */}
+          <div className="absolute inset-0 flex flex-col justify-between pointer-events-none">
+            {[0, 25, 50, 75, 100].map((pct) => (
+              <div
+                key={pct}
+                className="w-full border-t border-oai-gray-100 dark:border-oai-gray-800"
+                style={{ top: `${100 - pct}%` }}
+              />
+            ))}
+          </div>
 
-      <div className="flex-1 relative overflow-hidden border border-matrix-ghost bg-matrix-panel">
-        <div
-          className="absolute inset-0 opacity-10 pointer-events-none"
-          style={{
-            backgroundImage: `
-              linear-gradient(to right, ${color} 1px, transparent 1px),
-              linear-gradient(to bottom, ${color} 1px, transparent 1px)
-            `,
-            backgroundSize: "20px 20px",
-          }}
-        />
-
-        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-[#00FF41]/10 to-transparent w-[50%] h-full animate-[scan-x_3s_linear_infinite] pointer-events-none mix-blend-screen" />
-
-        <svg
-          viewBox={`0 0 ${width} ${height}`}
-          className="w-full h-full preserve-3d absolute inset-0 z-10"
-          preserveAspectRatio="none"
-        >
-          <defs>
-            <linearGradient id={`grad-${label}`} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={color} stopOpacity="0.5" />
-              <stop offset="100%" stopColor={color} stopOpacity="0" />
-            </linearGradient>
-          </defs>
-
-          {lineSegments.map((segment, idx) => {
-            if (segment.length < 2) return null;
-            const first = segment[0];
-            const last = segment[segment.length - 1];
-            const linePath = solveSmoothPath(segment);
-            const fillPath = `${linePath} L ${last.x},${height - plotBottom} L ${first.x},${
-              height - plotBottom
-            } Z`;
-            return (
-              <React.Fragment key={`seg-${idx}`}>
-                <path d={fillPath} fill={`url(#grad-${label})`} />
-                <path
-                  d={linePath}
-                  fill="none"
-                  stroke={color}
-                  strokeWidth="1.5"
-                  vectorEffect="non-scaling-stroke"
-                  className="drop-shadow-[0_0_5px_rgba(0,255,65,0.8)]"
+          {/* Bars */}
+          <div className="h-40 flex items-end gap-1 relative z-0">
+            {seriesValues.length > 0 ? (
+              seriesValues.map((value, index) => (
+                <TrendBar
+                  key={index}
+                  value={value}
+                  displayValue={scale.clippedValues[index] ?? 0}
+                  scale={scale}
+                  index={index}
+                  row={series[index]}
                 />
-              </React.Fragment>
-            );
-          })}
-        </svg>
-        {singlePoints.map((pt) => (
-          <div
-            key={pt.key}
-            className="absolute z-15 w-2.5 h-2.5 rounded-full"
-            style={{
-              left: `calc(${(pt.x / width) * 100}% - 5px)`,
-              top: `calc(${(pt.y / height) * 100}% - 5px)`,
-              backgroundColor: color,
-              boxShadow: `0 0 8px ${color}`,
-            }}
-          />
-        ))}
-
-        <div
-          ref={axisRef}
-          className="absolute right-0 top-0 bottom-0 flex flex-col justify-between py-1 px-1 text-caption text-matrix-muted pointer-events-none bg-matrix-panelStrong border-l border-matrix-ghost w-10 text-right"
-        >
-          <span>{formatCompact(max)}</span>
-          <span>{formatCompact(max * 0.75)}</span>
-          <span>{formatCompact(max * 0.5)}</span>
-          <span>{formatCompact(max * 0.25)}</span>
-          <span>0</span>
+              ))
+            ) : (
+              <EmptyTrendState />
+            )}
+          </div>
         </div>
 
-        <div
-          ref={plotRef}
-          className="absolute inset-0 z-20"
-          onMouseMove={handleMove}
-          onMouseLeave={handleLeave}
-        ></div>
-
-        {hover ? (
-          <>
-            <div
-              className="absolute inset-y-0 left-0 pointer-events-none z-25"
-              style={{ right: hover.axisWidthPx }}
-            >
-              <div
-                className="absolute top-0 bottom-0 w-px bg-[#00FF41]/40 shadow-[0_0_6px_rgba(0,255,65,0.35)]"
-                style={{ left: hover.x }}
-              ></div>
-              <div
-                className="absolute w-2 h-2 rounded-full bg-[#00FF41] shadow-[0_0_6px_rgba(0,255,65,0.8)]"
-                style={{ left: hover.x - 4, top: hover.y - 4 }}
-              ></div>
-            </div>
-            <div
-              className="absolute z-30 px-3 py-2 text-caption bg-matrix-panelStrong border border-matrix-ghost text-matrix-bright pointer-events-none"
-              style={{
-                left: Math.min(hover.x + 10, hover.rectWidth - hover.axisWidthPx - 120),
-                top: Math.max(hover.y - 24, 6),
-              }}
-            >
-              <div className="text-matrix-muted">{formatTooltipLabel(hover.label)}</div>
-              {hover.missing ? (
-                <div className="font-bold">{copy("shared.status.unsynced")}</div>
-              ) : (
-                <div className="font-bold">
-                  {copy("trend.monitor.tooltip.value", {
-                    value: formatFull(hover.value),
-                    unit: copy("trend.monitor.tooltip.tokens"),
-                  })}
-                </div>
-              )}
-            </div>
-          </>
-        ) : null}
+        {from && to && (
+          <div className="flex justify-between text-xs text-oai-gray-500 dark:text-oai-gray-400 font-medium pt-2 border-t border-oai-gray-100 dark:border-oai-gray-800">
+            <span>{from}</span>
+            <span>{to}</span>
+          </div>
+        )}
       </div>
 
-      <div className="h-5 flex justify-between items-center px-1 text-caption text-matrix-muted border-t border-matrix-ghost pt-2">
-        {xLabels.map((labelText, idx) => (
-          <span
-            key={`${labelText}-${idx}`}
-            className={
-              labelText === copy("trend.monitor.now_label")
-                ? "text-matrix-primary font-bold animate-pulse"
-                : ""
-            }
-          >
-            {labelText}
-          </span>
-        ))}
-      </div>
-
-      <style
-        dangerouslySetInnerHTML={{
-          __html: `
-        @keyframes scan-x {
-          0% { transform: translateX(-100%); }
-          100% { transform: translateX(200%); }
+      {/* Shine animation keyframes */}
+      <style>{`
+        @keyframes shine {
+          0% { transform: skewX(-20deg) translateX(-100%); }
+          50%, 100% { transform: skewX(-20deg) translateX(200%); }
         }
-      `,
+      `}</style>
+    </motion.div>
+  );
+}
+
+// Preview data for empty state - shows what the chart will look like with real data
+const PREVIEW_DATA = [
+  12, 18, 15, 24, 32, 28, 45, 38, 52, 48, 65, 72,
+  58, 82, 76, 95, 88, 112, 98, 125, 142, 128, 155, 168,
+  145, 172, 188, 165, 192, 205, 182, 218, 235, 198, 242, 258,
+];
+
+function PreviewTrendBar({ value, max, index }) {
+  const shouldReduceMotion = useReducedMotion();
+  const heightPercent = max > 0 ? (value / max) * 100 : 0;
+
+  return (
+    <motion.div
+      className="relative flex-1 self-stretch"
+      initial={{ opacity: 0, scaleY: 0 }}
+      animate={{ opacity: 1, scaleY: 1 }}
+      transition={{
+        duration: shouldReduceMotion ? 0 : 0.4,
+        delay: shouldReduceMotion ? 0 : index * 0.02,
+        ease: [0.25, 0.1, 0.25, 1],
+      }}
+      style={{ originY: 1 }}
+    >
+      <div
+        className="absolute inset-x-0 bottom-0 rounded-t"
+        style={{
+          height: `${Math.max(heightPercent, 2)}%`,
+          minHeight: "4px",
+          background: "linear-gradient(180deg, rgba(16, 185, 129, 0.35) 0%, rgba(5, 150, 105, 0.25) 100%)",
         }}
       />
-    </AsciiBox>
+    </motion.div>
+  );
+}
+
+function EmptyTrendState() {
+  const shouldReduceMotion = useReducedMotion();
+  const maxValue = Math.max(...PREVIEW_DATA);
+
+  return (
+    <div className="flex-1 flex flex-col relative">
+      {/* Preview Chart */}
+      <div className="h-40 flex items-end gap-1 relative z-0">
+        {PREVIEW_DATA.map((value, index) => (
+          <PreviewTrendBar key={index} value={value} max={maxValue} index={index} />
+        ))}
+      </div>
+
+      {/* Overlay with message */}
+      <motion.div
+        className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-t from-white/80 via-white/40 to-transparent dark:from-oai-gray-900/80 dark:via-oai-gray-900/40"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: shouldReduceMotion ? 0 : 0.6 }}
+      >
+        <motion.div
+          className="text-center"
+          initial={{ y: 10, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ delay: shouldReduceMotion ? 0 : 0.8 }}
+        >
+          <div className="w-10 h-10 mb-2 mx-auto rounded-full bg-oai-gray-100 dark:bg-oai-gray-800 flex items-center justify-center">
+            <svg className="w-5 h-5 text-oai-gray-400 dark:text-oai-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 3v18h18" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16l4-4 4 4 6-6" />
+            </svg>
+          </div>
+          <p className="text-sm font-medium text-oai-gray-600 dark:text-oai-gray-300">
+            Your trend will appear here
+          </p>
+          <p className="text-xs text-oai-gray-400 dark:text-oai-gray-500 mt-1">
+            Keep coding to see your usage pattern
+          </p>
+        </motion.div>
+      </motion.div>
+    </div>
   );
 }

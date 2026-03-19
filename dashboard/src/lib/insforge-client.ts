@@ -321,11 +321,15 @@ export function createInsforgeClient({
   baseUrl?: string;
   accessToken?: string;
 } = {}) {
-  if (!baseUrl) throw new Error("Missing baseUrl");
+  // 本地开发模式使用空 baseUrl，Vite 代理会拦截请求
+  const isLocalMode = typeof window !== "undefined" &&
+    (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+  if (!baseUrl && !isLocalMode) throw new Error("Missing baseUrl");
+  const effectiveBaseUrl = baseUrl || window?.location?.origin || "";
   const anonKey = getInsforgeAnonKey();
   const timeoutFetch = createTimeoutFetch(globalThis.fetch) as unknown as typeof fetch;
   return createClient({
-    baseUrl,
+    baseUrl: effectiveBaseUrl,
     anonKey: anonKey || undefined,
     edgeFunctionToken: accessToken || undefined,
     storage: createPersistentStorage(),
@@ -335,10 +339,13 @@ export function createInsforgeClient({
 
 export function createInsforgeAuthClient() {
   const baseUrl = getInsforgeBaseUrl();
-  if (!baseUrl) throw new Error("Missing baseUrl");
+  const isLocalMode = typeof window !== "undefined" &&
+    (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+  if (!baseUrl && !isLocalMode) throw new Error("Missing baseUrl");
+  const effectiveBaseUrl = baseUrl || window?.location?.origin || "";
   const anonKey = getInsforgeAnonKey();
   const client = createClient({
-    baseUrl,
+    baseUrl: effectiveBaseUrl,
     anonKey: anonKey || undefined,
     // Use persistent storage for auth client to survive page reloads
     // This is critical for mobile browsers where memory is frequently cleared

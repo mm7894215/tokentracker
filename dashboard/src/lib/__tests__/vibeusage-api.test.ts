@@ -4,6 +4,7 @@ const http = vi.hoisted(() => ({
   get: vi.fn(),
   post: vi.fn(),
 }));
+const fetchMock = vi.hoisted(() => vi.fn());
 
 vi.mock("../insforge-client", () => ({
   createInsforgeClient: vi.fn(() => ({
@@ -28,12 +29,14 @@ vi.mock("../mock-data", () => ({
 let api: typeof import("../vibeusage-api");
 
 beforeAll(async () => {
+  vi.stubGlobal("fetch", fetchMock);
   api = await import("../vibeusage-api");
 });
 
 beforeEach(() => {
   http.get.mockReset();
   http.post.mockReset();
+  fetchMock.mockReset();
   http.get.mockResolvedValue({ data: {} });
 });
 
@@ -73,6 +76,36 @@ describe("error normalization", () => {
       message: "Missing bearer token",
       status: 401,
       statusCode: 401,
+    });
+  });
+});
+
+describe("triggerLocalSync", () => {
+  it("posts to the local sync endpoint", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: vi.fn(async () => ({ ok: true, code: 0 })),
+    });
+
+    await expect(api.triggerLocalSync()).resolves.toMatchObject({ ok: true, code: 0 });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/functions/vibeusage-local-sync",
+      expect.objectContaining({ method: "POST", cache: "no-store" }),
+    );
+  });
+
+  it("surfaces the backend error message when local sync fails", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+      json: vi.fn(async () => ({ ok: false, error: "sync failed" })),
+    });
+
+    await expect(api.triggerLocalSync()).rejects.toMatchObject({
+      message: "sync failed",
+      status: 500,
+      statusCode: 500,
     });
   });
 });

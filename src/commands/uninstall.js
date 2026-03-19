@@ -77,7 +77,7 @@ async function cmdUninstall(argv) {
   await fs.rm(path.join(trackerDir, "app"), { recursive: true, force: true }).catch(() => {});
 
   if (opts.purge) {
-    await fs.rm(path.join(home, ".vibeusage"), { recursive: true, force: true }).catch(() => {});
+    await fs.rm(path.join(home, ".tokentracker"), { recursive: true, force: true }).catch(() => {});
   }
 
   process.stdout.write(

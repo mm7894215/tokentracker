@@ -1,13 +1,13 @@
 <div align="center">
 
-<img src="dashboard/public/icon-192.png" width="96" alt="VibeUsage Icon" />
+<img src="dashboard/public/icon-192.png" width="96" alt="Token Tracker Icon" />
 
-# 🟢 VIBEUSAGE
+# 🟢 TOKEN TRACKER
 
 **QUANTIFY YOUR AI OUTPUT**
 _Track AI Token Usage Across All Your CLI Tools_
 
-[**www.vibeusage.cc**](https://www.vibeusage.cc)
+[**www.tokentracker.cc**](https://www.tokentracker.cc)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 [![npm version](https://img.shields.io/npm/v/vibeusage.svg)](https://www.npmjs.com/package/vibeusage)
@@ -16,11 +16,11 @@ _Track AI Token Usage Across All Your CLI Tools_
 
 [**English**](README.md) • [**中文说明**](README.zh-CN.md)
 
-[**Documentation**](docs/) • [**Dashboard**](https://www.vibeusage.cc) • [**Backend API**](BACKEND_API.md)
+[**Documentation**](docs/) • [**Dashboard**](https://www.tokentracker.cc) • [**Backend API**](BACKEND_API.md)
 
 <br/>
 
-<img src="docs/screenshots/dashboard.png" width="900" alt="VibeUsage Dashboard Preview"/>
+<img src="docs/screenshots/dashboard.png" width="900" alt="Token Tracker Dashboard Preview"/>
 
 </div>
 
@@ -34,9 +34,9 @@ Get started in 30 seconds:
 npx vibeusage init
 ```
 
-That's it! Your AI token usage will now automatically sync to the [Dashboard](https://www.vibeusage.cc) 🎉
+That's it! Your AI token usage will now automatically sync to the [Dashboard](https://www.tokentracker.cc) 🎉
 
-## ✨ Why VibeUsage?
+## ✨ Why Token Tracker?
 
 - 📡 **Multi-Source Unified Tracking** - Support for Codex CLI, Every Code, Gemini CLI, Claude Code, Opencode, OpenClaw, and more
 - 🤖 **Multi-Model Statistics** - Unified tracking for GPT-4, Claude, Gemini, o1, and all AI models
@@ -63,7 +63,7 @@ Whether you're using GPT-4, Claude 3.5 Sonnet, o1, or Gemini - all token consump
 
 ## 🌌 Overview
 
-**VibeUsage** is an intelligent token usage tracking system designed for macOS developers. Through the all-new **Matrix-A Design System**, it provides a high-fidelity cyberpunk-style dashboard that transforms your **AI Output** into quantifiable metrics, supported by the **Neural Divergence Map** for real-time monitoring of multi-model compute distribution.
+**Token Tracker** is an intelligent token usage tracking system designed for macOS developers. Through the all-new **Matrix-A Design System**, it provides a high-fidelity cyberpunk-style dashboard that transforms your **AI Output** into quantifiable metrics, supported by the **Neural Divergence Map** for real-time monitoring of multi-model compute distribution.
 
 > [!TIP]
 > **Core Index**: Our signature metric that reflects your flow state by analyzing token consumption rates and patterns.
@@ -88,11 +88,11 @@ High-performance dashboard built with React + Vite, featuring our cyberpunk-insp
 - **Public Profiles**: Share your AI usage journey with a privacy-safe public profile
 - **Leaderboard Categories**: Compete in overall rankings or by specific models (GPT, Claude, etc.)
 
-<img src="docs/screenshots/landing.png" width="900" alt="VibeUsage Landing Preview"/>
+<img src="docs/screenshots/landing.png" width="900" alt="Token Tracker Landing Preview"/>
 
 ## 🔒 Privacy Guarantee
 
-We believe your code and thoughts are your own. VibeUsage is built with strict privacy pillars to ensure your data never leaves your control.
+We believe your code and thoughts are your own. Token Tracker is built with strict privacy pillars to ensure your data never leaves your control.
 
 | Protection | Description |
 |------------|-------------|
@@ -105,7 +105,7 @@ We believe your code and thoughts are your own. VibeUsage is built with strict p
 
 ### Standard Setup
 
-Initialize your environment once - VibeUsage handles all synchronization automatically in the background:
+Initialize your environment once - Token Tracker handles all synchronization automatically in the background:
 
 ```bash
 npx vibeusage init
@@ -206,7 +206,7 @@ graph LR
     E[Claude Code] -->|Hook Output| G
     F[OpenClaw] -->|Gateway Hook| G
     G -->|AI Tokens| H{Core Relay}
-    H --> I[VibeUsage Dashboard]
+    H --> I[Token Tracker Dashboard]
     H --> J[AI Analytics Engine]
     H --> K[Leaderboard Service]
     H --> L[Public View API]
@@ -259,7 +259,7 @@ graph LR
 | `VIBEUSAGE_HTTP_TIMEOUT_MS` | CLI HTTP timeout in ms (`0` disables, clamped `1000..120000`) | `20000` |
 | `VITE_VIBEUSAGE_HTTP_TIMEOUT_MS` | Dashboard request timeout in ms (`0` disables, clamped `1000..30000`) | `15000` |
 | `VIBEUSAGE_DEBUG` | Enable debug output (`1` or `true` to enable) | - |
-| `VIBEUSAGE_DASHBOARD_URL` | Custom dashboard URL | `https://www.vibeusage.cc` |
+| `VIBEUSAGE_DASHBOARD_URL` | Custom dashboard URL | `https://www.tokentracker.cc` |
 | `VIBEUSAGE_INSFORGE_BASE_URL` | Custom API base URL | `https://5tmappuk.us-east.insforge.app` |
 | `VIBEUSAGE_DEVICE_TOKEN` | Pre-configured device token (for CI) | - |
 
@@ -428,13 +428,13 @@ This project is licensed under the [MIT License](LICENSE).
 ---
 
 <div align="center">
-  <b>System_Ready // 2024-2026 VibeUsage</b><br/>
+  <b>System_Ready // 2024-2026 Token Tracker</b><br/>
   <i>"Quantify Your AI Output. Own Your Data."</i><br/><br/>
 
   Made with 💚 by developers, for developers
 
-  [Website](https://www.vibeusage.cc) •
-  [Dashboard](https://www.vibeusage.cc) •
+  [Website](https://www.tokentracker.cc) •
+  [Dashboard](https://www.tokentracker.cc) •
   [Docs](docs/) •
   [API](BACKEND_API.md)
 </div>
@@ -445,7 +445,7 @@ This project is licensed under the [MIT License](LICENSE).
 复制以下内容发送给你的 AI 助手：
 
 ```
-请帮我安装 VibeUsage 来追踪 AI Token 用量。
+请帮我安装 Token Tracker 来追踪 AI Token 用量。
 
 执行以下命令：
 npx --yes vibeusage init

@@ -271,6 +271,35 @@ export async function getUserStatus({ baseUrl, accessToken }: AnyRecord = {}) {
   });
 }
 
+export async function triggerLocalSync({ signal }: AnyRecord = {}) {
+  const response = await fetch("/functions/vibeusage-local-sync", {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+    },
+    cache: "no-store",
+    signal,
+  });
+
+  const payload = await response
+    .json()
+    .catch(() => ({ ok: false, error: `Local sync request failed with HTTP ${response.status}` }));
+
+  if (!response.ok || payload?.ok === false) {
+    const message =
+      payload?.error ||
+      payload?.message ||
+      `Local sync request failed with HTTP ${response.status}`;
+    const error: AnyRecord = new Error(message);
+    error.status = response.status;
+    error.statusCode = response.status;
+    error.payload = payload;
+    throw error;
+  }
+
+  return payload;
+}
+
 export async function getUsageModelBreakdown({
   baseUrl,
   accessToken,

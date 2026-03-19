@@ -63,9 +63,12 @@ export function useUsageModelBreakdown({
     }
   }, [storageKey]);
 
+  const isLocalMode = typeof window !== "undefined" &&
+    (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+
   const refresh = useCallback(async () => {
     const resolvedToken = await resolveAuthAccessToken(accessToken);
-    if (!resolvedToken && !mockEnabled) return;
+    if (!resolvedToken && !mockEnabled && !isLocalMode) return;
     setLoading(true);
     setError(null);
     try {
@@ -120,10 +123,11 @@ export function useUsageModelBreakdown({
     tzOffsetMinutes,
     clearCache,
     writeCache,
+    isLocalMode,
   ]);
 
   useEffect(() => {
-    if (!tokenReady && !guestAllowed && !mockEnabled) {
+    if (!tokenReady && !guestAllowed && !mockEnabled && !isLocalMode) {
       setBreakdown(null);
       setSource("edge");
       setError(null);
@@ -152,6 +156,7 @@ export function useUsageModelBreakdown({
     guestAllowed,
     cacheAllowed,
     clearCache,
+    isLocalMode,
   ]);
 
   const normalizedSource = mockEnabled ? "mock" : source;

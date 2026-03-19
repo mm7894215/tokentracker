@@ -70,9 +70,13 @@ export function useUsageData({
     }
   }, [storageKey]);
 
+  const isLocalMode = typeof window !== "undefined" &&
+    (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+
   const refresh = useCallback(async () => {
     const resolvedToken = await resolveAuthAccessToken(accessToken);
-    if (!resolvedToken && !mockEnabled) return;
+    // 本地模式允许空 token
+    if (!resolvedToken && !mockEnabled && !isLocalMode) return;
     setLoading(true);
     setError(null);
     try {
@@ -216,10 +220,15 @@ export function useUsageData({
     tzOffsetMinutes,
     clearCache,
     writeCache,
+    isLocalMode,
   ]);
 
   useEffect(() => {
-    if (!tokenReady && !guestAllowed && !mockEnabled) {
+    const isLocalMode = typeof window !== "undefined" &&
+      (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+    const isLocalModeCheck = typeof window !== "undefined" &&
+      (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+    if (!tokenReady && !guestAllowed && !mockEnabled && !isLocalModeCheck) {
       setDaily([]);
       setSummary(null);
       setRolling(null);
@@ -265,6 +274,7 @@ export function useUsageData({
     guestAllowed,
     cacheAllowed,
     clearCache,
+    isLocalMode,
   ]);
 
   const normalizedSource = mockEnabled ? "mock" : source;
