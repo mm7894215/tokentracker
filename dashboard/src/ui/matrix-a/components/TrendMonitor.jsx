@@ -54,7 +54,7 @@ export function getTrendMonitorScale(values) {
 }
 
 // Individual animated bar
-function TrendBar({ value, displayValue, scale, index, row }) {
+function TrendBar({ value, displayValue, scale, index, row, totalBars }) {
   const shouldReduceMotion = useReducedMotion();
   const heightPercent = scale.effectiveMax > 0 ? (displayValue / scale.effectiveMax) * 100 : 0;
   const barHeight = `${Math.max(heightPercent, 2)}%`;
@@ -65,6 +65,9 @@ function TrendBar({ value, displayValue, scale, index, row }) {
   const intensity = scale.rawMax > 0 ? value / scale.rawMax : 0;
   const isHigh = intensity > 0.75;
   const isMedium = intensity > 0.4 && intensity <= 0.75;
+  
+  // Dynamic border radius based on bar width (fewer bars = wider bars = larger radius)
+  const borderRadius = totalBars <= 7 ? "6px" : totalBars <= 14 ? "4px" : "3px";
 
   return (
     <motion.div
@@ -81,10 +84,11 @@ function TrendBar({ value, displayValue, scale, index, row }) {
       <div className="absolute inset-x-0 bottom-0" style={{ height: barHeight }}>
         <div
           data-trend-bar="true"
-          className="h-full w-full rounded-t cursor-pointer relative overflow-hidden transition-all duration-200 group-hover:brightness-110"
+          className="h-full w-full cursor-pointer relative overflow-hidden transition-all duration-200 group-hover:brightness-110"
           style={{
             minHeight: value > 0 ? "4px" : "2px",
             opacity: isMissing || isFuture ? 0.2 : 1,
+            borderRadius: `${borderRadius} ${borderRadius} 0 0`,
             background: value > 0
               ? isHigh
                 ? "linear-gradient(180deg, #34d399 0%, #059669 50%, #047857 100%)"
@@ -175,6 +179,7 @@ export function TrendMonitor({
                   scale={scale}
                   index={index}
                   row={series[index]}
+                  totalBars={seriesValues.length}
                 />
               ))
             ) : (
