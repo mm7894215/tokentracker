@@ -42,10 +42,10 @@ export function DataDetails({
           <button
             type="button"
             onClick={() => setActiveTab("daily")}
-            className={`oai-text-caption font-medium px-3 py-1.5 rounded transition-colors ${
+            className={`text-xs font-medium px-3 py-1.5 rounded transition-colors ${
               activeTab === "daily"
                 ? "text-oai-black dark:text-oai-white bg-oai-gray-100 dark:bg-oai-gray-800"
-                : "oai-text-muted hover:text-oai-black dark:hover:text-oai-white hover:bg-oai-gray-50 dark:hover:bg-oai-gray-800/50"
+                : "text-oai-gray-500 dark:text-oai-gray-400 hover:text-oai-black dark:hover:text-oai-white hover:bg-oai-gray-50 dark:hover:bg-oai-gray-800/50"
             }`}
           >
             {copy("dashboard.daily.title")}
@@ -53,10 +53,10 @@ export function DataDetails({
           <button
             type="button"
             onClick={() => setActiveTab("projects")}
-            className={`oai-text-caption font-medium px-3 py-1.5 rounded transition-colors ${
+            className={`text-xs font-medium px-3 py-1.5 rounded transition-colors ${
               activeTab === "projects"
                 ? "text-oai-black dark:text-oai-white bg-oai-gray-100 dark:bg-oai-gray-800"
-                : "oai-text-muted hover:text-oai-black dark:hover:text-oai-white hover:bg-oai-gray-50 dark:hover:bg-oai-gray-800/50"
+                : "text-oai-gray-500 dark:text-oai-gray-400 hover:text-oai-black dark:hover:text-oai-white hover:bg-oai-gray-50 dark:hover:bg-oai-gray-800/50"
             }`}
           >
             {copy("dashboard.projects.title")}
@@ -66,7 +66,7 @@ export function DataDetails({
           <select
             value={projectLimit}
             onChange={(e) => onProjectLimitChange?.(Number(e.target.value))}
-            className="oai-text-caption text-oai-gray-600 dark:text-oai-gray-300 bg-white dark:bg-oai-gray-900 border border-oai-gray-200 dark:border-oai-gray-700 rounded px-2 py-1 hover:border-oai-gray-300 dark:hover:border-oai-gray-600 focus:border-oai-brand dark:focus:border-oai-brand focus:outline-none transition-colors"
+            className="text-xs text-oai-gray-600 dark:text-oai-gray-300 bg-white dark:bg-oai-gray-900 border border-oai-gray-200 dark:border-oai-gray-700 rounded px-2 py-1 hover:border-oai-gray-300 dark:hover:border-oai-gray-600 focus:border-oai-brand dark:focus:border-oai-brand focus:outline-none transition-colors"
           >
             <option value={3}>{copy("dashboard.projects.limit_top_3")}</option>
             <option value={6}>{copy("dashboard.projects.limit_top_6")}</option>

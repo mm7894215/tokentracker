@@ -81,20 +81,6 @@ export function UsageOverview({
   // FleetData is already grouped by provider
   const providers = fleetData.filter((f) => f.models?.length > 0);
 
-  // Get top 5 models across all providers for quick overview
-  const topModels = React.useMemo(() => {
-    const allModels = providers.flatMap(p =>
-      p.models.map(m => ({
-        ...m,
-        provider: p.label,
-        providerColor: getProviderColor(p.label, 0),
-      }))
-    );
-    return allModels
-      .sort((a, b) => (b.share || 0) - (a.share || 0))
-      .slice(0, 5);
-  }, [providers]);
-
   return (
     <FadeIn delay={0.2}>
       <Card className={className}>
@@ -102,11 +88,9 @@ export function UsageOverview({
         <div className="flex items-center justify-between gap-3 mb-6">
           <div className="flex gap-1">
             {tabs.map((p) => (
-              <motion.button
+              <button
                 key={p.key}
                 type="button"
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
                 className={`text-xs font-medium px-3 py-1.5 rounded-md transition-colors ${
                   period === p.key
                     ? "text-oai-black dark:text-oai-white bg-oai-gray-100 dark:bg-oai-gray-800"
@@ -115,7 +99,7 @@ export function UsageOverview({
                 onClick={() => onPeriodChange?.(p.key)}
               >
                 {p.label}
-              </motion.button>
+              </button>
             ))}
           </div>
           {onRefresh && (
@@ -150,16 +134,14 @@ export function UsageOverview({
             <div className="flex items-center justify-center gap-2 mt-4">
               <span className="text-xl font-bold text-oai-brand">{summaryCostValue}</span>
               {onCostInfo && (
-                <motion.button
+                <button
                   type="button"
                   onClick={onCostInfo}
-                  whileHover={{ scale: 1.1 }}
-                  whileTap={{ scale: 0.95 }}
                   className="w-5 h-5 rounded-full bg-oai-gray-100 dark:bg-oai-gray-800 text-oai-gray-500 dark:text-oai-gray-400 hover:bg-oai-brand hover:text-white text-xs transition-colors"
                   aria-label="Cost info"
                 >
                   ?
-                </motion.button>
+                </button>
               )}
             </div>
           )}
@@ -193,14 +175,9 @@ export function UsageOverview({
                 const isExpanded = expandedProvider === provider.label;
 
                 return (
-                  <motion.button
+                  <button
                     key={provider.label}
                     onClick={() => setExpandedProvider(isExpanded ? null : provider.label)}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.4 + idx * 0.05 }}
-                    whileHover={{ y: -2, boxShadow: "0 8px 24px -6px rgba(0,0,0,0.25)" }}
-                    whileTap={{ scale: 0.98 }}
                     className={`flex-1 min-w-[140px] text-left p-3 rounded-lg border transition-colors duration-200 ${
                       isExpanded
                         ? "border-oai-gray-300 dark:border-oai-gray-600 bg-oai-gray-50 dark:bg-oai-gray-800"
@@ -209,7 +186,7 @@ export function UsageOverview({
                   >
                     <div className="flex items-center gap-2 mb-1">
                       <div
-                        className="w-2.5 h-2.5 rounded-full"
+                        className="w-2 h-2 rounded-full"
                         style={{ backgroundColor: color }}
                       />
                       <span className="text-sm font-medium text-oai-black dark:text-oai-white">{provider.label}</span>
@@ -220,24 +197,20 @@ export function UsageOverview({
                     <div className="text-xs text-oai-gray-400 dark:text-oai-gray-500 mt-0.5">
                       {provider.models.length} models
                     </div>
-                  </motion.button>
+                  </button>
                 );
               })}
             </div>
 
             {/* Expanded Provider Details */}
             {expandedProvider && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: "auto" }}
-                exit={{ opacity: 0, height: 0 }}
+              <div
                 className="border border-oai-gray-200 dark:border-oai-gray-700 rounded-lg p-4 bg-oai-gray-50/30 dark:bg-oai-gray-800/30 overflow-hidden"
               >
                 {providers
                   .filter((p) => p.label === expandedProvider)
                   .map((provider) => {
                     const color = getProviderColor(provider.label, 0);
-                    // Sort models by share descending
                     const sortedModels = [...provider.models].sort(
                       (a, b) => (b.share || 0) - (a.share || 0)
                     );
@@ -246,23 +219,19 @@ export function UsageOverview({
                       <div key={provider.label}>
                         <div className="flex items-center gap-2 mb-3">
                           <div
-                            className="w-3 h-3 rounded-full"
+                            className="w-2 h-2 rounded-full"
                             style={{ backgroundColor: color }}
                           />
-                          <span className="font-medium text-oai-black dark:text-oai-white">{provider.label}</span>
-                          <span className="text-sm text-oai-gray-400 dark:text-oai-gray-500">
-                            ({provider.totalPercent}%)
+                          <span className="text-sm font-medium text-oai-black dark:text-oai-white">{provider.label}</span>
+                          <span className="text-xs text-oai-gray-400 dark:text-oai-gray-500">
+                            {provider.totalPercent}%
                           </span>
                         </div>
 
-                        {/* Model List */}
                         <div className="space-y-2">
-                          {sortedModels.map((model, modelIdx) => (
-                            <motion.div
+                          {sortedModels.map((model) => (
+                            <div
                               key={model.id || model.name}
-                              initial={{ opacity: 0, x: -10 }}
-                              animate={{ opacity: 1, x: 0 }}
-                              transition={{ delay: modelIdx * 0.05 }}
                               className="flex items-center gap-3"
                             >
                               <div className="flex-1 min-w-0">
@@ -274,63 +243,26 @@ export function UsageOverview({
                                     {model.share}%
                                   </span>
                                 </div>
-                                {/* Mini progress bar for this model within provider */}
                                 <div className="h-1 bg-oai-gray-200 dark:bg-oai-gray-700 rounded-full overflow-hidden">
-                                  <motion.div
-                                    initial={{ width: 0 }}
-                                    animate={{ width: `${model.share}%` }}
-                                    transition={{ duration: 0.4, delay: modelIdx * 0.05 }}
-                                    className="h-full rounded-full"
+                                  <div
+                                    className="h-full rounded-full transition-all duration-500"
                                     style={{
+                                      width: `${model.share}%`,
                                       backgroundColor: color,
                                       opacity: 0.7,
                                     }}
                                   />
                                 </div>
                               </div>
-                            </motion.div>
+                            </div>
                           ))}
                         </div>
                       </div>
                     );
                   })}
-              </motion.div>
+              </div>
             )}
 
-            {/* Quick Overview: Top Models */}
-            {!expandedProvider && topModels.length > 0 && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.6 }}
-                className="pt-4 border-t border-oai-gray-100 dark:border-oai-gray-800"
-              >
-                <div className="text-xs text-oai-gray-500 dark:text-oai-gray-400 uppercase tracking-wider mb-3">
-                  Top Models
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {topModels.map((model, idx) => (
-                    <motion.div
-                      key={`${model.provider}-${model.name}`}
-                      initial={{ opacity: 0, scale: 0.9 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      transition={{ delay: 0.7 + idx * 0.05 }}
-                      whileHover={{ scale: 1.05, y: -1 }}
-                      className="flex items-center gap-1.5 px-2.5 py-1.5 bg-oai-gray-50 dark:bg-oai-gray-800 rounded-md cursor-default transition-colors hover:bg-oai-gray-100 dark:hover:bg-oai-gray-700"
-                    >
-                      <div
-                        className="w-1.5 h-1.5 rounded-full"
-                        style={{ backgroundColor: model.providerColor }}
-                      />
-                      <span className="text-xs text-oai-gray-600 dark:text-oai-gray-400">{model.name}</span>
-                      <span className="text-xs font-medium text-oai-gray-400 dark:text-oai-gray-500 tabular-nums">
-                        {model.share}%
-                      </span>
-                    </motion.div>
-                  ))}
-                </div>
-              </motion.div>
-            )}
           </div>
         )}
       </Card>
