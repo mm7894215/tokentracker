@@ -1,7 +1,5 @@
 <div align="center">
 
-<img src="dashboard/public/icon-192.png" width="96" alt="Token Tracker Icon" />
-
 # TOKEN TRACKER
 
 **Track AI Token Usage Across All Your CLI Tools**
