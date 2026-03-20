@@ -41,6 +41,7 @@ export function ThemeToggle({
   // 太阳图标（亮色模式时显示）
   const SunIcon = () => (
     <svg
+      aria-hidden="true"
       width={iconSize}
       height={iconSize}
       viewBox="0 0 24 24"
@@ -65,6 +66,7 @@ export function ThemeToggle({
   // 月亮图标（暗色模式时显示）
   const MoonIcon = () => (
     <svg
+      aria-hidden="true"
       width={iconSize}
       height={iconSize}
       viewBox="0 0 24 24"
@@ -82,6 +84,7 @@ export function ThemeToggle({
     return (
       <button
         type="button"
+        aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
         onClick={handleClick}
         className={`oai-button-ghost oai-button-sm ${className}`}
         style={{
@@ -108,6 +111,7 @@ export function ThemeToggle({
   return (
     <motion.button
       type="button"
+      aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
       onClick={handleClick}
       className={`oai-button-ghost oai-button-sm ${className}`}
       style={{

@@ -2,6 +2,7 @@ const fs = require("node:fs/promises");
 const fssync = require("node:fs");
 const path = require("node:path");
 const readline = require("node:readline");
+const cp = require("node:child_process");
 
 const { ensureDir } = require("./fs");
 const { hashRepoRoot, resolveGitHubPublicStatus } = require("./vibeusage-public-repo");
@@ -2010,11 +2011,11 @@ function normalizeOpencodeTokens(tokens) {
   const reasoning = toNonNegativeInt(tokens.reasoning);
   const cached = toNonNegativeInt(tokens.cache?.read);
   const cacheWrite = toNonNegativeInt(tokens.cache?.write);
-  const inputTokens = input + cacheWrite;
-  const total = inputTokens + output + reasoning;
+  // cache tokens (read/write) excluded from input_tokens and total_tokens
+  const total = input + output + reasoning;
 
   return {
-    input_tokens: inputTokens,
+    input_tokens: input,
     cached_input_tokens: cached,
     output_tokens: output,
     reasoning_output_tokens: reasoning,
@@ -2132,11 +2133,12 @@ function normalizeUsage(u) {
 }
 
 function normalizeClaudeUsage(u) {
-  const inputTokens =
-    toNonNegativeInt(u?.input_tokens) + toNonNegativeInt(u?.cache_creation_input_tokens);
+  const inputTokens = toNonNegativeInt(u?.input_tokens);
   const outputTokens = toNonNegativeInt(u?.output_tokens);
   const hasTotal = u && Object.prototype.hasOwnProperty.call(u, "total_tokens");
-  const totalTokens = hasTotal ? toNonNegativeInt(u?.total_tokens) : inputTokens + outputTokens;
+  const totalTokens = hasTotal
+    ? toNonNegativeInt(u?.total_tokens)
+    : inputTokens + outputTokens;
   return {
     input_tokens: inputTokens,
     cached_input_tokens: toNonNegativeInt(u?.cache_read_input_tokens),
@@ -2234,14 +2236,237 @@ async function walkOpencodeMessages(dir, out) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// OpenCode SQLite DB reader (v1.2+ stores messages in opencode.db)
+// ---------------------------------------------------------------------------
+
+function readOpencodeDbMessages(dbPath) {
+  if (!dbPath || !fssync.existsSync(dbPath)) return [];
+  const sql = `SELECT id, session_id, time_updated, data FROM message WHERE json_extract(data, '$.role') = 'assistant' ORDER BY time_created ASC`;
+  let raw;
+  try {
+    raw = cp.execFileSync("sqlite3", ["-json", dbPath, sql], {
+      encoding: "utf8",
+      maxBuffer: 50 * 1024 * 1024,
+      timeout: 30_000,
+    });
+  } catch (_e) {
+    return [];
+  }
+  if (!raw || !raw.trim()) return [];
+  let rows;
+  try {
+    rows = JSON.parse(raw);
+  } catch (_e) {
+    return [];
+  }
+  if (!Array.isArray(rows)) return [];
+  const out = [];
+  for (const row of rows) {
+    if (!row || typeof row.data !== "string") continue;
+    let data;
+    try {
+      data = JSON.parse(row.data);
+    } catch (_e) {
+      continue;
+    }
+    const tokens = data?.tokens;
+    if (!tokens || typeof tokens !== "object") continue;
+    // Skip messages with no meaningful token data
+    const hasTokens =
+      toNonNegativeInt(tokens.input) > 0 ||
+      toNonNegativeInt(tokens.output) > 0 ||
+      toNonNegativeInt(tokens.reasoning) > 0;
+    if (!hasTokens) continue;
+    out.push({
+      id: row.id || data.id,
+      sessionID: row.session_id || data.sessionID,
+      timeUpdated: row.time_updated || 0,
+      data,
+    });
+  }
+  return out;
+}
+
+async function parseOpencodeDbIncremental({
+  dbMessages,
+  cursors,
+  queuePath,
+  projectQueuePath,
+  onProgress,
+  source,
+  publicRepoResolver,
+}) {
+  await ensureDir(path.dirname(queuePath));
+  let messagesProcessed = 0;
+  let eventsAggregated = 0;
+
+  const cb = typeof onProgress === "function" ? onProgress : null;
+  const messages = Array.isArray(dbMessages) ? dbMessages : [];
+  const totalMessages = messages.length;
+  const hourlyState = normalizeHourlyState(cursors?.hourly);
+  const projectEnabled = typeof projectQueuePath === "string" && projectQueuePath.length > 0;
+  const projectState = projectEnabled ? normalizeProjectState(cursors?.projectHourly) : null;
+  const projectTouchedBuckets = projectEnabled ? new Set() : null;
+  const projectMetaCache = projectEnabled ? new Map() : null;
+  const publicRepoCache = projectEnabled ? new Map() : null;
+  const opencodeState = normalizeOpencodeState(cursors?.opencode);
+  const messageIndex = opencodeState.messages;
+  const touchedBuckets = new Set();
+  const defaultSource = normalizeSourceInput(source) || "opencode";
+
+  for (let idx = 0; idx < messages.length; idx++) {
+    const entry = messages[idx];
+    const msg = entry.data;
+    if (!msg) continue;
+
+    // DB stores id/sessionID as separate columns; inject into msg for key derivation
+    const msgForKey = { ...msg };
+    if (entry.id && !msgForKey.id) msgForKey.id = entry.id;
+    if (entry.sessionID && !msgForKey.sessionID) msgForKey.sessionID = entry.sessionID;
+    const messageKey = deriveOpencodeMessageKey(msgForKey, null);
+    if (!messageKey) {
+      messagesProcessed += 1;
+      continue;
+    }
+
+    // Skip messages already indexed (from prior JSON-file parsing or previous DB sync)
+    const prev = messageIndex[messageKey];
+    const lastTotals = prev && typeof prev.lastTotals === "object" ? prev.lastTotals : null;
+
+    const currentTotals = normalizeOpencodeTokens(msg?.tokens);
+    if (!currentTotals) {
+      messagesProcessed += 1;
+      continue;
+    }
+
+    const delta = diffGeminiTotals(currentTotals, lastTotals);
+    if (!delta || isAllZeroUsage(delta)) {
+      // Update index with current totals even if no delta (normalization may have changed)
+      if (!sameGeminiTotals(currentTotals, lastTotals)) {
+        messageIndex[messageKey] = {
+          lastTotals: currentTotals,
+          updatedAt: new Date().toISOString(),
+        };
+      }
+      messagesProcessed += 1;
+      if (cb) {
+        cb({
+          index: idx + 1,
+          total: totalMessages,
+          messagesProcessed,
+          eventsAggregated,
+          bucketsQueued: touchedBuckets.size,
+        });
+      }
+      continue;
+    }
+    delta.conversation_count = 1;
+
+    const timestampMs = coerceEpochMs(msg?.time?.completed) || coerceEpochMs(msg?.time?.created);
+    if (!timestampMs) {
+      messagesProcessed += 1;
+      continue;
+    }
+
+    const tsIso = new Date(timestampMs).toISOString();
+    const bucketStart = toUtcHalfHourStart(tsIso);
+    if (!bucketStart) {
+      messagesProcessed += 1;
+      continue;
+    }
+
+    const model = normalizeModelInput(msg?.modelID || msg?.model || msg?.modelId) || DEFAULT_MODEL;
+    const bucket = getHourlyBucket(hourlyState, defaultSource, model, bucketStart);
+    addTotals(bucket.totals, delta);
+    touchedBuckets.add(bucketKey(defaultSource, model, bucketStart));
+
+    if (projectEnabled) {
+      const projectContext = await resolveProjectContextForDb({
+        msg,
+        projectMetaCache,
+        publicRepoCache,
+        publicRepoResolver,
+        projectState,
+      });
+      const projectRef = projectContext?.projectRef || null;
+      const projectKey = projectContext?.projectKey || null;
+      if (projectKey && projectState && projectTouchedBuckets) {
+        const projectBucket = getProjectBucket(
+          projectState,
+          projectKey,
+          defaultSource,
+          bucketStart,
+          projectRef,
+        );
+        addTotals(projectBucket.totals, delta);
+        projectTouchedBuckets.add(projectBucketKey(projectKey, defaultSource, bucketStart));
+      }
+    }
+
+    messageIndex[messageKey] = {
+      lastTotals: currentTotals,
+      updatedAt: new Date().toISOString(),
+    };
+    messagesProcessed += 1;
+    eventsAggregated += 1;
+
+    if (cb) {
+      cb({
+        index: idx + 1,
+        total: totalMessages,
+        messagesProcessed,
+        eventsAggregated,
+        bucketsQueued: touchedBuckets.size,
+      });
+    }
+  }
+
+  const bucketsQueued = await enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets });
+  const projectBucketsQueued = projectEnabled
+    ? await enqueueTouchedProjectBuckets({ projectQueuePath, projectState, projectTouchedBuckets })
+    : 0;
+  hourlyState.updatedAt = new Date().toISOString();
+  cursors.hourly = hourlyState;
+  opencodeState.updatedAt = new Date().toISOString();
+  cursors.opencode = opencodeState;
+  if (projectState) {
+    projectState.updatedAt = new Date().toISOString();
+    cursors.projectHourly = projectState;
+  }
+
+  return { messagesProcessed, eventsAggregated, bucketsQueued, projectBucketsQueued };
+}
+
+// Resolve project context from DB message (no file path available)
+async function resolveProjectContextForDb({
+  msg,
+  projectMetaCache,
+  publicRepoCache,
+  publicRepoResolver,
+  projectState,
+}) {
+  const cwd = msg?.path?.cwd;
+  if (!cwd || typeof cwd !== "string") return null;
+  return resolveProjectContextForPath({
+    startDir: cwd,
+    projectMetaCache,
+    publicRepoCache,
+    publicRepoResolver,
+    projectState,
+  });
+}
+
 module.exports = {
   listRolloutFiles,
   listClaudeProjectFiles,
   listGeminiSessionFiles,
   listOpencodeMessageFiles,
+  readOpencodeDbMessages,
   parseRolloutIncremental,
   parseClaudeIncremental,
   parseGeminiIncremental,
   parseOpencodeIncremental,
+  parseOpencodeDbIncremental,
   parseOpenclawIncremental,
 };

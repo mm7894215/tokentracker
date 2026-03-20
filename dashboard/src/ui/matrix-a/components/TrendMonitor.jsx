@@ -116,11 +116,11 @@ export function TrendMonitor({
   return (
     <div className={`rounded-xl border border-oai-gray-200 dark:border-oai-gray-800 bg-white dark:bg-oai-gray-900 p-5 ${className}`}>
       <div className="mb-3">
-        <h3 className="text-sm font-medium text-oai-gray-500 dark:text-oai-gray-400 uppercase tracking-wide">
+        <h3 className="text-sm font-medium text-oai-gray-500 dark:text-oai-gray-300 uppercase tracking-wide">
           {copy("trend.monitor.label")}
         </h3>
         {showTimeZoneLabel && timeZoneLabel && (
-          <p className="text-xs text-oai-gray-400 dark:text-oai-gray-500 mt-0.5">{timeZoneLabel}</p>
+          <p className="text-xs text-oai-gray-400 dark:text-oai-gray-400 mt-0.5">{timeZoneLabel}</p>
         )}
       </div>
       <div className="space-y-3">
@@ -149,14 +149,14 @@ export function TrendMonitor({
               ))
             ) : (
               <div className="flex-1 h-full flex items-center justify-center">
-                <p className="text-sm text-oai-gray-400 dark:text-oai-gray-500">No data yet</p>
+                <p className="text-sm text-oai-gray-400 dark:text-oai-gray-400">No data yet</p>
               </div>
             )}
           </div>
         </div>
 
         {from && to && (
-          <div className="flex justify-between text-xs text-oai-gray-500 dark:text-oai-gray-400 font-medium pt-2 border-t border-oai-gray-100 dark:border-oai-gray-800">
+          <div className="flex justify-between text-xs text-oai-gray-500 dark:text-oai-gray-300 font-medium pt-2 border-t border-oai-gray-100 dark:border-oai-gray-800">
             <span>{from}</span>
             <span>{to}</span>
           </div>

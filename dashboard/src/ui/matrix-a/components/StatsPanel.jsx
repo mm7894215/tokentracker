@@ -74,25 +74,25 @@ export function StatsPanel({
             <span className="text-sm font-semibold text-oai-black dark:text-oai-white tabular-nums">
               {formatValue(rolling?.last_7d?.totals?.billable_total_tokens)}
             </span>
-            <span className="text-[10px] text-oai-gray-400 dark:text-oai-gray-500 mt-0.5">7d</span>
+            <span className="text-[10px] text-oai-gray-400 dark:text-oai-gray-400 mt-0.5">7d</span>
           </div>
           <div className="flex flex-col items-center justify-center px-2 py-2 bg-oai-gray-50 dark:bg-oai-gray-800 rounded-lg">
             <span className="text-sm font-semibold text-oai-black dark:text-oai-white tabular-nums">
               {formatValue(rolling?.last_30d?.totals?.billable_total_tokens)}
             </span>
-            <span className="text-[10px] text-oai-gray-400 dark:text-oai-gray-500 mt-0.5">30d</span>
+            <span className="text-[10px] text-oai-gray-400 dark:text-oai-gray-400 mt-0.5">30d</span>
           </div>
           <div className="flex flex-col items-center justify-center px-2 py-2 bg-oai-gray-50 dark:bg-oai-gray-800 rounded-lg">
             <span className="text-sm font-semibold text-oai-black dark:text-oai-white tabular-nums">
               {formatValue(rolling?.last_30d?.avg_per_active_day)}
             </span>
-            <span className="text-[10px] text-oai-gray-400 dark:text-oai-gray-500 mt-0.5">avg</span>
+            <span className="text-[10px] text-oai-gray-400 dark:text-oai-gray-400 mt-0.5">avg</span>
           </div>
           <div className="flex flex-col items-center justify-center px-2 py-2 bg-oai-gray-50 dark:bg-oai-gray-800 rounded-lg">
             <span className="text-sm font-semibold text-oai-black dark:text-oai-white tabular-nums">
               {formatValue(rolling?.last_30d?.totals?.conversation_count)}
             </span>
-            <span className="text-[10px] text-oai-gray-400 dark:text-oai-gray-500 mt-0.5">convs</span>
+            <span className="text-[10px] text-oai-gray-400 dark:text-oai-gray-400 mt-0.5">convs</span>
           </div>
         </div>
 
@@ -110,7 +110,7 @@ export function StatsPanel({
                   key={row.id || name}
                   className={`flex items-center py-2 ${!isLast ? "border-b border-oai-gray-50 dark:border-oai-gray-800" : ""}`}
                 >
-                  <span className="w-5 h-5 flex items-center justify-center rounded-full bg-oai-gray-100 dark:bg-oai-gray-800 text-[10px] font-semibold text-oai-gray-500 dark:text-oai-gray-400 flex-shrink-0">
+                  <span className="w-5 h-5 flex items-center justify-center rounded-full bg-oai-gray-100 dark:bg-oai-gray-800 text-[10px] font-semibold text-oai-gray-500 dark:text-oai-gray-300 flex-shrink-0">
                     {rankNum}
                   </span>
                   <span className="flex-1 text-sm text-oai-gray-700 dark:text-oai-gray-300 truncate px-2.5" title={name}>
@@ -141,14 +141,14 @@ export function StatsPanel({
         )}
 
         {/* Footer */}
-        <div className="mt-4 pt-3 border-t border-oai-gray-100 dark:border-oai-gray-800 flex items-center justify-between text-xs text-oai-gray-400 dark:text-oai-gray-500">
+        <div className="mt-4 pt-3 border-t border-oai-gray-100 dark:border-oai-gray-800 flex items-center justify-between text-xs text-oai-gray-400 dark:text-oai-gray-400">
           <div className="flex items-center gap-1.5">
             <span>{copy("identity_card.rank_label")}</span>
-            <span className="text-oai-gray-500 dark:text-oai-gray-400 tabular-nums">{rankValue}</span>
+            <span className="text-oai-gray-500 dark:text-oai-gray-300 tabular-nums">{rankValue}</span>
           </div>
           <div className="flex items-center gap-1">
             <span>{copy("identity_card.streak_label")}</span>
-            <span className="text-oai-gray-500 dark:text-oai-gray-400 tabular-nums">{streakValue}</span>
+            <span className="text-oai-gray-500 dark:text-oai-gray-300 tabular-nums">{streakValue}</span>
           </div>
         </div>
       </Card>

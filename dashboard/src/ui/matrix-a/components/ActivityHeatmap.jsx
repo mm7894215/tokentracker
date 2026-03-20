@@ -160,10 +160,10 @@ export function ActivityHeatmap({
     <div className="rounded-xl border border-oai-gray-200 dark:border-oai-gray-800 bg-white dark:bg-oai-gray-900 p-5">
       {/* Header */}
       <div className="flex items-baseline justify-between mb-3">
-        <h3 className="text-sm font-medium text-oai-gray-500 dark:text-oai-gray-400 uppercase tracking-wide">
+        <h3 className="text-sm font-medium text-oai-gray-500 dark:text-oai-gray-300 uppercase tracking-wide">
           {copy("heatmap.title")}
         </h3>
-        <span className="text-xs text-oai-gray-400 dark:text-oai-gray-500">{timeZoneShortLabel || copy("heatmap.legend.utc")}</span>
+        <span className="text-xs text-oai-gray-400 dark:text-oai-gray-400">{timeZoneShortLabel || copy("heatmap.legend.utc")}</span>
       </div>
 
       {/* Heatmap */}
@@ -173,7 +173,7 @@ export function ActivityHeatmap({
         <div style={{ minWidth: gridCols }}>
           {/* Month labels */}
           <div
-            className="grid text-[10px] uppercase text-oai-gray-400 dark:text-oai-gray-500 mb-1"
+            className="grid text-[10px] uppercase text-oai-gray-400 dark:text-oai-gray-400 mb-1"
             style={{
               gridTemplateColumns: `${LABEL_WIDTH}px repeat(${weeks.length}, ${CELL_SIZE}px)`,
               columnGap: CELL_GAP,
@@ -197,7 +197,7 @@ export function ActivityHeatmap({
           >
             {/* Day labels */}
             <div
-              className="grid text-[10px] text-oai-gray-400 dark:text-oai-gray-500 sticky left-0 bg-white dark:bg-oai-gray-900 pr-2"
+              className="grid text-[10px] text-oai-gray-400 dark:text-oai-gray-400 sticky left-0 bg-white dark:bg-oai-gray-900 pr-2"
               style={{ gridTemplateRows: `repeat(7, ${CELL_SIZE}px)`, rowGap: CELL_GAP }}
             >
               {dayLabels.map((l) => (
@@ -248,13 +248,13 @@ export function ActivityHeatmap({
       {/* Legend */}
       {!hideLegend && (
         <div className="flex items-center justify-center gap-2 mt-3">
-          <span className="text-[10px] text-oai-gray-400 dark:text-oai-gray-500">{copy("heatmap.legend.less")}</span>
+          <span className="text-[10px] text-oai-gray-400 dark:text-oai-gray-400">{copy("heatmap.legend.less")}</span>
           <div className="flex gap-0.5">
             {heatmapColors.map((c, i) => (
               <span key={i} className="rounded-[1px]" style={{ width: 10, height: 10, background: c }} />
             ))}
           </div>
-          <span className="text-[10px] text-oai-gray-400 dark:text-oai-gray-500">{copy("heatmap.legend.more")}</span>
+          <span className="text-[10px] text-oai-gray-400 dark:text-oai-gray-400">{copy("heatmap.legend.more")}</span>
         </div>
       )}
     </div>

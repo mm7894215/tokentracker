@@ -40,8 +40,9 @@ function RefreshButton({ loading, onClick }) {
   const shouldReduceMotion = useReducedMotion();
 
   return (
-    <Button variant="secondary" size="sm" disabled={loading} onClick={onClick} className="w-8 p-0">
+    <Button variant="secondary" size="sm" disabled={loading} onClick={onClick} aria-label="Refresh data" className="w-8 p-0">
       <motion.span
+        aria-hidden="true"
         animate={loading ? { rotate: 360 } : { rotate: 0 }}
         transition={
           loading && !shouldReduceMotion
@@ -86,15 +87,17 @@ export function UsageOverview({
       <Card className={className}>
         {/* Header: Period Tabs + Refresh */}
         <div className="flex items-center justify-between gap-3 mb-6">
-          <div className="flex gap-1">
+          <div role="tablist" aria-label="Time period" className="flex gap-1">
             {tabs.map((p) => (
               <button
                 key={p.key}
+                role="tab"
+                aria-selected={period === p.key}
                 type="button"
                 className={`text-xs font-medium px-3 py-1.5 rounded-md transition-colors ${
                   period === p.key
                     ? "text-oai-black dark:text-oai-white bg-oai-gray-100 dark:bg-oai-gray-800"
-                    : "text-oai-gray-500 dark:text-oai-gray-400 hover:text-oai-black dark:hover:text-oai-white hover:bg-oai-gray-50 dark:hover:bg-oai-gray-800"
+                    : "text-oai-gray-500 dark:text-oai-gray-300 hover:text-oai-black dark:hover:text-oai-white hover:bg-oai-gray-50 dark:hover:bg-oai-gray-800"
                 }`}
                 onClick={() => onPeriodChange?.(p.key)}
               >
@@ -109,7 +112,7 @@ export function UsageOverview({
 
         {/* Main Stats */}
         <div className="text-center mb-8">
-          <div className="text-xs text-oai-gray-500 dark:text-oai-gray-400 uppercase tracking-wider mb-3">{summaryLabel}</div>
+          <div className="text-xs text-oai-gray-500 dark:text-oai-gray-300 uppercase tracking-wider mb-3">{summaryLabel}</div>
           <div className="text-6xl md:text-7xl font-bold text-oai-black dark:text-oai-white tracking-tight tabular-nums">
             {showAnimatedSummary ? (
               <Counter
@@ -137,8 +140,8 @@ export function UsageOverview({
                 <button
                   type="button"
                   onClick={onCostInfo}
-                  className="w-5 h-5 rounded-full bg-oai-gray-100 dark:bg-oai-gray-800 text-oai-gray-500 dark:text-oai-gray-400 hover:bg-oai-brand hover:text-white text-xs transition-colors"
-                  aria-label="Cost info"
+                  className="w-8 h-8 rounded-full bg-oai-gray-100 dark:bg-oai-gray-800 text-oai-gray-500 dark:text-oai-gray-300 hover:bg-oai-brand hover:text-white text-xs transition-colors"
+                  aria-label="View cost breakdown"
                 >
                   ?
                 </button>
@@ -151,7 +154,11 @@ export function UsageOverview({
         {providers.length > 0 && (
           <div className="space-y-6">
             {/* Distribution Bar */}
-            <div className="h-1.5 w-full bg-oai-gray-100 dark:bg-oai-gray-800 rounded-full overflow-hidden flex">
+            <div
+              role="img"
+              aria-label={`Provider distribution: ${providers.map(p => `${p.label} ${p.totalPercent}%`).join(", ")}`}
+              className="h-1.5 w-full bg-oai-gray-100 dark:bg-oai-gray-800 rounded-full overflow-hidden flex"
+            >
               {providers.map((provider, idx) => {
                 const color = getProviderColor(provider.label, idx);
                 return (
@@ -177,6 +184,9 @@ export function UsageOverview({
                 return (
                   <button
                     key={provider.label}
+                    aria-expanded={isExpanded}
+                    aria-controls={`provider-details-${provider.label}`}
+                    aria-label={`${provider.label}: ${provider.totalPercent}%. Click to ${isExpanded ? "collapse" : "expand"} details`}
                     onClick={() => setExpandedProvider(isExpanded ? null : provider.label)}
                     className={`flex-1 min-w-[140px] text-left p-3 rounded-lg border transition-colors duration-200 ${
                       isExpanded
@@ -194,7 +204,7 @@ export function UsageOverview({
                     <div className="text-lg font-semibold text-oai-black dark:text-oai-white tabular-nums">
                       {provider.totalPercent}%
                     </div>
-                    <div className="text-xs text-oai-gray-400 dark:text-oai-gray-500 mt-0.5">
+                    <div className="text-xs text-oai-gray-400 dark:text-oai-gray-400 mt-0.5">
                       {provider.models.length} models
                     </div>
                   </button>
@@ -205,6 +215,9 @@ export function UsageOverview({
             {/* Expanded Provider Details */}
             {expandedProvider && (
               <div
+                id={`provider-details-${expandedProvider}`}
+                role="region"
+                aria-label={`${expandedProvider} model details`}
                 className="border border-oai-gray-200 dark:border-oai-gray-700 rounded-lg p-4 bg-oai-gray-50/30 dark:bg-oai-gray-800/30 overflow-hidden"
               >
                 {providers
@@ -223,7 +236,7 @@ export function UsageOverview({
                             style={{ backgroundColor: color }}
                           />
                           <span className="text-sm font-medium text-oai-black dark:text-oai-white">{provider.label}</span>
-                          <span className="text-xs text-oai-gray-400 dark:text-oai-gray-500">
+                          <span className="text-xs text-oai-gray-400 dark:text-oai-gray-400">
                             {provider.totalPercent}%
                           </span>
                         </div>

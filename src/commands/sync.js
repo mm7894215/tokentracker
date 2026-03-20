@@ -9,10 +9,12 @@ const {
   listClaudeProjectFiles,
   listGeminiSessionFiles,
   listOpencodeMessageFiles,
+  readOpencodeDbMessages,
   parseRolloutIncremental,
   parseClaudeIncremental,
   parseGeminiIncremental,
   parseOpencodeIncremental,
+  parseOpencodeDbIncremental,
   parseOpenclawIncremental,
 } = require("../lib/rollout");
 const { drainQueueToCloud } = require("../lib/uploader");
@@ -216,6 +218,37 @@ async function cmdSync(argv) {
         },
         source: "opencode",
       });
+    }
+
+    // OpenCode v1.2+ stores messages in SQLite (opencode.db) instead of JSON files.
+    const opencodeDbPath = path.join(opencodeHome, "opencode.db");
+    let opencodeDbResult = { messagesProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
+    const dbMessages = readOpencodeDbMessages(opencodeDbPath);
+    if (dbMessages.length > 0) {
+      if (progress?.enabled) {
+        progress.start(
+          `Parsing Opencode DB ${renderBar(0)} 0/${formatNumber(dbMessages.length)} msgs | buckets 0`,
+        );
+      }
+      opencodeDbResult = await parseOpencodeDbIncremental({
+        dbMessages,
+        cursors,
+        queuePath,
+        projectQueuePath,
+        onProgress: (p) => {
+          if (!progress?.enabled) return;
+          const pct = p.total > 0 ? p.index / p.total : 1;
+          progress.update(
+            `Parsing Opencode DB ${renderBar(pct)} ${formatNumber(p.index)}/${formatNumber(
+              p.total,
+            )} msgs | buckets ${formatNumber(p.bucketsQueued)}`,
+          );
+        },
+        source: "opencode",
+      });
+      opencodeResult.filesProcessed += opencodeDbResult.messagesProcessed;
+      opencodeResult.eventsAggregated += opencodeDbResult.eventsAggregated;
+      opencodeResult.bucketsQueued += opencodeDbResult.bucketsQueued;
     }
 
     if (cursors?.projectHourly?.projects && projectQueuePath && projectQueueStatePath) {

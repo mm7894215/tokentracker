@@ -15,10 +15,10 @@ export function Card({
       {(title || subtitle) && (
         <div className="px-5 py-4 border-b border-oai-gray-200 dark:border-oai-gray-800 transition-colors duration-200">
           {title && (
-            <h3 className="text-sm font-medium text-oai-gray-500 dark:text-oai-gray-400 uppercase tracking-wide transition-colors duration-200">{title}</h3>
+            <h3 className="text-sm font-medium text-oai-gray-500 dark:text-oai-gray-300 uppercase tracking-wide transition-colors duration-200">{title}</h3>
           )}
           {subtitle && (
-            <p className="text-sm text-oai-gray-500 dark:text-oai-gray-400 mt-1 transition-colors duration-200">{subtitle}</p>
+            <p className="text-sm text-oai-gray-500 dark:text-oai-gray-300 mt-1 transition-colors duration-200">{subtitle}</p>
           )}
         </div>
       )}

@@ -102,11 +102,11 @@ export const NeuralAdaptiveFleet = React.memo(function NeuralAdaptiveFleet({
       <div className="flex justify-between items-center pb-3">
         <div className="flex items-center gap-3">
           <span className="text-base font-semibold text-oai-gray-900 dark:text-oai-gray-100">{label}</span>
-          <span className="text-xs font-medium text-oai-gray-500 dark:text-oai-gray-400 bg-oai-gray-100/80 dark:bg-oai-gray-800/80 px-2.5 py-1 rounded-full">{usageLabel}</span>
+          <span className="text-xs font-medium text-oai-gray-500 dark:text-oai-gray-300 bg-oai-gray-100/80 dark:bg-oai-gray-800/80 px-2.5 py-1 rounded-full">{usageLabel}</span>
         </div>
         <div className="flex items-baseline gap-1">
           <span className="text-2xl font-bold text-oai-black dark:text-oai-white tabular-nums tracking-tight">{totalPercent}</span>
-          <span className="text-sm font-semibold text-oai-gray-400 dark:text-oai-gray-500">{percentSymbol}</span>
+          <span className="text-sm font-semibold text-oai-gray-400 dark:text-oai-gray-400">{percentSymbol}</span>
         </div>
       </div>
 

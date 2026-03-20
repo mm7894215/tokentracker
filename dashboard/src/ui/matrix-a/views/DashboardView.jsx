@@ -104,7 +104,7 @@ export function DashboardView(props) {
         {publicViewInvalid ? (
           <div className="mb-6">
             <Card title={publicViewInvalidTitle} className="border-oai-gray-200 dark:border-oai-gray-800">
-              <p className="text-sm text-oai-gray-500 dark:text-oai-gray-400 mt-0">{publicViewInvalidBody}</p>
+              <p className="text-sm text-oai-gray-500 dark:text-oai-gray-300 mt-0">{publicViewInvalidBody}</p>
             </Card>
           </div>
         ) : null}
@@ -137,7 +137,7 @@ export function DashboardView(props) {
                 {shouldShowInstall ? (
                   <FadeIn delay={0.25}>
                     <div className="rounded-xl border border-oai-gray-200 dark:border-oai-gray-800 bg-white dark:bg-oai-gray-900 p-3">
-                      <div className="text-xs text-oai-gray-500 dark:text-oai-gray-400 mb-1.5">{installPrompt}</div>
+                      <div className="text-xs text-oai-gray-500 dark:text-oai-gray-300 mb-1.5">{installPrompt}</div>
                       <motion.button
                         onClick={handleCopyInstall}
                         whileHover={{ scale: 1.01 }}
@@ -182,7 +182,7 @@ export function DashboardView(props) {
                           key={publicViewEnabled ? "public" : "private"}
                           initial={{ opacity: 0, y: -5 }}
                           animate={{ opacity: 1, y: 0 }}
-                          className="text-xs text-oai-gray-600 dark:text-oai-gray-400"
+                          className="text-xs text-oai-gray-600 dark:text-oai-gray-300"
                         >
                           {publicViewEnabled ? "Public" : "Private"}
                         </motion.span>
@@ -231,7 +231,7 @@ export function DashboardView(props) {
                     >
                       {screenshotTwitterButton}
                     </Button>
-                    <span className="text-sm text-oai-gray-500 dark:text-oai-gray-400">
+                    <span className="text-sm text-oai-gray-500 dark:text-oai-gray-300">
                       {screenshotTwitterHint}
                     </span>
                   </div>

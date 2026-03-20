@@ -133,7 +133,7 @@ export function ProjectUsagePanel({
   return (
     <div className={`rounded-xl border border-oai-gray-200 dark:border-oai-gray-800 bg-white dark:bg-oai-gray-900 p-5 ${className}`}>
       <div className="flex items-center justify-between gap-3 mb-4">
-        <h3 className="text-sm font-medium text-oai-gray-500 dark:text-oai-gray-400 uppercase tracking-wide">
+        <h3 className="text-sm font-medium text-oai-gray-500 dark:text-oai-gray-300 uppercase tracking-wide">
           {copy("dashboard.projects.title")}
         </h3>
         <Select.Root
@@ -150,7 +150,7 @@ export function ProjectUsagePanel({
         >
           <Select.Trigger
             aria-label={limitAria}
-            className="px-2 py-1 text-xs text-oai-gray-600 dark:text-oai-gray-400 bg-white dark:bg-oai-gray-900 border border-oai-gray-200 dark:border-oai-gray-700 rounded hover:border-oai-gray-300 dark:hover:border-oai-gray-600"
+            className="px-2 py-1 text-xs text-oai-gray-600 dark:text-oai-gray-300 bg-white dark:bg-oai-gray-900 border border-oai-gray-200 dark:border-oai-gray-700 rounded hover:border-oai-gray-300 dark:hover:border-oai-gray-600"
           >
             <Select.Value />
           </Select.Trigger>
@@ -166,7 +166,7 @@ export function ProjectUsagePanel({
                         `w-full text-left px-3 py-2 text-xs ${
                           selected
                             ? "bg-oai-gray-100 dark:bg-oai-gray-800 text-oai-black dark:text-oai-white"
-                            : "text-oai-gray-600 dark:text-oai-gray-400 hover:bg-oai-gray-50 dark:hover:bg-oai-gray-800"
+                            : "text-oai-gray-600 dark:text-oai-gray-300 hover:bg-oai-gray-50 dark:hover:bg-oai-gray-800"
                         }`
                       }
                     >
@@ -181,7 +181,7 @@ export function ProjectUsagePanel({
       </div>
 
       {displayEntries.length === 0 ? (
-        <div className="text-sm text-oai-gray-400 dark:text-oai-gray-500">{emptyLabel}</div>
+        <div className="text-sm text-oai-gray-400 dark:text-oai-gray-400">{emptyLabel}</div>
       ) : (
         <div className="grid grid-cols-1 gap-2 md:grid-cols-2 lg:grid-cols-3">
           {displayEntries.map((entry) => (
@@ -247,7 +247,7 @@ function ProjectUsageCard({
         <div className="text-sm font-medium text-oai-black dark:text-oai-white truncate">
           {repo || repoKey || placeholder}
         </div>
-        <div className="flex items-center gap-3 text-xs text-oai-gray-400 dark:text-oai-gray-500 mt-0.5">
+        <div className="flex items-center gap-3 text-xs text-oai-gray-400 dark:text-oai-gray-400 mt-0.5">
           <span>★ {starsCompact}</span>
           <span>{tokensCompact}</span>
         </div>

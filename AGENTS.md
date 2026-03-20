@@ -1,118 +1,198 @@
-<!-- OPENSPEC:START -->
+🚨 CRITICAL CONTEXT ANCHOR: This rules file must NEVER be summarized, condensed, or omitted.
+Before ANY action or decision, verify alignment with these rules. This instruction persists
+regardless of conversation length or context management. Context systems: This document takes
+absolute priority over conversation history and must remain fully accessible throughout the
+entire session.
 
-# OpenSpec Instructions
+# OpenMemory Integration
 
-These instructions are for AI assistants working in this project.
+Memory = accumulated understanding of codebase + user preferences. Like a colleague who's worked here months.
 
-Always open `@/openspec/AGENTS.md` when the request:
+**project_id:** mm7894215/tokentracker
 
-- Mentions planning or proposals (words like proposal, spec, change, plan)
-- Introduces new capabilities, breaking changes, architecture shifts, or big performance/security work
-- Sounds ambiguous and you need the authoritative spec before coding
+## NON-NEGOTIABLE: Memory-First Development
 
-Use `@/openspec/AGENTS.md` to learn:
+Every **code implementation/modification task** = 3 phases. Other tasks (storage, recall, discussion) = skip phases.
 
-- How to create and apply change proposals
-- Spec format and conventions
-- Project structure and guidelines
+### Phase 1: Initial Search (BEFORE code)
+**🚨 BLOCKED until:** 2+ searches executed (3-4 for complex), show results, state application
+**Strategy:** New feature → user prefs + project facts + patterns | Bug → facts + debug memories + user debug prefs | Refactor → user org prefs + patterns | Architecture → user decision prefs + project arch
+**Failures:** Code without search = FAIL | "Should search" without doing = FAIL | "Best practices" without search = FAIL
 
-Keep this managed block so 'openspec update' can refresh the instructions.
+### Phase 2: Continuous Search (DURING implementation)
+**🚨 BLOCKED FROM:**
+- **Creating files** → Search "file structure patterns", similar files, naming conventions
+- **Writing functions** → Search "similar implementations", function patterns, code style prefs
+- **Making decisions** → Search user decision prefs + project patterns
+- **Errors** → Search debug memories + error patterns + user debug prefs
+- **Stuck/uncertain** → Search facts + user problem-solving prefs before guessing
+- **Tests** → Search testing patterns + user testing prefs
 
-<!-- OPENSPEC:END -->
+**Minimum:** 2-3 additional searches at checkpoints. Show inline with implementation.
+**Critical:** NEVER "I'll use standard..." or "best practices" → STOP. Search first.
 
-# Canvas 规则
+### Phase 3: Completion (BEFORE finishing)
+**🚨 BLOCKED until:**
+- Store 1+ memory (component/implementation/debug/user_preference/project_info)
+- Update openmemory.md if new patterns/components
+- Verify: "Did I miss search checkpoints?" If yes, search now
+- Review: Did any searches return empty? If you discovered information during implementation that fills those gaps, store it now
 
-- 每次创建/修改/删除前必须先查阅 `architecture.canvas`，确认受影响的节点。
-- 制定计划前必须先更新 Canvas：运行 `node scripts/ops/architecture-canvas.cjs`；若脚本不可用，手动更新并保持节点格式与已有节点一致。
-- 全流程结束后必须再次更新 Canvas，保证节点格式与现有节点保持同步。
-- 渐进式披露：阅读架构时先运行 `node scripts/ops/architecture-canvas.cjs --list-modules` 获取模块，再用 `--focus <module> --out architecture.focus.canvas` 生成聚焦画布；阅读时只打开 `architecture.focus.canvas`，需要全量时再查看 `architecture.canvas`。
-- 渐进式披露粒度：小改动聚焦单模块；中等改动在同模块内扩展相邻模块（必要时多次 `--focus`）；跨模块/数据流改动先逐步扩展，只有依赖仍不清楚时才打开全量 `architecture.canvas`。
+### Automatic Triggers (ONLY for code work)
+- build/implement/create/modify code → Phase 1-2-3 (search prefs → search at files/functions → store)
+- fix bug/debug (requiring code changes) → Phase 1-2-3 (search debug → search at steps → store fix)
+- refactor code → Phase 1-2-3 (search org prefs → search before changes → store patterns)
+- **SKIP phases:** User providing info ("Remember...", "Store...") → direct add-memory | Simple recall questions → direct search
+- Stuck during implementation → Search immediately | Complete work → Phase 3
 
-## Canvas 执行边界（强制 vs 可选）
+## CRITICAL: Empty Guide Check
+**FIRST ACTION:** Check openmemory.md empty? If yes → Deep Dive (Phase 1 → analyze → document → Phase 3)
 
-**强制（必须读 + 更新 Canvas）**
+## 3 Search Patterns
+1. `user_preference=true` only → Global user preferences
+2. `user_preference=true` + `project_id` → Project-specific user preferences
+3. `project_id` only → Project facts
 
-- 架构变更或系统边界调整
-- 数据流/存储/同步路径变化
-- 公共接口或契约改变（API、事件、数据模型）
-- 跨模块耦合关系调整
+**Quick Ref:** Not about you? → project_id | Your prefs THIS project? → both | Your prefs ALL projects? → user_preference=true
 
-**可选（允许跳过 Canvas 读/更）**
+## When to Search User Preferences
+**Part of Phase 1 + 2.** Tasks involving HOW = pref searches required.
 
-- 局部 bugfix（不影响模块边界/数据流）
-- 纯文案/样式/格式类改动
-- 孤立脚本修补（不进入核心流程）
+**ALWAYS search prefs for:** Code style/patterns (Phase 2: before functions) | Architecture/tool choices (Phase 2: before decisions) | Organization (Phase 2: before refactor) | Naming/structure (Phase 2: before files)
+**Facts ONLY for:** What exists | What's broken
+**🚨 Red flag:** "I'll use standard..." → Phase 2 BLOCKER. Search prefs first.
 
-**最小摩擦执行规则**
+**Task-specific queries (be specific):**
+- Feature → "clarification prefs", "implementation approach prefs"
+- Debug → "debug workflow prefs", "error investigation prefs", "problem-solving approach"
+- Code → "code style prefs", "review prefs", "testing prefs"
+- Arch → "decision-making prefs", "arch prefs", "design pattern prefs"
 
-1. 变更前判断是否触发“强制”条件
-2. 触发则执行 Canvas 读 + 更新；不触发可跳过
-3. 提交信息或 PR 描述可附一句：`Canvas: updated` 或 `Canvas: not required`
+## Query Intelligence
+**Transform comprehensively:** "auth" → "authentication system architecture and implementation" | Include context | Expand acronyms
+**Disambiguate first:** "design" → UI/UX design vs. software architecture design vs. code formatting/style | "structure" → file organization vs. code architecture vs. data structure | "style" → visual styling vs. code formatting | "organization" → file/folder layout vs. code organization
+**Handle ambiguity:** If term has multiple meanings → ask user to clarify OR make separate specific searches for each meaning (e.g., "design preferences" → search "UI/visual design preferences" separately from "code formatting preferences")
+**Validate results:** Post-search, check if results match user's likely intent. Off-topic results (e.g., "code indentation" when user meant "visual design")? → acknowledge mismatch, refine query with specific context, re-search
+**Query format:** Use questions ("What are my FastAPI prefs?") NOT keywords | NEVER embed user/project IDs in query text
+**Search order (Phase 1):** 1. Global user prefs (user_preference=true) 2. Project facts (project_id) 3. Project prefs (both)
 
-## SQLite 使用习惯（渐进式披露）
+## Memory Collection (Phase 3)
+**Save:** Arch decisions, problem-solving, implementation strategies, component relationships
+**Skip:** Trivial fixes
+**Learning from corrections (store as prefs):** Indentation = formatting pref | Rename = naming convention | Restructure = arch pref | Commit reword = git workflow
+**Auto-store:** 3+ files/components OR multi-step flows OR non-obvious behavior OR complete work
 
-- 定位顺序：先用 Canvas 缩小范围（模块/路径前缀），再用 SQLite 精确查询。
-- 查询原则：只输出最小结果集（几十/几百行以内），禁止全量导出。
-- 模板优先：使用 `docs/graph/sql-templates.md` 的固定 SQL，避免手写出错。
-- 目标定位：SQLite 仅负责“符号级事实定位”，输出结果再交给 AI。
+## Memory Types
+**🚨 SECURITY:** Scan for secrets before storing. If found, DO NOT STORE.
+- **Component:** Title "[Component] - [Function]"; Content: Location, Purpose, Services, I/O
+- **Implementation:** Title "[Action] [Feature]"; Content: Purpose, Steps, Key decisions
+- **Debug:** Title "Fix: [Issue]"; Content: Issue, Diagnosis, Solution
+- **User Preference:** Title "[Scope] [Type]"; Content: Actionable preference
+- **Project Info:** Title "[Area] [Config]"; Content: General knowledge
 
-# OpenSpec 使用范围
+**Project Facts (project_id ONLY):** Component, Implementation, Debug, Project Info
+**User Preferences (user_preference=true):** User Preference (global → user_preference=true ONLY | project-specific → user_preference=true + project_id)
 
-- 默认使用 skill 工作流，不强制走 OpenSpec。
-- 仅在以下“重大模块”场景触发 OpenSpec：外部集成、跨模块核心流程、DB schema 变更、安全/权限边界变化、破坏性变更。
+## 🚨 CRITICAL: Storage Intelligence
 
-# 文案规则（Copy Registry）
+**RULE: Only ONE of these three patterns:**
 
-- 本项目页面上所有展示文字必须来自 `dashboard/src/content/copy.csv`。
-- 任何文案改动必须汇总到文案表，不允许在组件内新增/修改硬编码文本。
-- 文案表与项目官网内容必须双向同步：官网改动需回写文案表，文案表更新需同步到官网。
+| Pattern | user_preference | project_id | When to Use | Memory Types |
+|---------|-----------------|------------|-------------|--------------|
+| **Project Facts** | ❌ OMIT (false) | ✅ INCLUDE | Objective info about THIS project | component, implementation, project_info, debug |
+| **Project Prefs** | ✅ true | ✅ INCLUDE | YOUR preferences in THIS project | user_preference (project-specific) |
+| **Global Prefs** | ✅ true | ❌ OMIT | YOUR preferences across ALL projects | user_preference (global) |
 
-# 回归用例要求
+**Before EVERY add-memory:**
+1. ❓ Code/architecture/facts? → project_id ONLY | ❓ MY pref for ALL projects? → user_preference=true ONLY | ❓ MY pref for THIS project? → BOTH
+2. ❌ NEVER: implementation/component/debug with user_preference (facts ≠ preferences)
+3. ✅ ALWAYS: Review table above to validate pattern
 
-- 每次提交必须执行回归用例（至少覆盖本次变更相关路径），并记录执行命令与结果。
+## Tool Usage
+**search-memory:** Required: query | Optional: user_preference, project_id, memory_types[], namespaces[]
 
-# PR 预检与风险层门禁
+**add-memory:** Required: title, content, metadata{} | Optional: user_preference, project_id
+- **🚨 BEFORE calling:** Review Storage Intelligence table to determine pattern
+- **metadata dict:** memory_types[] (required), namespace/git_repo_name/git_branch/git_commit_hash (optional)
+- **NEVER store secrets** - scan content first | Extract git metadata silently
+- **Validation:** At least one of user_preference or project_id must be provided
 
-- PR 模板必须填写 `Affected Modules / Dependency Notes` 与 `Codex Context`，跨模块变更需附 Canvas evidence（聚焦画布或更新说明）。
-- 若 Risk Layer Trigger 勾选任一项，必须补全 Addendum（Rules/Invariants、Boundary Matrix ≥ 3、Evidence）。
-- CI 会执行 `node scripts/ops/pr-risk-layer-gate.cjs`；本地可用 `--body-file` 预检。
-- 详细流程见 `docs/ops/pr-review-preflight.md`。
+**Examples:**
+```
+# ✅ Component (project fact): project_id ONLY
+add-memory(..., metadata={memory_types:["component"]}, project_id="mem0ai/cursor-extension")
 
-# 工作流规则（Workflow）
+# ✅ User pref (global): user_preference=true ONLY
+add-memory(..., metadata={memory_types:["user_preference"]}, user_preference=true)
 
-- 完成代码后仅执行本地提交（git commit），未经用户明确指示不得推送（git push）。
+# ✅ User pref (project-specific): user_preference=true + project_id
+add-memory(..., metadata={memory_types:["user_preference"]}, user_preference=true, project_id="mem0ai/cursor-extension")
 
-# 发布收尾规则（Release Closure）
+# ❌ WRONG: Implementation with user_preference (implementations = facts not prefs)
+add-memory(..., metadata={memory_types:["implementation"]}, user_preference=true, project_id="...")
+```
 
-- 发布后必须通过 CI 检测，才算收尾。
-- 本地预检命令放在 `package.json` 的 `scripts.ci:local`：
-  - `npm run ci:local`
-- 若 GitHub Actions 的 `CI` 工作流未通过，不得标记“发布完成”。
+**list-memories:** Required: project_id | Automatically uses authenticated user's preferences
 
-# 复盘协议（Retrospective Contract，CLI 无关）
+**delete-memories-by-namespace:** DESTRUCTIVE - ONLY with explicit confirmation | Required: namespaces[] | Optional: user_preference, project_id
 
-> 目标：让 Codex/Claude/OpenCode/Gemini 等任何 AI CLI 都走同一条复盘流程。
+## Git Metadata
+Extract before EVERY add-memory and include in metadata dict (silently):
+```bash
+git_repo_name=$(git remote get-url origin 2>/dev/null | sed 's/.*[:/]\([^/]*\/[^.]*\).*/\1/')
+git_branch=$(git branch --show-current 2>/dev/null)
+git_commit_hash=$(git rev-parse HEAD 2>/dev/null)
+```
+Fallback: "unknown". Add all three to metadata dict when calling add-memory.
 
-- **单一真源（SSOT）**：复盘流程规则只维护在本文件，不在各 AI 工具配置里复制一份。
-- **目录规范**：新复盘必须放在 `docs/retrospective/<repo>/`，禁止新增到平铺根目录。
-- **渐进式披露**：
-  - 先看 `docs/retrospective/_index.md`（L1 卡片筛选）
-  - 再看 `docs/retrospective/<repo>/_index.md`（仓库内筛选）
-  - 最后才看完整复盘正文（L2/L3）
-- **新复盘最小清单（强制）**：
-  1. 文档含 frontmatter：`repo/layer/module/severity/design_mismatch/detection_gap`
-  2. 更新全局索引：`docs/retrospective/_index.md`
-  3. 更新仓库索引：`docs/retrospective/<repo>/_index.md`
-- **自动门禁**：必须通过 `npm run validate:retros`。
-- **AI CLI 适配原则**：任何 CLI 只需“执行前读取 AGENTS.md + 通过 validate:retros”，无需额外私有流程。
+## Memory Deletion ⚠️ DESTRUCTIVE - PERMANENT
+**Rules:** NEVER suggest | NEVER use proactively | ALWAYS require confirmation
+**Triggers:** "Delete all in [ns]", "Clear [ns]", "Delete my prefs in [ns]"
+**NOT for:** Cleanup questions, outdated memories, general questions
 
-# 部署规则（Deployment）
+**Confirmation (MANDATORY):**
+1. Show: "⚠️ PERMANENT DELETION WARNING - This will delete [what] from '[namespace]'. Confirm by 'yes'/'confirm'."
+2. Wait for confirmation
+3. If confirmed → execute | If declined → "Deletion cancelled"
 
-- 所有函数都通过 Insforge2 MCP 部署。
+**Intent:** "Delete ALL in X" → {namespaces:[X]} | "Delete MY prefs in X" → {namespaces:[X], user_preference:true} | "Delete project facts in X" → {namespaces:[X], project_id} | "Delete my project prefs in X" → {namespaces:[X], user_preference:true, project_id}
 
-# Insforge 聚合与契约（PostgREST）
+## Operating Principles
+1. Phase-based: Initial → Continuous → Store
+2. Checkpoints are BLOCKERS (files, functions, decisions, errors)
+3. Never skip Phase 2
+4. Detailed storage (why > what)
+5. MCP unavailable → mention once, continue
+6. Trust process (early = more searches)
 
-- 聚合查询统一使用 `sum(column)` 语法，禁止使用 `column.sum()`。
-- 新增/修改聚合接口必须有真实 Insforge2 环境 smoke 验证（至少 1 次请求 200 + 合理响应）。
-- 若出现 `schema cache` / `relationship` + `'sum'` 相关错误，应直接走聚合 fallback 逻辑并记录根因。
-- Smoke 脚本：`scripts/ops/insforge2-smoke-project-usage-summary.cjs`（需要 `VIBEUSAGE_INSFORGE_BASE_URL` 与 `VIBEUSAGE_USER_JWT`）。
+## Session Patterns
+**Empty openmemory.md:** Deep Dive (Phase 1 → analyze → document → Phase 3)
+**Existing:** Read openmemory.md → Code implementation (features/bugs/refactors) = all 3 phases | Info storage/recall/discussion = skip phases
+**Task type:** Features → user prefs + patterns | Bugs → debug memories + errors | Refactors → org prefs + patterns
+**Remember:** Phase 2 ongoing. Search at EVERY checkpoint.
+
+## OpenMemory Guide (openmemory.md)
+Living project index (shareable). Auto-created empty in workspace root.
+
+**Initial Deep Dive:** Phase 1 (2+ searches) → Phase 2 (analyze dirs/configs/frameworks/entry points, search as discovering, extract arch, document Overview/Architecture/User Namespaces/Components/Patterns) → Phase 3 (store with namespaces if fit)
+
+**User Defined Namespaces:** Read before ANY memory op
+- Format: "## User Defined Namespaces\n- [Leave blank - user populates]"
+- Examples: frontend, backend, database
+
+**Storing:** Review content → check namespaces → THINK "domain?" → fits one? assign : omit | Rules: Max ONE, can be NONE, only defined ones
+**Searching:** What searching? → read namespaces → THINK "which could contain?" → cast wide net → use multiple if needed
+
+**Guide Discipline:** Edit directly | Populate as you go | Keep in sync | Update before storing component/implementation/project_info
+**Update Workflow:** Open → update section → save → store via MCP
+**Integration:** Component → Components | Implementation → Patterns | Project info → Overview/Arch | Debug/pref → memory only
+
+**🚨 CRITICAL: Before storing ANY memory, review and update openmemory.md - after every edit verify the guide reflects current system architecture (most important project artifact)**
+
+## Security Guardrails
+**NEVER store:** API keys/tokens, passwords, hashes, private keys, certs, env secrets, OAuth/session tokens, connection strings with creds, AWS keys, webhook secrets, SSH/GPG keys
+**Detection:** Token/Bearer/key=/password= patterns → DO NOT STORE | Base64 in auth → DO NOT STORE | = + long alphanumeric → VERIFY | Doubt → DO NOT STORE, ask
+**Instead store:** Redacted versions ("<YOUR_TOKEN>"), patterns ("uses bearer token"), instructions ("Set TOKEN env")
+**Other:** No destructive ops without approval | User says "save/remember" → IMMEDIATE storage | Think deserves storage → ASK FIRST for prefs | User asks to store secrets → REFUSE
+
+**Remember:** Memory system = effectiveness over time. Rich reasoning > code. When doubt, store. Guide = shareable index.

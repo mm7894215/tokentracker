@@ -52,9 +52,9 @@ export function IdentityCard({
       {(title || subtitle) && (
         <div className="mb-3">
           {title && (
-            <h3 className="text-sm font-medium text-oai-gray-500 dark:text-oai-gray-400 uppercase tracking-wide">{title}</h3>
+            <h3 className="text-sm font-medium text-oai-gray-500 dark:text-oai-gray-300 uppercase tracking-wide">{title}</h3>
           )}
-          {subtitle && <p className="text-sm text-oai-gray-400 dark:text-oai-gray-500 mt-0.5">{subtitle}</p>}
+          {subtitle && <p className="text-sm text-oai-gray-400 dark:text-oai-gray-400 mt-0.5">{subtitle}</p>}
         </div>
       )}
 
@@ -63,13 +63,13 @@ export function IdentityCard({
         {shouldShowStats ? (
           <div className="grid grid-cols-2 gap-2">
             <div className="rounded-lg border border-oai-gray-200 dark:border-oai-gray-800 bg-oai-gray-50 dark:bg-oai-gray-800 p-3 text-center">
-              <div className="text-xs font-medium text-oai-gray-500 dark:text-oai-gray-400 uppercase tracking-wide mb-0.5">
+              <div className="text-xs font-medium text-oai-gray-500 dark:text-oai-gray-300 uppercase tracking-wide mb-0.5">
                 {copy("identity_card.rank_label")}
               </div>
               <div className="text-lg font-semibold text-oai-black dark:text-oai-white tabular-nums">{rankValue}</div>
             </div>
             <div className="rounded-lg border border-oai-gray-200 dark:border-oai-gray-800 bg-oai-gray-50 dark:bg-oai-gray-800 p-3 text-center">
-              <div className="text-xs font-medium text-oai-gray-500 dark:text-oai-gray-400 uppercase tracking-wide mb-0.5">
+              <div className="text-xs font-medium text-oai-gray-500 dark:text-oai-gray-300 uppercase tracking-wide mb-0.5">
                 {copy("identity_card.streak_label")}
               </div>
               <div className="text-lg font-semibold text-oai-black dark:text-oai-white tabular-nums">{streakValue}</div>
@@ -80,7 +80,7 @@ export function IdentityCard({
         {/* Subscriptions */}
         {subscriptionItems.length !== 0 ? (
           <div>
-            <div className="mb-1.5 text-xs font-medium text-oai-gray-500 dark:text-oai-gray-400 uppercase tracking-wide">
+            <div className="mb-1.5 text-xs font-medium text-oai-gray-500 dark:text-oai-gray-300 uppercase tracking-wide">
               {copy("identity_card.subscriptions_label")}
             </div>
             <div className="flex flex-wrap gap-1.5">

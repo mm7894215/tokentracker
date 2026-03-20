@@ -13,7 +13,7 @@ export const NeuralDivergenceMap = React.memo(function NeuralDivergenceMap({
 
   return (
     <div className={`rounded-xl border border-oai-gray-200 dark:border-oai-gray-800 bg-white dark:bg-oai-gray-900 p-5 ${className}`}>
-      <h3 className="text-sm font-medium text-oai-gray-500 dark:text-oai-gray-400 uppercase tracking-wide mb-4">
+      <h3 className="text-sm font-medium text-oai-gray-500 dark:text-oai-gray-300 uppercase tracking-wide mb-4">
         {title}
       </h3>
       <div className={`${gridClass} gap-5`}>

@@ -21,8 +21,8 @@ export function Badge({
     success: "bg-oai-brand-100 dark:bg-oai-brand-900/30 text-oai-brand-700 dark:text-oai-brand-400 rounded-full",
     warning: "bg-oai-amber-50 dark:bg-oai-amber-900/30 text-oai-amber-dark dark:text-oai-amber-400 rounded-full",
     error: "bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-full",
-    info: "bg-oai-gray-100 dark:bg-oai-gray-800 text-oai-gray-600 dark:text-oai-gray-400 rounded-full",
-    secondary: "bg-oai-gray-100 dark:bg-oai-gray-800 text-oai-gray-500 dark:text-oai-gray-400 rounded-md",
+    info: "bg-oai-gray-100 dark:bg-oai-gray-800 text-oai-gray-600 dark:text-oai-gray-300 rounded-full",
+    secondary: "bg-oai-gray-100 dark:bg-oai-gray-800 text-oai-gray-500 dark:text-oai-gray-300 rounded-md",
   };
 
   const sizeStyles = {

@@ -815,11 +815,11 @@ test("parseOpencodeIncremental aggregates message tokens and model", async () =>
     assert.equal(queued[0].source, "opencode");
     assert.equal(queued[0].model, "gpt-4o");
     assert.equal(queued[0].hour_start, "2025-12-29T10:00:00.000Z");
-    assert.equal(queued[0].input_tokens, 15);
+    assert.equal(queued[0].input_tokens, 10);
     assert.equal(queued[0].cached_input_tokens, 3);
     assert.equal(queued[0].output_tokens, 2);
     assert.equal(queued[0].reasoning_output_tokens, 1);
-    assert.equal(queued[0].total_tokens, 18);
+    assert.equal(queued[0].total_tokens, 13);
     assert.equal(queued[0].conversation_count, 1);
     assert.equal(typeof queued[0].content, "undefined");
 
@@ -1913,10 +1913,10 @@ test("parseClaudeIncremental counts cache creation as input and cache read separ
 
     const queued = await readJsonLines(queuePath);
     assert.equal(queued.length, 1);
-    assert.equal(queued[0].input_tokens, 8);
+    assert.equal(queued[0].input_tokens, 5);
     assert.equal(queued[0].cached_input_tokens, 4);
     assert.equal(queued[0].output_tokens, 2);
-    assert.equal(queued[0].total_tokens, 10);
+    assert.equal(queued[0].total_tokens, 7);
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }

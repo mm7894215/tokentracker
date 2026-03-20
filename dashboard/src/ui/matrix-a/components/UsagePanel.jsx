@@ -96,7 +96,7 @@ export const UsagePanel = React.memo(function UsagePanel({
                 className={`text-xs font-medium px-2 py-1 rounded transition-colors ${
                   period === p.key
                     ? "text-oai-black dark:text-oai-white bg-oai-gray-100 dark:bg-oai-gray-800"
-                    : "text-oai-gray-500 dark:text-oai-gray-400 hover:text-oai-black dark:hover:text-oai-white hover:bg-oai-gray-50 dark:hover:bg-oai-gray-800"
+                    : "text-oai-gray-500 dark:text-oai-gray-300 hover:text-oai-black dark:hover:text-oai-white hover:bg-oai-gray-50 dark:hover:bg-oai-gray-800"
                 }`}
                 onClick={() => onPeriodChange?.(p.key)}
               >
@@ -128,7 +128,7 @@ export const UsagePanel = React.memo(function UsagePanel({
       {showSummary || useSummaryLayout ? (
         <div className="flex-1 flex flex-col items-center justify-center space-y-8 py-8">
           <div className="text-center animate-fade-in">
-            <div className="text-xs text-oai-gray-500 dark:text-oai-gray-400 uppercase tracking-wide mb-4">
+            <div className="text-xs text-oai-gray-500 dark:text-oai-gray-300 uppercase tracking-wide mb-4">
               {summaryLabel}
             </div>
             <div className="text-display-sm md:text-display font-bold text-oai-black dark:text-oai-white tracking-tighter tabular-nums leading-none">
@@ -187,7 +187,7 @@ export const UsagePanel = React.memo(function UsagePanel({
                     key={`${row.label}-${idx}`}
                     className="flex flex-col items-center py-3"
                   >
-                    <span className="text-xs text-oai-gray-400 dark:text-oai-gray-500 mb-1">{row.label}</span>
+                    <span className="text-xs text-oai-gray-400 dark:text-oai-gray-400 mb-1">{row.label}</span>
                     <span className="text-lg font-semibold text-oai-black dark:text-oai-white tabular-nums">
                       {row.value}
                     </span>
@@ -201,7 +201,7 @@ export const UsagePanel = React.memo(function UsagePanel({
         <div className="grid grid-cols-2 gap-5">
           {metrics.map((row, idx) => (
             <div key={`${row.label}-${idx}`} className="text-center py-2">
-              <div className="text-xs text-oai-gray-400 dark:text-oai-gray-500 mb-1">{row.label}</div>
+              <div className="text-xs text-oai-gray-400 dark:text-oai-gray-400 mb-1">{row.label}</div>
               <div className={`text-lg font-semibold text-oai-black dark:text-oai-white ${row.valueClassName || ""}`}>
                 {row.value}
               </div>
