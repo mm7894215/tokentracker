@@ -14,7 +14,7 @@ function resolveOpenclawHookPaths({ home = os.homedir(), trackerDir, env = proce
     normalizeString(env.OPENCLAW_CONFIG_PATH) || path.join(home, ".openclaw", "openclaw.json");
 
   const openclawHome =
-    normalizeString(env.VIBEUSAGE_OPENCLAW_HOME) ||
+    normalizeString(env.TOKENTRACKER_OPENCLAW_HOME) ||
     normalizeString(env.OPENCLAW_STATE_DIR) ||
     path.join(home, ".openclaw");
 
@@ -276,7 +276,7 @@ metadata:
   { "openclaw": { "emoji": "📈", "events": ["command:new", "command:reset", "command:stop"], "requires": { "bins": ["node"] } } }
 ---
 
-# VibeUsage OpenClaw Sync Hook
+# TokenTracker OpenClaw Sync Hook
 
 Triggers non-blocking 'vibeusage sync --auto --from-openclaw' runs when OpenClaw command events indicate session rollover/reset/stop.
 `;
@@ -324,21 +324,21 @@ function buildHookHandler({ trackerDir, packageName = "vibeusage", openclawHome 
     `\n` +
     `    const env = {\n` +
     `      ...process.env,\n` +
-    `      VIBEUSAGE_OPENCLAW_AGENT_ID: agentId,\n` +
-    `      VIBEUSAGE_OPENCLAW_SESSION_KEY: sessionKey,\n` +
-    `      VIBEUSAGE_OPENCLAW_PREV_SESSION_ID: sessionId,\n` +
-    `      VIBEUSAGE_OPENCLAW_HOME: openclawHome\n` +
+    `      TOKENTRACKER_OPENCLAW_AGENT_ID: agentId,\n` +
+    `      TOKENTRACKER_OPENCLAW_SESSION_KEY: sessionKey,\n` +
+    `      TOKENTRACKER_OPENCLAW_PREV_SESSION_ID: sessionId,\n` +
+    `      TOKENTRACKER_OPENCLAW_HOME: openclawHome\n` +
     `    };\n` +
     `    const prevTotalTokens = toNonNegativeInt(sessionEntry && sessionEntry.totalTokens);\n` +
     `    const prevInputTokens = toNonNegativeInt(sessionEntry && sessionEntry.inputTokens);\n` +
     `    const prevOutputTokens = toNonNegativeInt(sessionEntry && sessionEntry.outputTokens);\n` +
     `    const prevModel = normalize(sessionEntry && sessionEntry.model);\n` +
     `    const prevUpdatedAt = toIso(sessionEntry && sessionEntry.updatedAt);\n` +
-    `    if (prevTotalTokens != null) env.VIBEUSAGE_OPENCLAW_PREV_TOTAL_TOKENS = String(prevTotalTokens);\n` +
-    `    if (prevInputTokens != null) env.VIBEUSAGE_OPENCLAW_PREV_INPUT_TOKENS = String(prevInputTokens);\n` +
-    `    if (prevOutputTokens != null) env.VIBEUSAGE_OPENCLAW_PREV_OUTPUT_TOKENS = String(prevOutputTokens);\n` +
-    `    if (prevModel) env.VIBEUSAGE_OPENCLAW_PREV_MODEL = prevModel;\n` +
-    `    if (prevUpdatedAt) env.VIBEUSAGE_OPENCLAW_PREV_UPDATED_AT = prevUpdatedAt;\n` +
+    `    if (prevTotalTokens != null) env.TOKENTRACKER_OPENCLAW_PREV_TOTAL_TOKENS = String(prevTotalTokens);\n` +
+    `    if (prevInputTokens != null) env.TOKENTRACKER_OPENCLAW_PREV_INPUT_TOKENS = String(prevInputTokens);\n` +
+    `    if (prevOutputTokens != null) env.TOKENTRACKER_OPENCLAW_PREV_OUTPUT_TOKENS = String(prevOutputTokens);\n` +
+    `    if (prevModel) env.TOKENTRACKER_OPENCLAW_PREV_MODEL = prevModel;\n` +
+    `    if (prevUpdatedAt) env.TOKENTRACKER_OPENCLAW_PREV_UPDATED_AT = prevUpdatedAt;\n` +
     `\n` +
     `    const hasLocalRuntime = fs.existsSync(trackerBinPath);\n` +
     `    const hasLocalDeps = fs.existsSync(depsMarkerPath);\n` +

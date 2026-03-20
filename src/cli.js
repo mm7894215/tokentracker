@@ -4,16 +4,26 @@ const { cmdStatus } = require("./commands/status");
 const { cmdDiagnostics } = require("./commands/diagnostics");
 const { cmdDoctor } = require("./commands/doctor");
 const { cmdUninstall } = require("./commands/uninstall");
+const { cmdServe } = require("./commands/serve");
 
 async function run(argv) {
   const [command, ...rest] = argv;
 
-  if (!command || command === "-h" || command === "--help") {
+  // No args → launch dashboard
+  if (!command) {
+    await cmdServe(argv);
+    return;
+  }
+
+  if (command === "-h" || command === "--help") {
     printHelp();
     return;
   }
 
   switch (command) {
+    case "serve":
+      await cmdServe(rest);
+      return;
     case "init":
       await cmdInit(rest);
       return;
@@ -44,6 +54,8 @@ function printHelp() {
       "tokentracker",
       "",
       "Usage:",
+      "  npx tokentracker                                         Open local dashboard",
+      "  npx tokentracker [--debug] serve [--port 7890] [--no-open] [--no-sync]",
       "  npx tokentracker [--debug] init [--yes] [--dry-run] [--no-open] [--link-code <code>]",
       "  npx tokentracker [--debug] sync [--auto] [--drain] [--from-openclaw]",
       "  npx tokentracker [--debug] status [--probe-keychain] [--probe-keychain-details]",
@@ -59,7 +71,7 @@ function printHelp() {
       "  - Every Code notify installs when ~/.code/config.toml exists.",
       "  - OpenClaw hook auto-links when OpenClaw is installed (requires gateway restart).",
       "  - auto sync waits for a device token.",
-      "  - optional: VIBEUSAGE_DASHBOARD_URL or --dashboard-url for hosted landing.",
+      "  - optional: --dashboard-url for hosted landing.",
       "  - sync parses ~/.codex/sessions/**/rollout-*.jsonl and ~/.code/sessions/**/rollout-*.jsonl, then uploads token deltas.",
       "  - --from-openclaw marks sync runs triggered by OpenClaw hooks.",
       "  - --debug shows original backend errors.",

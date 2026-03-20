@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useRef, useEffect } from "react";
 import { buildActivityHeatmap } from "../../../lib/activity-heatmap";
 import { copy } from "../../../lib/copy";
 import { useTheme } from "../../../hooks/useTheme.js";
@@ -107,6 +107,12 @@ export function ActivityHeatmap({
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === "dark";
   const heatmapColors = isDark ? HEATMAP_COLORS_DARK : HEATMAP_COLORS_LIGHT;
+  const scrollRef = useRef(null);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollLeft = el.scrollWidth;
+  }, [heatmap?.weeks]);
 
   const weekStartsOn = heatmap?.week_starts_on === "mon" ? "mon" : "sun";
 
@@ -166,9 +172,10 @@ export function ActivityHeatmap({
         <span className="text-xs text-oai-gray-400 dark:text-oai-gray-400">{timeZoneShortLabel || copy("heatmap.legend.utc")}</span>
       </div>
 
-      {/* Heatmap */}
+      {/* Heatmap — scroll to latest (rightmost) on mount */}
       <div
-        className="overflow-x-auto pb-2 oai-scrollbar"
+        ref={scrollRef}
+        className="overflow-x-auto overflow-y-hidden heatmap-scroll-thin"
       >
         <div style={{ minWidth: gridCols }}>
           {/* Month labels */}
@@ -218,10 +225,8 @@ export function ActivityHeatmap({
             >
               {weeks.map((week, wi) =>
                 (Array.isArray(week) ? week : []).map((cell, di) => {
-                  const key = cell?.day || `e-${wi}-${di}`;
-                  if (!cell) {
-                    return <span key={key} style={{ width: CELL_SIZE, height: CELL_SIZE }} />;
-                  }
+                  if (!cell) return null;
+                  const key = cell.day || `e-${wi}-${di}`;
                   const level = Number(cell.level) || 0;
                   const color = heatmapColors[level] || heatmapColors[0];
                   const tz = timeZoneLabel || timeZoneShortLabel || copy("heatmap.legend.utc");

@@ -130,7 +130,7 @@ async function cmdUninstall(argv) {
         : openclawHookRemove?.skippedReason === "openclaw-config-missing"
           ? "- OpenClaw hook (legacy): skipped (openclaw config not found)"
           : "- OpenClaw hook (legacy): no change",
-      opts.purge ? `- Purged: ${path.join(home, ".vibeusage")}` : "- Purge: skipped (use --purge)",
+      opts.purge ? `- Purged: ${path.join(home, ".tokentracker")}` : "- Purge: skipped (use --purge)",
       "",
     ].join("\n"),
   );

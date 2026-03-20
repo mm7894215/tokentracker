@@ -6,36 +6,36 @@ function resolveRuntimeConfig({ cli = {}, config = {}, env = process.env, defaul
   const baseUrl = pickString(
     cli.baseUrl,
     config.baseUrl,
-    env?.VIBEUSAGE_INSFORGE_BASE_URL,
+    env?.TOKENTRACKER_INSFORGE_BASE_URL,
     defaults.baseUrl,
     DEFAULT_BASE_URL,
   );
   const dashboardUrl = pickString(
     cli.dashboardUrl,
     config.dashboardUrl,
-    env?.VIBEUSAGE_DASHBOARD_URL,
+    env?.TOKENTRACKER_DASHBOARD_URL,
     defaults.dashboardUrl,
     DEFAULT_DASHBOARD_URL,
   );
   const deviceToken = pickString(
     cli.deviceToken,
     config.deviceToken,
-    env?.VIBEUSAGE_DEVICE_TOKEN,
+    env?.TOKENTRACKER_DEVICE_TOKEN,
     defaults.deviceToken,
     null,
   );
   const httpTimeoutMs = pickHttpTimeoutMs(
     cli.httpTimeoutMs,
     config.httpTimeoutMs,
-    env?.VIBEUSAGE_HTTP_TIMEOUT_MS,
+    env?.TOKENTRACKER_HTTP_TIMEOUT_MS,
     defaults.httpTimeoutMs,
     DEFAULT_HTTP_TIMEOUT_MS,
   );
-  const debug = pickBoolean(cli.debug, config.debug, env?.VIBEUSAGE_DEBUG, defaults.debug, false);
+  const debug = pickBoolean(cli.debug, config.debug, env?.TOKENTRACKER_DEBUG, defaults.debug, false);
   const insforgeAnonKey = pickString(
     cli.insforgeAnonKey,
     config.insforgeAnonKey,
-    env?.VIBEUSAGE_INSFORGE_ANON_KEY,
+    env?.TOKENTRACKER_INSFORGE_ANON_KEY,
     defaults.insforgeAnonKey,
     "",
   );
@@ -43,7 +43,7 @@ function resolveRuntimeConfig({ cli = {}, config = {}, env = process.env, defaul
   const autoRetryNoSpawn = pickBoolean(
     cli.autoRetryNoSpawn,
     config.autoRetryNoSpawn,
-    env?.VIBEUSAGE_AUTO_RETRY_NO_SPAWN,
+    env?.TOKENTRACKER_AUTO_RETRY_NO_SPAWN,
     defaults.autoRetryNoSpawn,
     false,
   );

@@ -18,7 +18,7 @@ function resolveOpenclawSessionPluginPaths({
     normalizeString(env.OPENCLAW_CONFIG_PATH) || path.join(home, ".openclaw", "openclaw.json");
 
   const openclawHome =
-    normalizeString(env.VIBEUSAGE_OPENCLAW_HOME) ||
+    normalizeString(env.TOKENTRACKER_OPENCLAW_HOME) ||
     normalizeString(env.OPENCLAW_STATE_DIR) ||
     path.join(home, ".openclaw");
 
@@ -324,7 +324,7 @@ function buildSessionPluginMeta() {
   return `${JSON.stringify(
     {
       id: OPENCLAW_SESSION_PLUGIN_ID,
-      name: "VibeUsage OpenClaw Session Sync",
+      name: "TokenTracker OpenClaw Session Sync",
       description: "Trigger vibeusage sync on OpenClaw agent/session lifecycle events.",
       configSchema: {
         type: "object",
@@ -414,22 +414,22 @@ function buildSessionPluginIndex({ trackerDir, packageName = "vibeusage", opencl
     `\n` +
     `function buildSessionEnv({ agentId, sessionId, sessionKey, sessionEntry }) {\n` +
     `  const out = {\n` +
-    `    VIBEUSAGE_OPENCLAW_AGENT_ID: agentId,\n` +
-    `    VIBEUSAGE_OPENCLAW_PREV_SESSION_ID: sessionId,\n` +
-    `    VIBEUSAGE_OPENCLAW_HOME: openclawHome\n` +
+    `    TOKENTRACKER_OPENCLAW_AGENT_ID: agentId,\n` +
+    `    TOKENTRACKER_OPENCLAW_PREV_SESSION_ID: sessionId,\n` +
+    `    TOKENTRACKER_OPENCLAW_HOME: openclawHome\n` +
     `  };\n` +
     `  const key = normalize(sessionKey);\n` +
-    `  if (key) out.VIBEUSAGE_OPENCLAW_SESSION_KEY = key;\n` +
+    `  if (key) out.TOKENTRACKER_OPENCLAW_SESSION_KEY = key;\n` +
     `  const prevTotalTokens = toNonNegativeInt(sessionEntry && sessionEntry.totalTokens);\n` +
     `  const prevInputTokens = toNonNegativeInt(sessionEntry && sessionEntry.inputTokens);\n` +
     `  const prevOutputTokens = toNonNegativeInt(sessionEntry && sessionEntry.outputTokens);\n` +
     `  const prevModel = normalize(sessionEntry && sessionEntry.model);\n` +
     `  const prevUpdatedAt = toIso(sessionEntry && sessionEntry.updatedAt);\n` +
-    `  if (prevTotalTokens != null) out.VIBEUSAGE_OPENCLAW_PREV_TOTAL_TOKENS = String(prevTotalTokens);\n` +
-    `  if (prevInputTokens != null) out.VIBEUSAGE_OPENCLAW_PREV_INPUT_TOKENS = String(prevInputTokens);\n` +
-    `  if (prevOutputTokens != null) out.VIBEUSAGE_OPENCLAW_PREV_OUTPUT_TOKENS = String(prevOutputTokens);\n` +
-    `  if (prevModel) out.VIBEUSAGE_OPENCLAW_PREV_MODEL = prevModel;\n` +
-    `  if (prevUpdatedAt) out.VIBEUSAGE_OPENCLAW_PREV_UPDATED_AT = prevUpdatedAt;\n` +
+    `  if (prevTotalTokens != null) out.TOKENTRACKER_OPENCLAW_PREV_TOTAL_TOKENS = String(prevTotalTokens);\n` +
+    `  if (prevInputTokens != null) out.TOKENTRACKER_OPENCLAW_PREV_INPUT_TOKENS = String(prevInputTokens);\n` +
+    `  if (prevOutputTokens != null) out.TOKENTRACKER_OPENCLAW_PREV_OUTPUT_TOKENS = String(prevOutputTokens);\n` +
+    `  if (prevModel) out.TOKENTRACKER_OPENCLAW_PREV_MODEL = prevModel;\n` +
+    `  if (prevUpdatedAt) out.TOKENTRACKER_OPENCLAW_PREV_UPDATED_AT = prevUpdatedAt;\n` +
     `  return out;\n` +
     `}\n` +
     `\n` +

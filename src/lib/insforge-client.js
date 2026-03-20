@@ -11,11 +11,11 @@ function loadInsforgeSdk() {
 }
 
 function getAnonKey({ env = process.env } = {}) {
-  return env.VIBEUSAGE_INSFORGE_ANON_KEY || "";
+  return env.TOKENTRACKER_INSFORGE_ANON_KEY || "";
 }
 
 function getHttpTimeoutMs({ env = process.env } = {}) {
-  const raw = readEnvValue(env, ["VIBEUSAGE_HTTP_TIMEOUT_MS"]);
+  const raw = readEnvValue(env, ["TOKENTRACKER_HTTP_TIMEOUT_MS"]);
   if (raw == null || raw === "") return 20_000;
   const n = Number(raw);
   if (!Number.isFinite(n)) return 20_000;

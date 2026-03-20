@@ -513,6 +513,34 @@ body {
   }
 }
 
+/* Heatmap: thin scrollbar that doesn't push content */
+.heatmap-scroll-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--oai-gray-200) transparent;
+}
+.heatmap-scroll-thin::-webkit-scrollbar {
+  height: 4px;
+}
+.heatmap-scroll-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+.heatmap-scroll-thin::-webkit-scrollbar-thumb {
+  background: var(--oai-gray-200);
+  border-radius: 2px;
+}
+.heatmap-scroll-thin::-webkit-scrollbar-thumb:hover {
+  background: var(--oai-gray-400);
+}
+:root.dark .heatmap-scroll-thin {
+  scrollbar-color: var(--oai-gray-600) transparent;
+}
+:root.dark .heatmap-scroll-thin::-webkit-scrollbar-thumb {
+  background: var(--oai-gray-600);
+}
+:root.dark .heatmap-scroll-thin::-webkit-scrollbar-thumb:hover {
+  background: var(--oai-gray-500);
+}
+
 @layer utilities {
   /* ========================================
      Animation Utilities - Bolder Dashboard

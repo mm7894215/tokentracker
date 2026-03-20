@@ -372,7 +372,7 @@ export default function App() {
   } else {
     content = (
       <Suspense fallback={loadingShell}>
-        {!publicMode && !screenshotMode ? (
+        {!publicMode && !screenshotMode && !isLocalMode ? (
           <UpgradeAlertModal requiredVersion={latestVersion} />
         ) : null}
         <PageComponent

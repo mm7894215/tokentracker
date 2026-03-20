@@ -2,456 +2,125 @@
 
 <img src="dashboard/public/icon-192.png" width="96" alt="Token Tracker Icon" />
 
-# 🟢 TOKEN TRACKER
+# TOKEN TRACKER
 
-**QUANTIFY YOUR AI OUTPUT**
-_Track AI Token Usage Across All Your CLI Tools_
-
-[**www.tokentracker.cc**](https://www.tokentracker.cc)
+**Track AI Token Usage Across All Your CLI Tools**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
-[![npm version](https://img.shields.io/npm/v/vibeusage.svg)](https://www.npmjs.com/package/vibeusage)
-[![Node.js Support](https://img.shields.io/badge/Node.js-20.x-brightgreen.svg)](https://nodejs.org/)
+[![npm version](https://img.shields.io/npm/v/tokentracker-cli.svg)](https://www.npmjs.com/package/tokentracker-cli)
+[![Node.js Support](https://img.shields.io/badge/Node.js-≥20-brightgreen.svg)](https://nodejs.org/)
 [![Platform](https://img.shields.io/badge/Platform-macOS-lightgrey.svg)](https://www.apple.com/macos/)
-
-[**English**](README.md) • [**中文说明**](README.zh-CN.md)
-
-[**Documentation**](docs/) • [**Dashboard**](https://www.tokentracker.cc) • [**Backend API**](BACKEND_API.md)
-
-<br/>
-
-<img src="docs/screenshots/dashboard.png" width="900" alt="Token Tracker Dashboard Preview"/>
 
 </div>
 
 ---
 
-## 🚀 Quick Start
-
-Get started in 30 seconds:
+## Quick Start
 
 ```bash
-npx vibeusage init
+npx tokentracker-cli
 ```
 
-That's it! Your AI token usage will now automatically sync to the [Dashboard](https://www.tokentracker.cc) 🎉
+One command does everything: first-time setup → hook installation → data sync → open dashboard.
 
-## ✨ Why Token Tracker?
+## Features
 
-- 📡 **Multi-Source Unified Tracking** - Support for Codex CLI, Every Code, Gemini CLI, Claude Code, Opencode, OpenClaw, and more
-- 🤖 **Multi-Model Statistics** - Unified tracking for GPT-4, Claude, Gemini, o1, and all AI models
-- 📁 **Project AI Footprint** - Track and publicly display token usage per repository, proving AI-assisted development
-- 🏆 **Global Leaderboard** - Weekly/monthly/all-time rankings, grow with the global developer community
-- 🌐 **Public Profiles** - Share your AI usage journey, optionally participate in leaderboards
-- 🔒 **Privacy-First** - Only track numbers, never upload your code or conversations
-- ⚡ **Zero-Config Auto-Sync** - Set up once, sync forever
-- 🎨 **Matrix-A Design** - Cyberpunk-style high-fidelity dashboard
-- 📈 **Deep Analytics** - Cost insights, trend forecasting, activity heatmaps
+- **Multi-Source Tracking** — Codex CLI, Claude Code, Gemini CLI, OpenCode, OpenClaw, Every Code
+- **Local-First** — All data stays on your machine. No cloud account required.
+- **Zero-Config** — Hooks auto-detect and configure on first run
+- **Built-in Dashboard** — Web UI at `http://localhost:7890`, no external service needed
+- **Privacy-First** — Only token counts tracked, never prompts or responses
 
-## 🧰 Supported AI CLIs
+## Supported CLI Tools
 
-| CLI Tool | Auto-Detection | Status |
-|----------|----------------|--------|
-| **Codex CLI** | ✅ | Full Support |
-| **Every Code** | ✅ | Full Support |
-| **Gemini CLI** | ✅ | Full Support |
-| **Claude Code** | ✅ | Full Support |
-| **Opencode** | ✅ | Full Support |
-| **OpenClaw** | ✅ | Full Support |
+| CLI Tool | Auto-Detection |
+|----------|----------------|
+| **Codex CLI** | ✅ |
+| **Claude Code** | ✅ |
+| **Gemini CLI** | ✅ |
+| **OpenCode** | ✅ |
+| **OpenClaw** | ✅ |
+| **Every Code** | ✅ |
 
-Whether you're using GPT-4, Claude 3.5 Sonnet, o1, or Gemini - all token consumption is unified and tracked.
+## Usage
 
-## 🌌 Overview
+After first run via `npx tokentracker-cli`, you can also install globally for shorter commands:
 
-**Token Tracker** is an intelligent token usage tracking system designed for macOS developers. Through the all-new **Matrix-A Design System**, it provides a high-fidelity cyberpunk-style dashboard that transforms your **AI Output** into quantifiable metrics, supported by the **Neural Divergence Map** for real-time monitoring of multi-model compute distribution.
+```bash
+npm i -g tokentracker-cli
 
-> [!TIP]
-> **Core Index**: Our signature metric that reflects your flow state by analyzing token consumption rates and patterns.
+# Then use anywhere:
+tokentracker              # Open dashboard
+tokentracker serve --port 3000
+tokentracker sync         # Manual sync
+tokentracker status       # Check hook status
+tokentracker doctor       # Health check
+tokentracker uninstall    # Remove hooks
+```
 
-## 📊 Dashboard Features
+## How It Works
 
-### 🎨 Matrix-A Design System
-High-performance dashboard built with React + Vite, featuring our cyberpunk-inspired design language with:
-- **Neural Divergence Map**: Visualize multi-engine load balancing and compute distribution
-- **Cost Intelligence**: Real-time, multi-dimensional cost breakdown and forecasting
-- **Activity Heatmap**: GitHub-style contribution graph with streak tracking
-- **Smart Notifications**: Non-intrusive system-level alerts with Golden visual style
+```
+AI CLI Tools (Codex, Claude, Gemini, OpenCode, ...)
+    │
+    │  hooks auto-trigger on usage
+    ▼
+Token Tracker CLI (local parsing + aggregation)
+    │
+    │  30-minute UTC buckets
+    ▼
+Local Dashboard (http://localhost:7890)
+```
 
-### 📈 Analytics & Insights
-- **AI Analytics**: Deep analysis of Input/Output tokens with dedicated tracking for Cached and Reasoning components
-- **Model Breakdown**: Per-model usage statistics and cost analysis
-- **Project Stats**: Track token usage by GitHub repository
-- **Trend Forecasting**: Predict future usage patterns
+1. AI CLI tools generate logs during usage
+2. Lightweight hooks detect changes and trigger sync
+3. CLI parses logs locally, extracts only token counts
+4. Data aggregated into 30-minute buckets
+5. Dashboard reads local data directly — no cloud needed
 
-### 🏆 Community Features
-- **Global Leaderboard**: Daily, weekly, monthly, and all-time rankings with privacy-safe display names
-- **Public Profiles**: Share your AI usage journey with a privacy-safe public profile
-- **Leaderboard Categories**: Compete in overall rankings or by specific models (GPT, Claude, etc.)
-
-<img src="docs/screenshots/landing.png" width="900" alt="Token Tracker Landing Preview"/>
-
-## 🔒 Privacy Guarantee
-
-We believe your code and thoughts are your own. Token Tracker is built with strict privacy pillars to ensure your data never leaves your control.
+## Privacy
 
 | Protection | Description |
 |------------|-------------|
-| 🛡️ **No Content Upload** | Never upload prompts or responses - only compute token counts locally |
-| 📡 **Local Aggregation** | All analysis happens on your machine - only send 30-minute usage buckets |
-| 🔐 **Hashed Identity** | Device tokens are SHA-256 hashed server-side - raw credentials never stored |
-| 🔦 **Full Transparency** | Audit the sync logic yourself in `src/lib/rollout.js` - literally only numbers and timestamps |
+| **No Content Upload** | Never uploads prompts or responses — only token counts |
+| **Local Only** | All data stays on your machine, all analysis local |
+| **Transparent** | Audit the sync logic in `src/lib/rollout.js` — only numbers and timestamps |
 
-## 📦 Installation
+## Configuration
 
-### Standard Setup
-
-Initialize your environment once - Token Tracker handles all synchronization automatically in the background:
-
-```bash
-npx vibeusage init
-```
-
-### Authentication Methods
-
-1. **Browser Auth** (default) - Opens browser for secure authentication
-2. **Link Code** - Use `--link-code` to authenticate via dashboard-generated code
-3. **Password** - Direct password authentication (fallback)
-4. **Access Token** - For CI/automated environments
-
-### CLI Options
-
-```bash
-npx vibeusage init [options]
-
-Options:
-  --yes              Skip consent prompts (non-interactive environments)
-  --dry-run          Preview changes without writing files
-  --link-code <code> Authenticate using a link code from dashboard
-  --base-url <url>   Override the default API endpoint
-  --debug            Enable debug output
-```
-
-### Auto-Configuration
-
-Once `init` completes, all supported CLI tools are automatically configured for data sync:
-
-| Tool | Config Location | Method |
-|------|----------------|--------|
-| **Codex CLI** | `~/.codex/config.toml` | `notify` hook |
-| **Every Code** | `~/.code/config.toml` (or `CODE_HOME`) | `notify` hook |
-| **Gemini CLI** | `~/.gemini/settings.json` (or `GEMINI_HOME`) | `SessionEnd` hook |
-| **Opencode** | Global plugins | Message parser plugin |
-| **Claude Code** | `~/.claude/hooks/` | Hook configuration |
-| **OpenClaw** | Auto-links when installed | Gateway hook (requires restart) |
-
-No further intervention required! 🎉
-
-## 💡 Usage
-
-### Manual Sync
-
-While sync happens automatically, you can manually trigger synchronization anytime:
-
-```bash
-# Manually sync latest local session data
-npx vibeusage sync
-
-# Check current link status
-npx vibeusage status
-```
-
-### Health Check
-
-Run comprehensive diagnostics to identify issues:
-
-```bash
-# Basic health check
-npx vibeusage doctor
-
-# JSON output for debugging
-npx vibeusage doctor --json --out doctor.json
-
-# Test against a different endpoint
-npx vibeusage doctor --base-url https://your-instance.insforge.app
-```
-
-### Debug Mode
-
-Enable debug output to see detailed request/response information:
-
-```bash
-VIBEUSAGE_DEBUG=1 npx vibeusage sync
-# or
-npx vibeusage sync --debug
-```
-
-### Uninstall
-
-```bash
-# Standard uninstall (keeps data)
-npx vibeusage uninstall
-
-# Full purge - removes all data including config and cached sessions
-npx vibeusage uninstall --purge
-```
-
-## 🏗️ Architecture
-
-```mermaid
-graph LR
-    A[Codex CLI] -->|Rollout Logs| G(Tracker CLI)
-    B[Every Code] -->|Rollout Logs| G
-    C[Gemini CLI] -->|Session Logs| G
-    D[Opencode] -->|Message Logs| G
-    E[Claude Code] -->|Hook Output| G
-    F[OpenClaw] -->|Gateway Hook| G
-    G -->|AI Tokens| H{Core Relay}
-    H --> I[Token Tracker Dashboard]
-    H --> J[AI Analytics Engine]
-    H --> K[Leaderboard Service]
-    H --> L[Public View API]
-```
-
-### Tech Stack
-
-- **CLI**: Node.js 20.x, CommonJS
-- **Dashboard**: React 18 + Vite + TailwindCSS + TypeScript
-- **Backend**: InsForge Edge Functions (Deno)
-- **Database**: InsForge Database (PostgreSQL)
-- **Design**: Matrix-A Design System
-
-### Components
-
-- **Tracker CLI** (`src/`): Node.js CLI that parses logs from multiple AI tools and syncs token data
-- **Core Relay** (InsForge Edge Functions): Serverless backend handling ingestion, aggregation, and API
-- **Dashboard** (`dashboard/`): React + Vite frontend for visualization
-- **AI Analytics Engine**: Cost calculation, model breakdown, and usage forecasting
-
-### Data Flow
-
-1. AI CLI tools generate logs during usage
-2. Local `notify-handler` detects changes and triggers sync
-3. CLI incrementally parses logs, extracts token counts (whitelist fields only)
-4. Data aggregated into 30-minute UTC buckets locally
-5. Batch upload to InsForge with idempotent deduplication
-6. Dashboard queries aggregated results for visualization
-
-### Log Sources
-
-| Tool | Log Location | Override Env |
-|------|-------------|--------------|
-| **Codex CLI** | `~/.codex/sessions/**/rollout-*.jsonl` | `CODEX_HOME` |
-| **Every Code** | `~/.code/sessions/**/rollout-*.jsonl` | `CODE_HOME` |
-| **Gemini CLI** | `~/.gemini/tmp/**/chats/session-*.json` | `GEMINI_HOME` |
-| **Opencode** | `~/.opencode/messages/*.json` | - |
-| **Claude Code** | Parsed from hook output | - |
-| **OpenClaw** | Gateway hook integration | - |
-
-## ⚙️ Configuration
-
-<details>
-<summary><b>Environment Variables</b></summary>
-
-### Core Settings
+### Environment Variables
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `VIBEUSAGE_HTTP_TIMEOUT_MS` | CLI HTTP timeout in ms (`0` disables, clamped `1000..120000`) | `20000` |
-| `VITE_VIBEUSAGE_HTTP_TIMEOUT_MS` | Dashboard request timeout in ms (`0` disables, clamped `1000..30000`) | `15000` |
-| `VIBEUSAGE_DEBUG` | Enable debug output (`1` or `true` to enable) | - |
-| `VIBEUSAGE_DASHBOARD_URL` | Custom dashboard URL | `https://www.tokentracker.cc` |
-| `VIBEUSAGE_INSFORGE_BASE_URL` | Custom API base URL | `https://5tmappuk.us-east.insforge.app` |
-| `VIBEUSAGE_DEVICE_TOKEN` | Pre-configured device token (for CI) | - |
-
-### CLI Tool Overrides
-
-| Variable | Description | Default |
-|----------|-------------|---------|
+| `TOKENTRACKER_DEBUG` | Enable debug output (`1` to enable) | - |
+| `TOKENTRACKER_HTTP_TIMEOUT_MS` | HTTP timeout (ms) | `20000` |
 | `CODEX_HOME` | Codex CLI directory override | `~/.codex` |
-| `CODE_HOME` | Every Code directory override | `~/.code` |
 | `GEMINI_HOME` | Gemini CLI directory override | `~/.gemini` |
 
-</details>
-
-## 🔧 Troubleshooting
-
-<details>
-<summary><b>Data not appearing in Dashboard</b></summary>
-
-1. Check status: `npx vibeusage status`
-2. Force manual sync: `npx vibeusage sync`
-3. Verify CLI tool hooks are configured (re-run `init` if needed)
-4. Check debug output: `VIBEUSAGE_DEBUG=1 npx vibeusage sync`
-
-</details>
-
-<details>
-<summary><b>Streak shows 0 days while totals look correct</b></summary>
-
-Streak is defined as consecutive days ending today. If today's total is 0, streak will be 0.
-
-If you expect a non-zero streak, clear cached auth/heatmap data and sign in again:
-
-```javascript
-localStorage.removeItem("vibeusage.dashboard.auth.v1");
-Object.keys(localStorage)
-  .filter((k) => k.startsWith("vibeusage.heatmap."))
-  .forEach((k) => localStorage.removeItem(k));
-location.reload();
-```
-
-Complete the landing page sign-in flow again after reload.
-
-Note: `insforge-auth-token` is not used by the dashboard; use `vibeusage.dashboard.auth.v1`.
-
-</details>
-
-<details>
-<summary><b>Timeout errors on slow connections</b></summary>
-
-Increase HTTP timeout for slow connections:
+## Development
 
 ```bash
-VIBEUSAGE_HTTP_TIMEOUT_MS=60000 npx vibeusage sync
-```
-
-</details>
-
-## 💻 Development
-
-### Local Development
-
-```bash
-# Clone the repository
-git clone https://github.com/your-username/vibeusage.git
-cd vibeusage
-
-# Install dependencies
+git clone https://github.com/mm7894215/tokentracker.git
+cd tokentracker
 npm install
 
-# Start dashboard dev server
-cd dashboard
-npm install
-npm run dev
-```
+# Build dashboard
+cd dashboard && npm install && npm run build && cd ..
 
-### Development Commands
+# Run locally
+node bin/tracker.js
 
-```bash
 # Run tests
 npm test
-
-# Run local CI checks
-npm run ci:local
-
-# Validate copy registry
-npm run validate:copy
-
-# Validate UI hardcoded text
-npm run validate:ui-hardcode
-
-# Validate architecture guardrails
-npm run validate:guardrails
-
-# Build backend functions
-npm run build:insforge
-
-# Check backend build (no write)
-npm run build:insforge:check
-
-# Run smoke tests
-npm run smoke
 ```
 
-### OpenSpec Workflow
+## License
 
-This project uses **OpenSpec** for spec-driven development. Before making significant changes:
-
-1. Read [`openspec/project.md`](openspec/project.md) for project conventions
-2. Check [`openspec/AGENTS.md`](openspec/AGENTS.md) for the full OpenSpec workflow
-3. Run `openspec list` to see active changes
-4. Run `openspec list --specs` to see existing specifications
-
-See [CLAUDE.md](CLAUDE.md) for detailed guidelines.
-
-### Architecture Validation
-
-```bash
-# Validate Copy Registry
-npm run validate:copy
-
-# Generate architecture canvas
-npm run architecture:canvas
-
-# Generate focused canvas for a module
-npm run architecture:canvas:focus -- src
-```
-
-## 🗺️ Roadmap
-
-- [ ] Windows support
-- [ ] Linux support
-- [ ] Enhanced project-level statistics
-- [ ] Team collaboration features
-- [ ] Custom report exports
-- [ ] Additional AI CLI support
-
-See [Issues](https://github.com/your-username/vibeusage/issues) for detailed plans.
-
-## 🤝 Contributing
-
-We welcome all forms of contributions!
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Create a Pull Request
-
-### Development Guidelines
-
-- All user-facing text must be registered in `dashboard/src/content/copy.csv`
-- Follow the OpenSpec proposal process for significant changes
-- Code must pass all tests and validations
-- See [CLAUDE.md](CLAUDE.md) for detailed conventions
-
-## 📜 License
-
-This project is licensed under the [MIT License](LICENSE).
-
-## 🙏 Acknowledgments
-
-- [InsForge](https://insforge.app) - Backend infrastructure
-- [Matrix-A Design System](docs/dashboard/matrix-a.md) - UI framework
-- All our amazing contributors
+[MIT](LICENSE)
 
 ---
 
 <div align="center">
-  <b>System_Ready // 2024-2026 Token Tracker</b><br/>
-  <i>"Quantify Your AI Output. Own Your Data."</i><br/><br/>
-
-  Made with 💚 by developers, for developers
-
-  [Website](https://www.tokentracker.cc) •
-  [Dashboard](https://www.tokentracker.cc) •
-  [Docs](docs/) •
-  [API](BACKEND_API.md)
+  <b>Token Tracker</b> — Quantify your AI output.<br/>
+  Made by developers, for developers.
 </div>
-
-
-## AI Agent 快速安装
-
-复制以下内容发送给你的 AI 助手：
-
-```
-请帮我安装 Token Tracker 来追踪 AI Token 用量。
-
-执行以下命令：
-npx --yes vibeusage init
-
-安装完成后验证：
-vibeusage status
-```
-
-或者查看完整指南: https://github.com/victorGPT/vibeusage/blob/main/docs/AI_AGENT_INSTALL.md

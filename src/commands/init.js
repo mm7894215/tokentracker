@@ -62,12 +62,18 @@ const {
 const { renderLocalReport, renderAuthTransition, renderSuccessBox } = require("../lib/init-flow");
 
 const ASCII_LOGO = [
-  "██╗   ██╗██╗██████╗ ███████╗██╗   ██╗███████╗ █████╗  ██████╗ ███████╗",
-  "██║   ██║██║██╔══██╗██╔════╝██║   ██║██╔════╝██╔══██╗██╔════╝ ██╔════╝",
-  "██║   ██║██║██████╔╝█████╗  ██║   ██║███████╗███████║██║  ███╗█████╗",
-  "╚██╗ ██╔╝██║██╔══██╗██╔══╝  ██║   ██║╚════██║██╔══██║██║   ██║██╔══╝",
-  " ╚████╔╝ ██║██████╔╝███████╗╚██████╔╝███████║██║  ██║╚██████╔╝███████╗",
-  "  ╚═══╝  ╚═╝╚═════╝ ╚══════╝ ╚═════╝ ╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚══════╝",
+  "████████╗ ██████╗ ██╗  ██╗███████╗███╗   ██╗",
+  "╚══██╔══╝██╔═══██╗██║ ██╔╝██╔════╝████╗  ██║",
+  "   ██║   ██║   ██║█████╔╝ █████╗  ██╔██╗ ██║",
+  "   ██║   ██║   ██║██╔═██╗ ██╔══╝  ██║╚██╗██║",
+  "   ██║   ╚██████╔╝██║  ██╗███████╗██║ ╚████║",
+  "   ╚═╝    ╚═════╝ ╚═╝  ╚═╝╚══════╝╚═╝  ╚═══╝",
+  "      ████████╗██████╗  █████╗  ██████╗██╗  ██╗███████╗██████╗",
+  "      ╚══██╔══╝██╔══██╗██╔══██╗██╔════╝██║ ██╔╝██╔════╝██╔══██╗",
+  "         ██║   ██████╔╝███████║██║     █████╔╝ █████╗  ██████╔╝",
+  "         ██║   ██╔══██╗██╔══██║██║     ██╔═██╗ ██╔══╝  ██╔══██╗",
+  "         ██║   ██║  ██║██║  ██║╚██████╗██║  ██╗███████╗██║  ██║",
+  "         ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝",
 ].join("\n");
 
 const DIVIDER = "----------------------------------------------";
@@ -125,11 +131,7 @@ async function cmdInit(argv) {
       runtime,
     });
     renderLocalReport({ summary: preview.summary, isDryRun: true });
-    if (preview.pendingBrowserAuth) {
-      process.stdout.write("Account linking would be required for full setup.\n");
-    } else if (!preview.deviceToken) {
-      renderAccountNotLinked({ context: "dry-run" });
-    }
+    renderAccountNotLinked({ context: "dry-run" });
     return;
   }
 
@@ -163,7 +165,10 @@ async function cmdInit(argv) {
   let deviceToken = setup.deviceToken;
   let deviceId = setup.deviceId;
 
-  if (setup.pendingBrowserAuth) {
+  // Cloud account linking — only when explicitly requested via env or flags
+  const wantCloudLink = setup.pendingBrowserAuth && (opts.linkCode || process.env.TOKENTRACKER_DEVICE_TOKEN || process.env.TOKENTRACKER_ACCESS_TOKEN);
+
+  if (wantCloudLink) {
     const deviceName = opts.deviceName || os.hostname();
     const flow = await beginBrowserAuth({
       baseUrl,
@@ -189,15 +194,13 @@ async function cmdInit(argv) {
     await chmod600IfPossible(configPath);
     const resolvedDashboardUrl = dashboardUrl || null;
     renderSuccessBox({ configPath, dashboardUrl: resolvedDashboardUrl });
-  } else if (deviceToken) {
-    const resolvedDashboardUrl = dashboardUrl || null;
-    renderSuccessBox({ configPath, dashboardUrl: resolvedDashboardUrl });
   } else {
-    renderAccountNotLinked();
+    // Local-only mode — show success without cloud linking
+    renderLocalSuccess();
   }
 
   try {
-    spawnInitSync({ trackerBinPath, packageName: "vibeusage" });
+    spawnInitSync({ trackerBinPath, packageName: "tokentracker" });
   } catch (err) {
     const msg = err && err.message ? err.message : "unknown error";
     process.stderr.write(`Initial sync spawn failed: ${msg}\n`);
@@ -209,17 +212,30 @@ function renderWelcome() {
     [
       ASCII_LOGO,
       "",
-      `${BOLD}Welcome to VibeScore CLI${RESET}`,
+      `${BOLD}Welcome to Token Tracker${RESET}`,
       DIVIDER,
-      `${CYAN}Privacy First: Your content stays local. We only upload token counts and minimal metadata, never prompts or responses.${RESET}`,
+      `${CYAN}Privacy First: Your data stays local. Only token counts are tracked — never prompts or responses.${RESET}`,
       DIVIDER,
       "",
       "This tool will:",
-      "  - Analyze your local AI CLI configurations (Codex, Every Code, Claude, Gemini, Opencode, OpenClaw)",
-      "  - Set up lightweight hooks to track your flow state",
-      "  - Link your device to your VibeScore account",
+      "  - Detect your AI CLI tools (Codex, Claude, Gemini, OpenCode, OpenClaw)",
+      "  - Set up lightweight hooks to track token usage",
+      "  - View your dashboard at http://localhost:7890",
       "",
       "(Nothing will be changed until you confirm below)",
+      "",
+    ].join("\n"),
+  );
+}
+
+function renderLocalSuccess() {
+  process.stdout.write(
+    [
+      "",
+      `${BOLD}Setup complete!${RESET}`,
+      "",
+      "  Token data will be collected automatically via hooks.",
+      "  Launching dashboard...",
       "",
     ].join("\n"),
   );
@@ -230,16 +246,13 @@ function renderAccountNotLinked({ context } = {}) {
     process.stdout.write(
       [
         "",
-        "Account not linked (dry run).",
-        "Run init without --dry-run to link your account.",
+        "Dry run complete. Run init without --dry-run to apply changes.",
         "",
       ].join("\n"),
     );
     return;
   }
-  process.stdout.write(
-    ["", "Account not linked.", "Set VIBEUSAGE_DEVICE_TOKEN then re-run init.", ""].join("\n"),
-  );
+  renderLocalSuccess();
 }
 
 function shouldUseBrowserAuth({ deviceToken, opts }) {
@@ -745,8 +758,8 @@ const fallbackPkg = ${JSON.stringify(fallbackPkg)};
 const selfPath = path.resolve(__filename);
 const home = os.homedir();
 const debugLogPath = path.join(trackerDir, 'notify.debug.jsonl');
-const debugEnabled = ['1', 'true'].includes((process.env.VIBEUSAGE_NOTIFY_DEBUG || '').toLowerCase());
-const debugMaxBytesRaw = Number.parseInt(process.env.VIBEUSAGE_NOTIFY_DEBUG_MAX_BYTES || '', 10);
+const debugEnabled = ['1', 'true'].includes((process.env.TOKENTRACKER_NOTIFY_DEBUG || '').toLowerCase());
+const debugMaxBytesRaw = Number.parseInt(process.env.TOKENTRACKER_NOTIFY_DEBUG_MAX_BYTES || '', 10);
 const debugMaxBytes = Number.isFinite(debugMaxBytesRaw) && debugMaxBytesRaw > 0
   ? debugMaxBytesRaw
   : 1_000_000;
@@ -778,7 +791,7 @@ if (debugEnabled) {
 // Throttle spawn: at most once per 20 seconds.
 try {
     const throttlePath = path.join(trackerDir, 'sync.throttle');
-    let deviceToken = process.env.VIBEUSAGE_DEVICE_TOKEN || null;
+    let deviceToken = process.env.TOKENTRACKER_DEVICE_TOKEN || null;
     if (!deviceToken) {
       try {
         const cfg = JSON.parse(fs.readFileSync(configPath, 'utf8'));
@@ -954,5 +967,5 @@ async function copyRuntimeDependencies({ from, to }) {
 }
 
 function isDebugEnabled() {
-  return process.env.VIBEUSAGE_DEBUG === "1";
+  return process.env.TOKENTRACKER_DEBUG === "1";
 }

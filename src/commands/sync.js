@@ -486,26 +486,26 @@ function normalizeString(value) {
 function resolveOpenclawSignal({ home, env } = {}) {
   if (!env) return null;
 
-  const agentId = normalizeString(env.VIBEUSAGE_OPENCLAW_AGENT_ID);
-  const sessionId = normalizeString(env.VIBEUSAGE_OPENCLAW_PREV_SESSION_ID);
+  const agentId = normalizeString(env.TOKENTRACKER_OPENCLAW_AGENT_ID);
+  const sessionId = normalizeString(env.TOKENTRACKER_OPENCLAW_PREV_SESSION_ID);
   if (!agentId || !sessionId) return null;
 
   const openclawHome =
-    normalizeString(env.VIBEUSAGE_OPENCLAW_HOME) || path.join(home || os.homedir(), ".openclaw");
+    normalizeString(env.TOKENTRACKER_OPENCLAW_HOME) || path.join(home || os.homedir(), ".openclaw");
   const sessionFile = path.join(openclawHome, "agents", agentId, "sessions", `${sessionId}.jsonl`);
 
   const prevTotals = {
-    totalTokens: normalizeNonNegativeInt(env.VIBEUSAGE_OPENCLAW_PREV_TOTAL_TOKENS),
-    inputTokens: normalizeNonNegativeInt(env.VIBEUSAGE_OPENCLAW_PREV_INPUT_TOKENS),
-    outputTokens: normalizeNonNegativeInt(env.VIBEUSAGE_OPENCLAW_PREV_OUTPUT_TOKENS),
-    model: normalizeString(env.VIBEUSAGE_OPENCLAW_PREV_MODEL),
-    updatedAt: normalizeIsoOrEpoch(env.VIBEUSAGE_OPENCLAW_PREV_UPDATED_AT),
+    totalTokens: normalizeNonNegativeInt(env.TOKENTRACKER_OPENCLAW_PREV_TOTAL_TOKENS),
+    inputTokens: normalizeNonNegativeInt(env.TOKENTRACKER_OPENCLAW_PREV_INPUT_TOKENS),
+    outputTokens: normalizeNonNegativeInt(env.TOKENTRACKER_OPENCLAW_PREV_OUTPUT_TOKENS),
+    model: normalizeString(env.TOKENTRACKER_OPENCLAW_PREV_MODEL),
+    updatedAt: normalizeIsoOrEpoch(env.TOKENTRACKER_OPENCLAW_PREV_UPDATED_AT),
   };
 
   return {
     agentId,
     sessionId,
-    sessionKey: normalizeString(env.VIBEUSAGE_OPENCLAW_SESSION_KEY),
+    sessionKey: normalizeString(env.TOKENTRACKER_OPENCLAW_SESSION_KEY),
     openclawHome,
     sessionFile,
     prevTotals,
