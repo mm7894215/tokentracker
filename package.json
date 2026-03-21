@@ -1,0 +1,58 @@
+{
+  "name": "tokentracker-cli",
+  "version": "0.2.27",
+  "description": "Token usage tracker for AI agent CLIs (Codex, Claude Code, Gemini, OpenCode, OpenClaw)",
+  "main": "src/cli.js",
+  "bin": {
+    "tracker": "bin/tracker.js",
+    "tokentracker": "bin/tracker.js",
+    "tokentracker-tracker": "bin/tracker.js"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "dashboard/dist/",
+    "LICENSE",
+    "README.md"
+  ],
+  "type": "commonjs",
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "architecture:canvas": "node scripts/ops/architecture-canvas.cjs",
+    "architecture:canvas:focus": "node scripts/ops/architecture-canvas.cjs --focus",
+    "architecture:canvas:list-modules": "node scripts/ops/architecture-canvas.cjs --list-modules",
+    "build:insforge": "node scripts/build-insforge-functions.cjs",
+    "build:insforge:check": "node scripts/build-insforge-functions.cjs --check",
+    "ci:local": "npm test && npm run validate:copy && npm run validate:ui-hardcode && npm run validate:guardrails && node --test test/architecture-guardrails.test.js && npm run build:insforge:check && npm --prefix dashboard run build",
+    "copy:pull": "node scripts/copy-sync.cjs pull",
+    "copy:push": "node scripts/copy-sync.cjs push",
+    "dashboard:build": "npm --prefix dashboard run build",
+    "dashboard:dev": "npm --prefix dashboard run dev",
+    "dashboard:preview": "npm --prefix dashboard run preview",
+    "dev:shim": "node scripts/dev-bin-shim.cjs",
+    "graph:auto-index": "node scripts/graph/auto-index.cjs",
+    "graph:scip": "node scripts/graph/generate-scip.cjs",
+    "smoke": "node scripts/smoke/insforge-smoke.cjs",
+    "test": "node --test test/*.test.js",
+    "validate:copy": "node scripts/validate-copy-registry.cjs",
+    "validate:guardrails": "node scripts/validate-architecture-guardrails.cjs",
+    "validate:insforge2-db": "node scripts/ops/insforge2-db-validate.cjs",
+    "validate:retros": "node scripts/validate-retros.cjs",
+    "validate:ui-hardcode": "node scripts/ops/validate-ui-hardcode.cjs"
+  },
+  "dependencies": {
+    "@insforge/sdk": "^1.0.4"
+  },
+  "devDependencies": {
+    "@sourcegraph/scip-typescript": "^0.3.6",
+    "esbuild": "0.27.2"
+  },
+  "bundledDependencies": [
+    "@insforge/sdk"
+  ],
+  "engines": {
+    "node": ">=20"
+  }
+}

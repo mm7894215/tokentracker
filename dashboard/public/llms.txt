@@ -1,0 +1,25 @@
+# VibeUsage LLMs Index
+
+VibeUsage tracks token usage across AI coding agent clients (Codex, Claude Code, OpenCode, Gemini, OpenClaw).
+
+## Canonical URL
+- [Homepage](https://www.vibeusage.cc/)
+
+## Priority URLs
+- [Homepage](https://www.vibeusage.cc/)
+- [Share dashboard view](https://www.vibeusage.cc/share)
+- [Sitemap](https://www.vibeusage.cc/sitemap.xml)
+- [RSS feed](https://www.vibeusage.cc/feed.xml)
+
+## Product
+- Install command: `npx --yes vibeusage init`
+- [NPM package](https://www.npmjs.com/package/vibeusage)
+- [Source repository](https://github.com/victorGPT/vibeusage)
+
+## Policy and Discovery
+- [robots.txt](https://www.vibeusage.cc/robots.txt)
+- [llms.txt](https://www.vibeusage.cc/llms.txt)
+- Data principle: minimal data collection and auditable metrics.
+
+## Contact
+- [GitHub issues](https://github.com/victorGPT/vibeusage/issues)

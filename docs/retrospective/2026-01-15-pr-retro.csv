@@ -1,0 +1,6 @@
+number,title,url,closed_at,merged_at,review_cycles,frontend,backend,primary_stage,secondary_stages,topic_summary,review_signals
+56,"feat: top models module and usage identity alignment","https://github.com/victorGPT/vibeusage/pull/56",2026-01-06T23:43:31Z,2026-01-06T23:43:31Z,14,yes,yes,,,,
+70,"feat: adopt InsForge hosted auth for dashboard","https://github.com/victorGPT/vibeusage/pull/70",2026-01-15T18:44:41Z,2026-01-15T18:44:41Z,9,yes,yes,,,,
+25,"feat: one-login link code install flow","https://github.com/victorGPT/vibeusage/pull/25",2025-12-28T11:55:41Z,2025-12-28T11:55:41Z,9,yes,yes,,,,
+55,"Billable total tokens: ingest + backfill + read paths","https://github.com/victorGPT/vibeusage/pull/55",2026-01-06T13:59:18Z,2026-01-06T13:59:18Z,4,yes,yes,,,,
+34,"refactor(ui): refine matrix dashboard design system","https://github.com/victorGPT/vibeusage/pull/34",2025-12-30T05:19:37Z,2025-12-30T05:19:37Z,4,yes,no,,,,

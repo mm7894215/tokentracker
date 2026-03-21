@@ -1,0 +1,46 @@
+node_modules
+.DS_Store
+dist
+.tmp
+dashboard/tmp
+.amazonq
+.env
+.env.local
+.env.*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.obsidian/
+.code/
+.worktrees/
+codex-pr-review-loop.skill
+index.scip
+/index.*.scip
+/graph.plan.json
+/data/graph.sqlite
+/data/graph.sqlite-*
+
+# Local-only snapshots and experiments
+/backups/
+/copy2.jsx
+/vibescore-flowchart/
+
+# Local-only docs
+.vercel
+.env*.local
+
+# Local-only canvas focus output
+architecture.focus.canvas
+.worktrees/
+
+# OpenMemory - IDE/Assistant specific rules
+.cursor/rules/openmemory.mdc
+CLAUDE.md
+AGENTS.md
+
+# TokenTrackerBar build artifacts
+TokenTrackerBar/EmbeddedServer/
+TokenTrackerBar/build/
+TokenTrackerBar/TokenTrackerBar.xcodeproj/
+TokenTrackerBar/icon_composer/

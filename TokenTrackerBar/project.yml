@@ -1,0 +1,60 @@
+name: TokenTrackerBar
+options:
+  bundleIdPrefix: com.tokentracker
+  deploymentTarget:
+    macOS: "13.0"
+  xcodeVersion: "16.0"
+  generateEmptyDirectories: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    MACOSX_DEPLOYMENT_TARGET: "13.0"
+
+targets:
+  TokenTrackerBar:
+    type: application
+    platform: macOS
+    sources:
+      - path: TokenTrackerBar
+        excludes:
+          - "EmbeddedServer/**"
+          - "AppIcon.icon"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.tokentracker.bar
+        PRODUCT_NAME: TokenTrackerBar
+        INFOPLIST_VALUES: |
+          LSUIElement = YES
+        MARKETING_VERSION: "1.0.0"
+        CURRENT_PROJECT_VERSION: "1"
+        SWIFT_EMIT_LOC_STRINGS: "YES"
+        CODE_SIGN_STYLE: Automatic
+        ENABLE_APP_SANDBOX: NO
+        COPY_PHASE_STRIP: NO
+        STRIP_INSTALLED_PRODUCT: NO
+    info:
+      path: TokenTrackerBar/Info.plist
+      properties:
+        LSUIElement: true
+        CFBundleDisplayName: TokenTracker
+        CFBundleName: TokenTrackerBar
+        CFBundleVersion: "1"
+        CFBundleShortVersionString: "1.0.0"
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+    postBuildScripts:
+      - script: |
+          SRC_DIR="${SRCROOT}/EmbeddedServer"
+          DST_DIR="${BUILT_PRODUCTS_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/EmbeddedServer"
+          if [ -d "$SRC_DIR" ]; then
+            rm -rf "$DST_DIR"
+            cp -a "$SRC_DIR" "$DST_DIR"
+            chmod +x "$DST_DIR/node"
+          fi
+          exit 0
+        name: "Copy EmbeddedServer to app bundle"
+    entitlements:
+      path: TokenTrackerBar/TokenTrackerBar.entitlements
+      properties:
+        com.apple.security.network.client: true
