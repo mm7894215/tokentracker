@@ -13,20 +13,42 @@
 
 ---
 
-## Quick Start
+## Two Ways to Use
+
+### Option A: macOS Menu Bar App (Recommended)
+
+Download `TokenTrackerBar.dmg` from the [latest release](https://github.com/mm7894215/tokentracker/releases/latest), drag to Applications, done.
+
+- Lives in your menu bar — click to see usage stats
+- Auto-syncs data from all supported CLI tools
+- No terminal, no Node.js, no setup required
+
+### Option B: CLI + Web Dashboard
 
 ```bash
 npx tokentracker-cli
 ```
 
-One command does everything: first-time setup → hook installation → data sync → open dashboard.
+One command does everything: first-time setup → hook installation → data sync → open dashboard at `http://localhost:7890`.
+
+Install globally for shorter commands:
+
+```bash
+npm i -g tokentracker-cli
+tokentracker              # Open dashboard
+tokentracker sync         # Manual sync
+tokentracker status       # Check hook status
+tokentracker doctor       # Health check
+```
+
+---
 
 ## Features
 
 - **Multi-Source Tracking** — Codex CLI, Claude Code, Gemini CLI, OpenCode, OpenClaw, Every Code
 - **Local-First** — All data stays on your machine. No cloud account required.
 - **Zero-Config** — Hooks auto-detect and configure on first run
-- **Built-in Dashboard** — Web UI at `http://localhost:7890`, no external service needed
+- **Built-in Dashboard** — Web UI with usage trends, model breakdowns, heatmaps
 - **Privacy-First** — Only token counts tracked, never prompts or responses
 
 ## Supported CLI Tools
@@ -40,22 +62,6 @@ One command does everything: first-time setup → hook installation → data syn
 | **OpenClaw** | ✅ |
 | **Every Code** | ✅ |
 
-## Usage
-
-After first run via `npx tokentracker-cli`, you can also install globally for shorter commands:
-
-```bash
-npm i -g tokentracker-cli
-
-# Then use anywhere:
-tokentracker              # Open dashboard
-tokentracker serve --port 3000
-tokentracker sync         # Manual sync
-tokentracker status       # Check hook status
-tokentracker doctor       # Health check
-tokentracker uninstall    # Remove hooks
-```
-
 ## How It Works
 
 ```
@@ -63,11 +69,11 @@ AI CLI Tools (Codex, Claude, Gemini, OpenCode, ...)
     │
     │  hooks auto-trigger on usage
     ▼
-Token Tracker CLI (local parsing + aggregation)
+Token Tracker (local parsing + aggregation)
     │
     │  30-minute UTC buckets
     ▼
-Local Dashboard (http://localhost:7890)
+Dashboard (Menu Bar App or localhost:7890)
 ```
 
 1. AI CLI tools generate logs during usage
@@ -102,15 +108,27 @@ git clone https://github.com/mm7894215/tokentracker.git
 cd tokentracker
 npm install
 
-# Build dashboard
+# Build and run web dashboard
 cd dashboard && npm install && npm run build && cd ..
-
-# Run locally
 node bin/tracker.js
 
 # Run tests
 npm test
 ```
+
+### Building the macOS App
+
+```bash
+cd TokenTrackerBar
+npm run dashboard:build          # Build dashboard (from repo root)
+./scripts/bundle-node.sh         # Download Node.js + bundle tokentracker
+xcodegen generate                # Generate Xcode project
+ruby scripts/patch-pbxproj-icon.rb  # Patch Icon Composer support
+xcodebuild -scheme TokenTrackerBar -configuration Release clean build
+./scripts/create-dmg.sh          # Create distributable DMG
+```
+
+Requires: Xcode 16+, [XcodeGen](https://github.com/yonaskolb/XcodeGen)
 
 ## License
 

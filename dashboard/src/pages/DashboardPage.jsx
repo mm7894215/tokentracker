@@ -1155,6 +1155,10 @@ export function DashboardPage({
     if (!formatted || formatted === "-" || formatted.startsWith("$")) return formatted;
     return `$${formatted}`;
   }, [summary?.total_cost_usd]);
+  const summaryConversationsValue = useMemo(
+    () => toDisplayNumber(summary?.conversation_count),
+    [summary?.conversation_count],
+  );
 
   const fleetData = useMemo(
     () => buildFleetData(modelBreakdown, { copyFn: copy }),
@@ -1367,6 +1371,7 @@ export function DashboardPage({
       summaryLabel={summaryLabel}
       summaryValue={summaryValue}
       summaryCostValue={summaryCostValue}
+      summaryConversationsValue={summaryConversationsValue}
       rollingUsage={rolling}
       costInfoEnabled={costInfoEnabled}
       openCostModal={openCostModal}

@@ -56,6 +56,7 @@ export function DashboardView(props) {
     summaryLabel,
     summaryValue,
     summaryCostValue,
+    summaryConversationsValue,
     rollingUsage,
     costInfoEnabled,
     openCostModal,
@@ -127,9 +128,11 @@ export function DashboardView(props) {
                 <StatsPanel
                   title={copy("dashboard.identity.title")}
                   subtitle={copy("dashboard.identity.subtitle")}
+                  period={period}
                   rankLabel={identityStartDate ?? copy("identity_card.rank_placeholder")}
                   streakDays={activeDays}
                   subscriptions={identitySubscriptions}
+                  periodConversations={summaryConversationsValue}
                   rolling={rollingUsage}
                   topModels={topModels}
                 />

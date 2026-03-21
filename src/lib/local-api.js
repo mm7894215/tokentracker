@@ -57,6 +57,111 @@ function aggregateByDay(rows) {
   return Array.from(byDay.values()).sort((a, b) => a.day.localeCompare(b.day));
 }
 
+function getTimeZoneContext(url) {
+  const tz = String(url.searchParams.get("tz") || "").trim();
+  const rawOffset = Number(url.searchParams.get("tz_offset_minutes"));
+  return {
+    timeZone: tz || null,
+    offsetMinutes: Number.isFinite(rawOffset) ? Math.trunc(rawOffset) : null,
+  };
+}
+
+function getZonedParts(date, { timeZone, offsetMinutes } = {}) {
+  const dt = date instanceof Date ? date : new Date(date);
+  if (!Number.isFinite(dt.getTime())) return null;
+
+  if (timeZone && typeof Intl !== "undefined" && Intl.DateTimeFormat) {
+    try {
+      const formatter = new Intl.DateTimeFormat("en-CA", {
+        timeZone,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hourCycle: "h23",
+      });
+      const parts = formatter.formatToParts(dt);
+      const values = parts.reduce((acc, part) => {
+        if (part.type && part.value) acc[part.type] = part.value;
+        return acc;
+      }, {});
+      const year = Number(values.year);
+      const month = Number(values.month);
+      const day = Number(values.day);
+      const hour = Number(values.hour);
+      const minute = Number(values.minute);
+      const second = Number(values.second);
+      if ([year, month, day, hour, minute, second].every(Number.isFinite)) {
+        return { year, month, day, hour, minute, second };
+      }
+    } catch (_e) {
+      // fall through
+    }
+  }
+
+  if (Number.isFinite(offsetMinutes)) {
+    const shifted = new Date(dt.getTime() + offsetMinutes * 60 * 1000);
+    return {
+      year: shifted.getUTCFullYear(),
+      month: shifted.getUTCMonth() + 1,
+      day: shifted.getUTCDate(),
+      hour: shifted.getUTCHours(),
+      minute: shifted.getUTCMinutes(),
+      second: shifted.getUTCSeconds(),
+    };
+  }
+
+  return {
+    year: dt.getFullYear(),
+    month: dt.getMonth() + 1,
+    day: dt.getDate(),
+    hour: dt.getHours(),
+    minute: dt.getMinutes(),
+    second: dt.getSeconds(),
+  };
+}
+
+function formatPartsDayKey(parts) {
+  if (!parts) return "";
+  return `${parts.year}-${String(parts.month).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}`;
+}
+
+function aggregateHourlyByDay(rows, dayKey, timeZoneContext) {
+  const byHour = new Map();
+  for (const row of rows) {
+    if (!row.hour_start) continue;
+    const parts = getZonedParts(new Date(row.hour_start), timeZoneContext);
+    if (!parts) continue;
+    if (formatPartsDayKey(parts) !== dayKey) continue;
+    const hourKey = `${dayKey}T${String(parts.hour).padStart(2, "0")}:00:00`;
+    if (!byHour.has(hourKey)) {
+      byHour.set(hourKey, {
+        hour: hourKey,
+        total_tokens: 0,
+        billable_total_tokens: 0,
+        input_tokens: 0,
+        output_tokens: 0,
+        cached_input_tokens: 0,
+        cache_creation_input_tokens: 0,
+        reasoning_output_tokens: 0,
+        conversation_count: 0,
+      });
+    }
+    const bucket = byHour.get(hourKey);
+    bucket.total_tokens += row.total_tokens || 0;
+    bucket.billable_total_tokens += row.total_tokens || 0;
+    bucket.input_tokens += row.input_tokens || 0;
+    bucket.output_tokens += row.output_tokens || 0;
+    bucket.cached_input_tokens += row.cached_input_tokens || 0;
+    bucket.cache_creation_input_tokens += row.cache_creation_input_tokens || 0;
+    bucket.reasoning_output_tokens += row.reasoning_output_tokens || 0;
+    bucket.conversation_count += row.conversation_count || 0;
+  }
+  return Array.from(byHour.values()).sort((a, b) => a.hour.localeCompare(b.hour));
+}
+
 // ---------------------------------------------------------------------------
 // Sync helper
 // ---------------------------------------------------------------------------
@@ -461,18 +566,9 @@ function createLocalApiHandler({ queuePath }) {
     // --- usage-hourly (stub for day-view) ---
     if (p === "/functions/vibeusage-usage-hourly") {
       const day = url.searchParams.get("day") || new Date().toISOString().slice(0, 10);
-      const rows = readQueueData(qp).filter((r) => r.hour_start && r.hour_start.startsWith(day));
-      const data = rows.map((r) => ({
-        hour: r.hour_start,
-        total_tokens: r.total_tokens || 0,
-        billable_total_tokens: r.total_tokens || 0,
-        input_tokens: r.input_tokens || 0,
-        output_tokens: r.output_tokens || 0,
-        cached_input_tokens: r.cached_input_tokens || 0,
-        cache_creation_input_tokens: r.cache_creation_input_tokens || 0,
-        reasoning_output_tokens: r.reasoning_output_tokens || 0,
-        conversation_count: r.conversation_count || 0,
-      }));
+      const timeZoneContext = getTimeZoneContext(url);
+      const rows = readQueueData(qp);
+      const data = aggregateHourlyByDay(rows, day, timeZoneContext);
       json(res, { day, data });
       return true;
     }

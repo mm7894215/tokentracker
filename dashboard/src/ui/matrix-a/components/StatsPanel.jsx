@@ -35,9 +35,11 @@ function buildSubscriptionItems(subscriptions) {
 }
 
 export function StatsPanel({
+  period = "month",
   rankLabel,
   streakDays,
   subscriptions = [],
+  periodConversations,
   rolling,
   topModels = [],
   className = "",
@@ -62,6 +64,20 @@ export function StatsPanel({
     const formatted = formatCompactNumber(value, compactConfig);
     return formatted === "-" ? placeholder : formatted;
   };
+  const periodConversationLabel = (() => {
+    switch (period) {
+      case "day":
+        return "today";
+      case "week":
+        return "week";
+      case "month":
+        return "month";
+      case "total":
+        return "all";
+      default:
+        return "convs";
+    }
+  })();
 
   const displayModels = topModels.slice(0, 3);
 
@@ -90,9 +106,9 @@ export function StatsPanel({
           </div>
           <div className="flex flex-col items-center justify-center px-2 py-2 bg-oai-gray-50 dark:bg-oai-gray-800 rounded-lg">
             <span className="text-sm font-semibold text-oai-black dark:text-oai-white tabular-nums">
-              {formatValue(rolling?.last_30d?.totals?.conversation_count)}
+              {formatValue(periodConversations)}
             </span>
-            <span className="text-[10px] text-oai-gray-400 dark:text-oai-gray-400 mt-0.5">convs</span>
+            <span className="text-[10px] text-oai-gray-400 dark:text-oai-gray-400 mt-0.5">{periodConversationLabel}</span>
           </div>
         </div>
 

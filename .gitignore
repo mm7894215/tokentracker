@@ -38,3 +38,9 @@ architecture.focus.canvas
 .cursor/rules/openmemory.mdc
 CLAUDE.md
 AGENTS.md
+
+# TokenTrackerBar build artifacts
+TokenTrackerBar/EmbeddedServer/
+TokenTrackerBar/build/
+TokenTrackerBar/TokenTrackerBar.xcodeproj/
+TokenTrackerBar/icon_composer/
