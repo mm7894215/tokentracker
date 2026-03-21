@@ -817,9 +817,10 @@ test("parseOpencodeIncremental aggregates message tokens and model", async () =>
     assert.equal(queued[0].hour_start, "2025-12-29T10:00:00.000Z");
     assert.equal(queued[0].input_tokens, 10);
     assert.equal(queued[0].cached_input_tokens, 3);
+    assert.equal(queued[0].cache_creation_input_tokens, 5);
     assert.equal(queued[0].output_tokens, 2);
     assert.equal(queued[0].reasoning_output_tokens, 1);
-    assert.equal(queued[0].total_tokens, 13);
+    assert.equal(queued[0].total_tokens, 21); // 10 + 2 + 1 + 3 + 5
     assert.equal(queued[0].conversation_count, 1);
     assert.equal(typeof queued[0].content, "undefined");
 
@@ -1915,14 +1916,15 @@ test("parseClaudeIncremental counts cache creation as input and cache read separ
     assert.equal(queued.length, 1);
     assert.equal(queued[0].input_tokens, 5);
     assert.equal(queued[0].cached_input_tokens, 4);
+    assert.equal(queued[0].cache_creation_input_tokens, 3);
     assert.equal(queued[0].output_tokens, 2);
-    assert.equal(queued[0].total_tokens, 7);
+    assert.equal(queued[0].total_tokens, 14); // 5 + 2 + 3 + 4
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }
 });
 
-test("parseClaudeIncremental honors total_tokens when present", async () => {
+test("parseClaudeIncremental computes total from all components ignoring JSONL total", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "vibescore-claude-"));
   try {
     const claudePath = path.join(tmp, "agent-claude.jsonl");
@@ -1930,7 +1932,7 @@ test("parseClaudeIncremental honors total_tokens when present", async () => {
     const cursors = { version: 1, files: {}, updatedAt: null };
 
     const lines = [
-      buildClaudeUsageLine({ ts: "2025-12-25T01:10:00.000Z", input: 5, output: 1, total: 20 }),
+      buildClaudeUsageLine({ ts: "2025-12-25T01:10:00.000Z", input: 5, output: 1, cacheCreation: 2, cacheRead: 3, total: 20 }),
     ];
     await fs.writeFile(claudePath, lines.join("\n") + "\n", "utf8");
 
@@ -1944,7 +1946,8 @@ test("parseClaudeIncremental honors total_tokens when present", async () => {
 
     const queued = await readJsonLines(queuePath);
     assert.equal(queued.length, 1);
-    assert.equal(queued[0].total_tokens, 20);
+    // total = input(5) + output(1) + cacheCreation(2) + cacheRead(3) = 11, not JSONL's 20
+    assert.equal(queued[0].total_tokens, 11);
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }

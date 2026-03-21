@@ -20,6 +20,7 @@ export function sumDailyRowsToTotals(rows: any) {
     billable_total_tokens: 0n,
     input_tokens: 0n,
     cached_input_tokens: 0n,
+    cache_creation_input_tokens: 0n,
     output_tokens: 0n,
     reasoning_output_tokens: 0n,
     conversation_count: 0n,
@@ -30,6 +31,7 @@ export function sumDailyRowsToTotals(rows: any) {
     totals.billable_total_tokens += toBigIntValue(row?.billable_total_tokens ?? row?.total_tokens);
     totals.input_tokens += toBigIntValue(row?.input_tokens);
     totals.cached_input_tokens += toBigIntValue(row?.cached_input_tokens);
+    totals.cache_creation_input_tokens += toBigIntValue(row?.cache_creation_input_tokens);
     totals.output_tokens += toBigIntValue(row?.output_tokens);
     totals.reasoning_output_tokens += toBigIntValue(row?.reasoning_output_tokens);
     totals.conversation_count += toBigIntValue(row?.conversation_count);
@@ -40,6 +42,7 @@ export function sumDailyRowsToTotals(rows: any) {
     billable_total_tokens: totals.billable_total_tokens.toString(),
     input_tokens: totals.input_tokens.toString(),
     cached_input_tokens: totals.cached_input_tokens.toString(),
+    cache_creation_input_tokens: totals.cache_creation_input_tokens.toString(),
     output_tokens: totals.output_tokens.toString(),
     reasoning_output_tokens: totals.reasoning_output_tokens.toString(),
     conversation_count: totals.conversation_count.toString(),

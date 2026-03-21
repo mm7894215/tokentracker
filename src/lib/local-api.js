@@ -12,14 +12,7 @@ const TRACKER_BIN = path.resolve(__dirname, "../../bin/tracker.js");
 
 function resolveQueuePath() {
   const home = os.homedir();
-  const candidates = [
-    path.join(home, ".tokentracker", "tracker", "queue.jsonl"),
-    path.join(home, ".vibeusage", "tracker", "queue.jsonl"),
-  ];
-  for (const p of candidates) {
-    if (fs.existsSync(p)) return p;
-  }
-  return candidates[0];
+  return path.join(home, ".tokentracker", "tracker", "queue.jsonl");
 }
 
 function readQueueData(queuePath) {
@@ -46,6 +39,7 @@ function aggregateByDay(rows) {
         input_tokens: 0,
         output_tokens: 0,
         cached_input_tokens: 0,
+        cache_creation_input_tokens: 0,
         reasoning_output_tokens: 0,
         conversation_count: 0,
       });
@@ -56,6 +50,7 @@ function aggregateByDay(rows) {
     a.input_tokens += row.input_tokens || 0;
     a.output_tokens += row.output_tokens || 0;
     a.cached_input_tokens += row.cached_input_tokens || 0;
+    a.cache_creation_input_tokens += row.cache_creation_input_tokens || 0;
     a.reasoning_output_tokens += row.reasoning_output_tokens || 0;
     a.conversation_count += row.conversation_count || 0;
   }
@@ -261,11 +256,12 @@ function createLocalApiHandler({ queuePath }) {
           acc.input_tokens += r.input_tokens;
           acc.output_tokens += r.output_tokens;
           acc.cached_input_tokens += r.cached_input_tokens;
+          acc.cache_creation_input_tokens += r.cache_creation_input_tokens;
           acc.reasoning_output_tokens += r.reasoning_output_tokens;
           acc.conversation_count += r.conversation_count;
           return acc;
         },
-        { total_tokens: 0, billable_total_tokens: 0, input_tokens: 0, output_tokens: 0, cached_input_tokens: 0, reasoning_output_tokens: 0, conversation_count: 0 },
+        { total_tokens: 0, billable_total_tokens: 0, input_tokens: 0, output_tokens: 0, cached_input_tokens: 0, cache_creation_input_tokens: 0, reasoning_output_tokens: 0, conversation_count: 0 },
       );
       const totalCost = (totals.total_tokens * 1.75) / 1_000_000;
 
@@ -379,22 +375,24 @@ function createLocalApiHandler({ queuePath }) {
         const src = row.source || "unknown";
         const mdl = row.model || "unknown";
         if (!bySource.has(src))
-          bySource.set(src, { source: src, totals: { total_tokens: 0, billable_total_tokens: 0, input_tokens: 0, output_tokens: 0, cached_input_tokens: 0, reasoning_output_tokens: 0, total_cost_usd: "0" }, models: new Map() });
+          bySource.set(src, { source: src, totals: { total_tokens: 0, billable_total_tokens: 0, input_tokens: 0, output_tokens: 0, cached_input_tokens: 0, cache_creation_input_tokens: 0, reasoning_output_tokens: 0, total_cost_usd: "0" }, models: new Map() });
         const sa = bySource.get(src);
         sa.totals.total_tokens += row.total_tokens || 0;
         sa.totals.billable_total_tokens += row.total_tokens || 0;
         sa.totals.input_tokens += row.input_tokens || 0;
         sa.totals.output_tokens += row.output_tokens || 0;
         sa.totals.cached_input_tokens += row.cached_input_tokens || 0;
+        sa.totals.cache_creation_input_tokens += row.cache_creation_input_tokens || 0;
         sa.totals.reasoning_output_tokens += row.reasoning_output_tokens || 0;
         if (!sa.models.has(mdl))
-          sa.models.set(mdl, { model: mdl, model_id: mdl, totals: { total_tokens: 0, billable_total_tokens: 0, input_tokens: 0, output_tokens: 0, cached_input_tokens: 0, reasoning_output_tokens: 0, total_cost_usd: "0" } });
+          sa.models.set(mdl, { model: mdl, model_id: mdl, totals: { total_tokens: 0, billable_total_tokens: 0, input_tokens: 0, output_tokens: 0, cached_input_tokens: 0, cache_creation_input_tokens: 0, reasoning_output_tokens: 0, total_cost_usd: "0" } });
         const ma = sa.models.get(mdl);
         ma.totals.total_tokens += row.total_tokens || 0;
         ma.totals.billable_total_tokens += row.total_tokens || 0;
         ma.totals.input_tokens += row.input_tokens || 0;
         ma.totals.output_tokens += row.output_tokens || 0;
         ma.totals.cached_input_tokens += row.cached_input_tokens || 0;
+        ma.totals.cache_creation_input_tokens += row.cache_creation_input_tokens || 0;
         ma.totals.reasoning_output_tokens += row.reasoning_output_tokens || 0;
       }
 
@@ -471,6 +469,7 @@ function createLocalApiHandler({ queuePath }) {
         input_tokens: r.input_tokens || 0,
         output_tokens: r.output_tokens || 0,
         cached_input_tokens: r.cached_input_tokens || 0,
+        cache_creation_input_tokens: r.cache_creation_input_tokens || 0,
         reasoning_output_tokens: r.reasoning_output_tokens || 0,
         conversation_count: r.conversation_count || 0,
       }));
@@ -490,13 +489,14 @@ function createLocalApiHandler({ queuePath }) {
         if (day < from || day > to) continue;
         const month = day.slice(0, 7);
         if (!byMonth.has(month))
-          byMonth.set(month, { month, total_tokens: 0, billable_total_tokens: 0, input_tokens: 0, output_tokens: 0, cached_input_tokens: 0, reasoning_output_tokens: 0, conversation_count: 0 });
+          byMonth.set(month, { month, total_tokens: 0, billable_total_tokens: 0, input_tokens: 0, output_tokens: 0, cached_input_tokens: 0, cache_creation_input_tokens: 0, reasoning_output_tokens: 0, conversation_count: 0 });
         const a = byMonth.get(month);
         a.total_tokens += row.total_tokens || 0;
         a.billable_total_tokens += row.total_tokens || 0;
         a.input_tokens += row.input_tokens || 0;
         a.output_tokens += row.output_tokens || 0;
         a.cached_input_tokens += row.cached_input_tokens || 0;
+        a.cache_creation_input_tokens += row.cache_creation_input_tokens || 0;
         a.reasoning_output_tokens += row.reasoning_output_tokens || 0;
         a.conversation_count += row.conversation_count || 0;
       }

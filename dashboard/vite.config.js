@@ -200,7 +200,7 @@ function richLinkMetaPlugin() {
   };
 }
 
-// 本地数据 API 插件 - 直接读取 ~/.vibeusage/tracker/queue.jsonl
+// 本地数据 API 插件 - 直接读取 ~/.tokentracker/tracker/queue.jsonl
 // 本地 API 处理函数
 function trimCommandOutput(value, maxLength = 4000) {
   const text = String(value || "");
@@ -269,7 +269,7 @@ async function runLocalSyncCommand() {
 }
 
 async function handleLocalApi(req, res, url) {
-  const QUEUE_PATH = path.join(os.homedir(), ".vibeusage", "tracker", "queue.jsonl");
+  const QUEUE_PATH = path.join(os.homedir(), ".tokentracker", "tracker", "queue.jsonl");
 
   function readQueueData() {
     try {
@@ -296,6 +296,7 @@ async function handleLocalApi(req, res, url) {
           input_tokens: 0,
           output_tokens: 0,
           cached_input_tokens: 0,
+          cache_creation_input_tokens: 0,
           reasoning_output_tokens: 0,
           conversation_count: 0,
         });
@@ -306,6 +307,7 @@ async function handleLocalApi(req, res, url) {
       agg.input_tokens += row.input_tokens || 0;
       agg.output_tokens += row.output_tokens || 0;
       agg.cached_input_tokens += row.cached_input_tokens || 0;
+      agg.cache_creation_input_tokens += row.cache_creation_input_tokens || 0;
       agg.reasoning_output_tokens += row.reasoning_output_tokens || 0;
       agg.conversation_count += row.conversation_count || 0;
     }
@@ -353,12 +355,13 @@ async function handleLocalApi(req, res, url) {
       acc.input_tokens += row.input_tokens;
       acc.output_tokens += row.output_tokens;
       acc.cached_input_tokens += row.cached_input_tokens;
+      acc.cache_creation_input_tokens += row.cache_creation_input_tokens;
       acc.reasoning_output_tokens += row.reasoning_output_tokens;
       acc.conversation_count += row.conversation_count;
       return acc;
     }, {
       total_tokens: 0, billable_total_tokens: 0, input_tokens: 0,
-      output_tokens: 0, cached_input_tokens: 0, reasoning_output_tokens: 0, conversation_count: 0,
+      output_tokens: 0, cached_input_tokens: 0, cache_creation_input_tokens: 0, reasoning_output_tokens: 0, conversation_count: 0,
     });
     const totalCost = (totals.total_tokens * 1.75) / 1_000_000;
 
@@ -509,7 +512,7 @@ async function handleLocalApi(req, res, url) {
       if (!bySource.has(source)) {
         bySource.set(source, {
           source,
-          totals: { total_tokens: 0, billable_total_tokens: 0, input_tokens: 0, output_tokens: 0, cached_input_tokens: 0, reasoning_output_tokens: 0, total_cost_usd: "0" },
+          totals: { total_tokens: 0, billable_total_tokens: 0, input_tokens: 0, output_tokens: 0, cached_input_tokens: 0, cache_creation_input_tokens: 0, reasoning_output_tokens: 0, total_cost_usd: "0" },
           models: new Map()
         });
       }
@@ -521,6 +524,7 @@ async function handleLocalApi(req, res, url) {
       sourceAgg.totals.input_tokens += row.input_tokens || 0;
       sourceAgg.totals.output_tokens += row.output_tokens || 0;
       sourceAgg.totals.cached_input_tokens += row.cached_input_tokens || 0;
+      sourceAgg.totals.cache_creation_input_tokens += row.cache_creation_input_tokens || 0;
       sourceAgg.totals.reasoning_output_tokens += row.reasoning_output_tokens || 0;
 
       // 按 model 分组
@@ -528,7 +532,7 @@ async function handleLocalApi(req, res, url) {
         sourceAgg.models.set(modelName, {
           model: modelName,
           model_id: modelName,
-          totals: { total_tokens: 0, billable_total_tokens: 0, input_tokens: 0, output_tokens: 0, cached_input_tokens: 0, reasoning_output_tokens: 0, total_cost_usd: "0" }
+          totals: { total_tokens: 0, billable_total_tokens: 0, input_tokens: 0, output_tokens: 0, cached_input_tokens: 0, cache_creation_input_tokens: 0, reasoning_output_tokens: 0, total_cost_usd: "0" }
         });
       }
       const modelAgg = sourceAgg.models.get(modelName);
@@ -537,6 +541,7 @@ async function handleLocalApi(req, res, url) {
       modelAgg.totals.input_tokens += row.input_tokens || 0;
       modelAgg.totals.output_tokens += row.output_tokens || 0;
       modelAgg.totals.cached_input_tokens += row.cached_input_tokens || 0;
+      modelAgg.totals.cache_creation_input_tokens += row.cache_creation_input_tokens || 0;
       modelAgg.totals.reasoning_output_tokens += row.reasoning_output_tokens || 0;
     }
 

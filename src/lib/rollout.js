@@ -206,6 +206,7 @@ async function parseClaudeIncremental({
   const projectMetaCache = projectEnabled ? new Map() : null;
   const publicRepoCache = projectEnabled ? new Map() : null;
   const touchedBuckets = new Set();
+  const seenMessageHashes = new Set();
   const defaultSource = normalizeSourceInput(source) || "claude";
 
   if (!cursors.files || typeof cursors.files !== "object") {
@@ -250,6 +251,7 @@ async function parseClaudeIncremental({
       projectTouchedBuckets,
       projectRef,
       projectKey,
+      seenMessageHashes,
     });
 
     cursors.files[key] = {
@@ -822,6 +824,7 @@ async function parseClaudeFile({
   projectTouchedBuckets,
   projectRef,
   projectKey,
+  seenMessageHashes,
 }) {
   const st = await fs.stat(filePath).catch(() => null);
   if (!st || !st.isFile()) return { endOffset: startOffset, eventsAggregated: 0 };
@@ -844,6 +847,16 @@ async function parseClaudeFile({
 
     const usage = obj?.message?.usage || obj?.usage;
     if (!usage || typeof usage !== "object") continue;
+
+    if (seenMessageHashes) {
+      const msgId = obj?.message?.id;
+      const reqId = obj?.requestId;
+      if (msgId && reqId) {
+        const hash = `${msgId}:${reqId}`;
+        if (seenMessageHashes.has(hash)) continue;
+        seenMessageHashes.add(hash);
+      }
+    }
 
     const model = normalizeModelInput(obj?.message?.model || obj?.model) || DEFAULT_MODEL;
     const tokenTimestamp = typeof obj?.timestamp === "string" ? obj.timestamp : null;
@@ -1180,6 +1193,7 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
             hour_start: group.hourStart,
             input_tokens: zeroTotals.input_tokens,
             cached_input_tokens: zeroTotals.cached_input_tokens,
+            cache_creation_input_tokens: zeroTotals.cache_creation_input_tokens,
             output_tokens: zeroTotals.output_tokens,
             reasoning_output_tokens: zeroTotals.reasoning_output_tokens,
             total_tokens: zeroTotals.total_tokens,
@@ -1227,6 +1241,7 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
             hour_start: group.hourStart,
             input_tokens: totals.input_tokens,
             cached_input_tokens: totals.cached_input_tokens,
+            cache_creation_input_tokens: totals.cache_creation_input_tokens,
             output_tokens: totals.output_tokens,
             reasoning_output_tokens: totals.reasoning_output_tokens,
             total_tokens: totals.total_tokens,
@@ -1274,6 +1289,7 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
             hour_start: group.hourStart,
             input_tokens: zeroTotals.input_tokens,
             cached_input_tokens: zeroTotals.cached_input_tokens,
+            cache_creation_input_tokens: zeroTotals.cache_creation_input_tokens,
             output_tokens: zeroTotals.output_tokens,
             reasoning_output_tokens: zeroTotals.reasoning_output_tokens,
             total_tokens: zeroTotals.total_tokens,
@@ -1294,6 +1310,7 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
         hour_start: group.hourStart,
         input_tokens: unknownBucket.totals.input_tokens,
         cached_input_tokens: unknownBucket.totals.cached_input_tokens,
+        cache_creation_input_tokens: unknownBucket.totals.cache_creation_input_tokens,
         output_tokens: unknownBucket.totals.output_tokens,
         reasoning_output_tokens: unknownBucket.totals.reasoning_output_tokens,
         total_tokens: unknownBucket.totals.total_tokens,
@@ -1339,6 +1356,7 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
           hour_start: group.hourStart,
           input_tokens: group.totals.input_tokens,
           cached_input_tokens: group.totals.cached_input_tokens,
+          cache_creation_input_tokens: group.totals.cache_creation_input_tokens,
           output_tokens: group.totals.output_tokens,
           reasoning_output_tokens: group.totals.reasoning_output_tokens,
           total_tokens: group.totals.total_tokens,
@@ -1392,6 +1410,7 @@ async function enqueueTouchedProjectBuckets({
         hour_start: bucket.hour_start,
         input_tokens: totals.input_tokens,
         cached_input_tokens: totals.cached_input_tokens,
+        cache_creation_input_tokens: totals.cache_creation_input_tokens,
         output_tokens: totals.output_tokens,
         reasoning_output_tokens: totals.reasoning_output_tokens,
         total_tokens: totals.total_tokens,
@@ -1646,6 +1665,7 @@ function initTotals() {
   return {
     input_tokens: 0,
     cached_input_tokens: 0,
+    cache_creation_input_tokens: 0,
     output_tokens: 0,
     reasoning_output_tokens: 0,
     total_tokens: 0,
@@ -1656,6 +1676,7 @@ function initTotals() {
 function addTotals(target, delta) {
   target.input_tokens += delta.input_tokens || 0;
   target.cached_input_tokens += delta.cached_input_tokens || 0;
+  target.cache_creation_input_tokens += delta.cache_creation_input_tokens || 0;
   target.output_tokens += delta.output_tokens || 0;
   target.reasoning_output_tokens += delta.reasoning_output_tokens || 0;
   target.total_tokens += delta.total_tokens || 0;
@@ -1666,6 +1687,7 @@ function totalsKey(totals) {
   return [
     totals.input_tokens || 0,
     totals.cached_input_tokens || 0,
+    totals.cache_creation_input_tokens || 0,
     totals.output_tokens || 0,
     totals.reasoning_output_tokens || 0,
     totals.total_tokens || 0,
@@ -1998,6 +2020,7 @@ function normalizeGeminiTokens(tokens) {
   return {
     input_tokens: input,
     cached_input_tokens: cached,
+    cache_creation_input_tokens: 0,
     output_tokens: output + tool,
     reasoning_output_tokens: thoughts,
     total_tokens: total,
@@ -2011,12 +2034,12 @@ function normalizeOpencodeTokens(tokens) {
   const reasoning = toNonNegativeInt(tokens.reasoning);
   const cached = toNonNegativeInt(tokens.cache?.read);
   const cacheWrite = toNonNegativeInt(tokens.cache?.write);
-  // cache tokens (read/write) excluded from input_tokens and total_tokens
-  const total = input + output + reasoning;
+  const total = input + output + reasoning + cached + cacheWrite;
 
   return {
     input_tokens: input,
     cached_input_tokens: cached,
+    cache_creation_input_tokens: cacheWrite,
     output_tokens: output,
     reasoning_output_tokens: reasoning,
     total_tokens: total,
@@ -2122,6 +2145,7 @@ function normalizeUsage(u) {
   for (const k of [
     "input_tokens",
     "cached_input_tokens",
+    "cache_creation_input_tokens",
     "output_tokens",
     "reasoning_output_tokens",
     "total_tokens",
@@ -2135,13 +2159,13 @@ function normalizeUsage(u) {
 function normalizeClaudeUsage(u) {
   const inputTokens = toNonNegativeInt(u?.input_tokens);
   const outputTokens = toNonNegativeInt(u?.output_tokens);
-  const hasTotal = u && Object.prototype.hasOwnProperty.call(u, "total_tokens");
-  const totalTokens = hasTotal
-    ? toNonNegativeInt(u?.total_tokens)
-    : inputTokens + outputTokens;
+  const cacheCreation = toNonNegativeInt(u?.cache_creation_input_tokens);
+  const cacheRead = toNonNegativeInt(u?.cache_read_input_tokens);
+  const totalTokens = inputTokens + outputTokens + cacheCreation + cacheRead;
   return {
     input_tokens: inputTokens,
-    cached_input_tokens: toNonNegativeInt(u?.cache_read_input_tokens),
+    cached_input_tokens: cacheRead,
+    cache_creation_input_tokens: cacheCreation,
     output_tokens: outputTokens,
     reasoning_output_tokens: 0,
     total_tokens: totalTokens,
@@ -2157,6 +2181,7 @@ function isAllZeroUsage(u) {
   for (const k of [
     "input_tokens",
     "cached_input_tokens",
+    "cache_creation_input_tokens",
     "output_tokens",
     "reasoning_output_tokens",
     "total_tokens",
@@ -2170,6 +2195,7 @@ function sameUsage(a, b) {
   for (const k of [
     "input_tokens",
     "cached_input_tokens",
+    "cache_creation_input_tokens",
     "output_tokens",
     "reasoning_output_tokens",
     "total_tokens",
