@@ -36,6 +36,7 @@ const {
   upsertOpencodePlugin,
   isOpencodePluginInstalled,
 } = require("../lib/opencode-config");
+const { isCursorInstalled, extractCursorSessionToken } = require("../lib/cursor-config");
 const { removeOpenclawHookConfig, probeOpenclawHookState } = require("../lib/openclaw-hook");
 const {
   installOpenclawSessionPlugin,
@@ -218,7 +219,7 @@ function renderWelcome() {
       DIVIDER,
       "",
       "This tool will:",
-      "  - Detect your AI CLI tools (Codex, Claude, Gemini, OpenCode, OpenClaw)",
+      "  - Detect your AI CLI tools (Codex, Claude, Gemini, OpenCode, Cursor, OpenClaw)",
       "  - Set up lightweight hooks to track token usage",
       "  - View your dashboard at http://localhost:7890",
       "",
@@ -461,6 +462,26 @@ async function applyIntegrationSetup({ home, trackerDir, notifyPath, notifyOrigi
       status: opencodeResult?.changed ? "installed" : "set",
       detail: "Plugin installed",
     });
+  }
+
+  // Cursor (API-based, no hooks needed)
+  if (isCursorInstalled({ home })) {
+    const cursorAuth = extractCursorSessionToken({ home });
+    if (cursorAuth) {
+      summary.push({
+        label: "Cursor",
+        status: "detected",
+        detail: "Usage synced via Cursor API (no hooks needed)",
+      });
+    } else {
+      summary.push({
+        label: "Cursor",
+        status: "skipped",
+        detail: "Installed but not logged in (login in Cursor to enable)",
+      });
+    }
+  } else {
+    summary.push({ label: "Cursor", status: "skipped", detail: "Not installed" });
   }
 
   const openclawBefore = await probeOpenclawSessionPluginState({

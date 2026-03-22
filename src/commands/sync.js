@@ -16,6 +16,7 @@ const {
   parseOpencodeIncremental,
   parseOpencodeDbIncremental,
   parseOpenclawIncremental,
+  parseCursorApiIncremental,
 } = require("../lib/rollout");
 const { drainQueueToCloud } = require("../lib/uploader");
 const { collectLocalSubscriptions } = require("../lib/subscriptions");
@@ -28,6 +29,12 @@ const {
   recordUploadSuccess,
   recordUploadFailure,
 } = require("../lib/upload-throttle");
+const {
+  isCursorInstalled,
+  extractCursorSessionToken,
+  fetchCursorUsageCsv,
+  parseCursorCsv,
+} = require("../lib/cursor-config");
 const { purgeProjectUsage } = require("../lib/project-usage-purge");
 const { resolveTrackerPaths } = require("../lib/tracker-paths");
 const { resolveRuntimeConfig } = require("../lib/runtime-config");
@@ -251,6 +258,47 @@ async function cmdSync(argv) {
       opencodeResult.bucketsQueued += opencodeDbResult.bucketsQueued;
     }
 
+    // ── Cursor (API-based) ──
+    let cursorResult = { recordsProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
+    if (isCursorInstalled({ home })) {
+      const cursorAuth = extractCursorSessionToken({ home });
+      if (cursorAuth) {
+        try {
+          if (progress?.enabled) {
+            progress.start(`Fetching Cursor usage...`);
+          }
+          const csvText = await fetchCursorUsageCsv({ cookie: cursorAuth.cookie });
+          const records = parseCursorCsv(csvText);
+          if (records.length > 0) {
+            if (progress?.enabled) {
+              progress.start(
+                `Parsing Cursor ${renderBar(0)} 0/${formatNumber(records.length)} records | buckets 0`,
+              );
+            }
+            cursorResult = await parseCursorApiIncremental({
+              records,
+              cursors,
+              queuePath,
+              onProgress: (p) => {
+                if (!progress?.enabled) return;
+                const pct = p.total > 0 ? p.index / p.total : 1;
+                progress.update(
+                  `Parsing Cursor ${renderBar(pct)} ${formatNumber(p.index)}/${formatNumber(
+                    p.total,
+                  )} records | buckets ${formatNumber(p.bucketsQueued)}`,
+                );
+              },
+              source: "cursor",
+            });
+          }
+        } catch (err) {
+          if (!opts.auto) {
+            process.stderr.write(`Cursor sync: ${err.message}\n`);
+          }
+        }
+      }
+    }
+
     if (cursors?.projectHourly?.projects && projectQueuePath && projectQueueStatePath) {
       for (const [projectKey, meta] of Object.entries(cursors.projectHourly.projects)) {
         if (!meta || typeof meta !== "object") continue;
@@ -424,13 +472,15 @@ async function cmdSync(argv) {
         openclawResult.filesProcessed +
         claudeResult.filesProcessed +
         geminiResult.filesProcessed +
-        opencodeResult.filesProcessed;
+        opencodeResult.filesProcessed +
+        cursorResult.recordsProcessed;
       const totalBuckets =
         parseResult.bucketsQueued +
         openclawResult.bucketsQueued +
         claudeResult.bucketsQueued +
         geminiResult.bucketsQueued +
-        opencodeResult.bucketsQueued;
+        opencodeResult.bucketsQueued +
+        cursorResult.bucketsQueued;
       process.stdout.write(
         [
           "Sync finished:",

@@ -41,6 +41,7 @@ extension Color {
         case "gemini":    return .blue
         case "opencode":  return .orange
         case "openclaw":  return .pink
+        case "cursor":    return .yellow
         case "everycode": return .cyan
         default:          return .gray
         }

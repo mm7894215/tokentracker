@@ -1,4 +1,5 @@
 import React from "react";
+import { Info } from "lucide-react";
 import { copy } from "../../../lib/copy";
 import { Button, Counter } from "../../openai/components";
 
@@ -158,20 +159,22 @@ export const UsagePanel = React.memo(function UsagePanel({
             {summaryCostValue ? (
               <div className="flex items-center justify-center gap-2 mt-6">
                 <span className="sr-only">{copy("usage.metric.total_cost")}</span>
-                <span className="text-xl md:text-2xl font-semibold text-oai-brand">
-                  {summaryCostValue}
-                </span>
                 {onCostInfo ? (
                   <button
                     type="button"
                     onClick={onCostInfo}
                     title={costInfoLabel}
                     aria-label={costInfoLabel}
-                    className="w-6 h-6 rounded-full bg-oai-gray-100 text-oai-gray-500 hover:bg-oai-brand hover:text-white transition-all text-xs font-medium flex items-center justify-center"
+                    className="inline-flex items-center gap-1.5 text-xl md:text-2xl font-semibold text-oai-brand hover:text-oai-brand-dark dark:hover:text-oai-brand-light transition-colors cursor-pointer"
                   >
-                    ?
+                    {summaryCostValue}
+                    <Info size={16} strokeWidth={2} className="text-oai-gray-400 dark:text-oai-gray-500" />
                   </button>
-                ) : null}
+                ) : (
+                  <span className="text-xl md:text-2xl font-semibold text-oai-brand">
+                    {summaryCostValue}
+                  </span>
+                )}
               </div>
             ) : null}
             {summarySubLabel ? (

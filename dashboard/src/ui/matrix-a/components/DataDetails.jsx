@@ -175,6 +175,9 @@ export function DataDetails({
                     <td className="px-4 py-2 oai-text-body-sm text-oai-gray-600 dark:text-oai-gray-300 tabular-nums">
                       {renderDetailCell(row, "reasoning_output_tokens")}
                     </td>
+                    <td className="px-4 py-2 oai-text-body-sm text-oai-gray-600 dark:text-oai-gray-300 tabular-nums">
+                      {renderDetailCell(row, "conversation_count")}
+                    </td>
                   </tr>
                 ))}
               </tbody>

@@ -32,6 +32,11 @@ export const DAILY_SORT_COLUMNS = [
     label: copy("daily.sort.reasoning.label"),
     title: copy("daily.sort.reasoning.title"),
   },
+  {
+    key: "conversation_count",
+    label: copy("daily.sort.conversations.label"),
+    title: copy("daily.sort.conversations.title"),
+  },
 ];
 
 type AnyRecord = Record<string, any>;

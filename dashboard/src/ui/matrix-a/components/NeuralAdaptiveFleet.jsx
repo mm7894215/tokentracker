@@ -35,6 +35,12 @@ const MODEL_BRAND_COLORS = {
   // Codex - Emerald green
   "codex": "#059669",
 
+  // Cursor - Amber/Gold family
+  "cursor": "#f59e0b",
+  "composer-1": "#f59e0b",
+  "composer-1.5": "#f59e0b",
+  "composer-2-fast": "#d97706",
+
   // Fallback palette for unknown models - diverse colors
   "fallback": [
     "#3b82f6", // Blue
@@ -71,6 +77,9 @@ function getModelColor(modelName, index = 0) {
   }
   if (normalizedName.includes("codex")) {
     return MODEL_BRAND_COLORS["codex"];
+  }
+  if (normalizedName.includes("composer") || normalizedName.includes("cursor")) {
+    return "#f59e0b";
   }
 
   return MODEL_BRAND_COLORS.fallback[index % MODEL_BRAND_COLORS.fallback.length];

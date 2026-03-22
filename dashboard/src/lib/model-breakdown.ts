@@ -64,7 +64,11 @@ export function buildFleetData(modelBreakdown: any, { copyFn }: AnyRecord = {}) 
             entry.totalTokens > 0 ? Math.round((modelTokens / entry.totalTokens) * 1000) / 10 : 0;
           const name = resolveModelName(model, safeCopy("shared.placeholder.short"));
           const id = resolveModelId(model);
-          return { id, name, share, usage: modelTokens, calc: pricingMode };
+          const modelCost =
+            entry.totalCost > 0 && entry.totalTokens > 0
+              ? (modelTokens / entry.totalTokens) * entry.totalCost
+              : null;
+          return { id, name, share, usage: modelTokens, cost: modelCost };
         })
         .filter(Boolean);
       return {

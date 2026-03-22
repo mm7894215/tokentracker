@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { motion, useReducedMotion } from "motion/react";
+import { Info } from "lucide-react";
 import { Card, Button, Counter } from "../../openai/components";
 import { FadeIn } from "../../foundation/FadeIn.jsx";
 import { useTheme } from "../../../hooks/useTheme.js";
@@ -135,16 +136,18 @@ export function UsageOverview({
           </div>
           {summaryCostValue && (
             <div className="flex items-center justify-center gap-2 mt-4">
-              <span className="text-xl font-bold text-oai-brand">{summaryCostValue}</span>
-              {onCostInfo && (
+              {onCostInfo ? (
                 <button
                   type="button"
                   onClick={onCostInfo}
-                  className="w-8 h-8 rounded-full bg-oai-gray-100 dark:bg-oai-gray-800 text-oai-gray-500 dark:text-oai-gray-300 hover:bg-oai-brand hover:text-white text-xs transition-colors"
+                  className="inline-flex items-center gap-1.5 text-xl font-bold text-oai-brand hover:text-oai-brand-dark dark:hover:text-oai-brand-light transition-colors cursor-pointer"
                   aria-label="View cost breakdown"
                 >
-                  ?
+                  {summaryCostValue}
+                  <Info size={16} strokeWidth={2} className="text-oai-gray-400 dark:text-oai-gray-500" />
                 </button>
+              ) : (
+                <span className="text-xl font-bold text-oai-brand">{summaryCostValue}</span>
               )}
             </div>
           )}

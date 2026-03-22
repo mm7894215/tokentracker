@@ -175,10 +175,10 @@ dashboard.upgrade_alert.copied,ui,UpgradeAlertModal,UpgradeAlertModal,copied,"[ 
 dashboard.upgrade_alert.ignore,ui,UpgradeAlertModal,UpgradeAlertModal,ignore,"Dismiss",,active
 dashboard.cost_breakdown.title,ui,CostAnalysisModal,CostAnalysisModal,title,"Cost Breakdown",,active
 dashboard.cost_breakdown.total_label,ui,CostAnalysisModal,CostAnalysisModal,total_label,"Estimated Total Cost",,active
-dashboard.cost_breakdown.calc_prefix,ui,CostAnalysisModal,CostAnalysisModal,calc_prefix,"CALC:",,active
-dashboard.cost_breakdown.calc_dynamic,ui,CostAnalysisModal,CostAnalysisModal,calc_dynamic,"DYNAMIC",,active
-dashboard.cost_breakdown.close,ui,CostAnalysisModal,CostAnalysisModal,close_label,"[ ESC ] CLOSE",,active
-dashboard.cost_breakdown.footer,ui,CostAnalysisModal,CostAnalysisModal,footer,"Algorithm Build: v9.4.2",,active
+dashboard.cost_breakdown.calc_prefix,ui,CostAnalysisModal,CostAnalysisModal,calc_prefix,"CALC:",,deprecated
+dashboard.cost_breakdown.calc_dynamic,ui,CostAnalysisModal,CostAnalysisModal,calc_dynamic,"DYNAMIC",,deprecated
+dashboard.cost_breakdown.close,ui,CostAnalysisModal,CostAnalysisModal,close_label,"Close",,active
+dashboard.cost_breakdown.footer,ui,CostAnalysisModal,CostAnalysisModal,footer,"Estimated based on public pricing",,active
 
 trend.chart.unit_label,ui,TrendChart,TrendChart,unit_label,"TKNS",,active
 trend.chart.left_label,ui,TrendChart,TrendChart,left_label,"T-24H",,active
@@ -268,6 +268,8 @@ daily.sort.cached.label,dashboard,DashboardPage,DailyTable,sort_label,"Cached",,
 daily.sort.cached.title,dashboard,DashboardPage,DailyTable,sort_title,"Sort by Cached input",,active
 daily.sort.reasoning.label,dashboard,DashboardPage,DailyTable,sort_label,"Reasoning",,active
 daily.sort.reasoning.title,dashboard,DashboardPage,DailyTable,sort_title,"Sort by Reasoning output",,active
+daily.sort.conversations.label,dashboard,DashboardPage,DailyTable,sort_label,"Convs",,active
+daily.sort.conversations.title,dashboard,DashboardPage,DailyTable,sort_title,"Sort by Conversations",,active
 details.pagination.prev,dashboard,DashboardPage,DailyTable,pagination_prev,"Prev",,active
 details.pagination.next,dashboard,DashboardPage,DailyTable,pagination_next,"Next",,active
 details.pagination.page,dashboard,DashboardPage,DailyTable,pagination_label,"Page {{page}}/{{total}}",,active

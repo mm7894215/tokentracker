@@ -67,13 +67,13 @@ export function StatsPanel({
   const periodConversationLabel = (() => {
     switch (period) {
       case "day":
-        return "today";
+        return "today convs";
       case "week":
-        return "week";
+        return "week convs";
       case "month":
-        return "month";
+        return "month convs";
       case "total":
-        return "all";
+        return "all convs";
       default:
         return "convs";
     }

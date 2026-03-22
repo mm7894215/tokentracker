@@ -58,7 +58,7 @@ tokentracker doctor       # Health check
 
 ## Features
 
-- **Multi-Source Tracking** — Codex CLI, Claude Code, Gemini CLI, OpenCode, OpenClaw, Every Code
+- **Multi-Source Tracking** — Claude Code, Codex CLI, Cursor, Gemini CLI, OpenCode, OpenClaw, Every Code
 - **Local-First** — All data stays on your machine. No cloud account required.
 - **Zero-Config** — Hooks auto-detect and configure on first run
 - **Built-in Dashboard** — Web UI with usage trends, model breakdowns, heatmaps
@@ -68,8 +68,9 @@ tokentracker doctor       # Health check
 
 | CLI Tool | Auto-Detection |
 |----------|----------------|
-| **Codex CLI** | ✅ |
 | **Claude Code** | ✅ |
+| **Codex CLI** | ✅ |
+| **Cursor** | ✅ (via API) |
 | **Gemini CLI** | ✅ |
 | **OpenCode** | ✅ |
 | **OpenClaw** | ✅ |
@@ -78,7 +79,7 @@ tokentracker doctor       # Health check
 ## How It Works
 
 ```
-AI CLI Tools (Codex, Claude, Gemini, OpenCode, ...)
+AI CLI Tools (Claude, Codex, Cursor, Gemini, OpenCode, ...)
     │
     │  hooks auto-trigger on usage
     ▼
@@ -90,7 +91,7 @@ Dashboard (Menu Bar App or localhost:7890)
 ```
 
 1. AI CLI tools generate logs during usage
-2. Lightweight hooks detect changes and trigger sync
+2. Lightweight hooks detect changes and trigger sync (Cursor: usage pulled via API)
 3. CLI parses logs locally, extracts only token counts
 4. Data aggregated into 30-minute buckets
 5. Dashboard reads local data directly — no cloud needed

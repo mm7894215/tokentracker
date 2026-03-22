@@ -13,17 +13,17 @@ import Foundation
 //   CG:     1320x800 @2x, Y=0 at BOTTOM
 //   Convert: cg_y = (400 - finder_y) * 2
 //
-//   App icon:     Finder(170, 200) → CG(340, 400)
-//   Apps folder:  Finder(490, 200) → CG(980, 400)
+//   App icon:     Finder(170, 180) → CG(340, 440)
+//   Apps folder:  Finder(490, 180) → CG(980, 440)
 // ==========================================================
 
 let W: CGFloat = 1320
 let H: CGFloat = 800
 
-// Icon centers in CG coords
+// Icon centers in CG coords (moved up for vertical centering)
 let appCX: CGFloat = 340
 let appsCX: CGFloat = 980
-let iconCY: CGFloat = 400
+let iconCY: CGFloat = 440
 
 let rep = NSBitmapImageRep(
     bitmapDataPlanes: nil, pixelsWide: Int(W), pixelsHigh: Int(H),
@@ -36,35 +36,40 @@ NSGraphicsContext.current = ctx
 let cg = ctx.cgContext
 let cs = CGColorSpaceCreateDeviceRGB()
 
-// ── 1. Background — soft warm white gradient ──
-let c1 = NSColor(red: 0.976, green: 0.973, blue: 0.969, alpha: 1).cgColor  // top: warm white
-let c2 = NSColor(red: 0.945, green: 0.937, blue: 0.929, alpha: 1).cgColor  // bottom: slightly warm
+// ── 1. Background — clean gradient with subtle cool tones ──
+let c1 = NSColor(red: 0.965, green: 0.968, blue: 0.975, alpha: 1).cgColor  // top: cool white
+let c2 = NSColor(red: 0.925, green: 0.928, blue: 0.938, alpha: 1).cgColor  // bottom: soft cool gray
 let bg = CGGradient(colorsSpace: cs, colors: [c1, c2] as CFArray, locations: [0, 1])!
 cg.drawLinearGradient(bg, start: CGPoint(x: 0, y: H), end: .zero, options: [])
 
-// ── 2. Very subtle noise-like dot pattern for depth ──
-cg.saveGState()
-let dotColor = NSColor(white: 0.0, alpha: 0.012).cgColor
-cg.setFillColor(dotColor)
-for x in stride(from: CGFloat(0), through: W, by: 20) {
-    for y in stride(from: CGFloat(0), through: H, by: 20) {
-        cg.fillEllipse(in: CGRect(x: x - 0.75, y: y - 0.75, width: 1.5, height: 1.5))
-    }
-}
-cg.restoreGState()
-
-// ── 3. Soft light pools behind icon positions ──
-func radialGlow(_ cx: CGFloat, _ cy: CGFloat, _ r: CGFloat, _ alpha: CGFloat) {
+// ── 2. Subtle top highlight — soft glow from top center ──
+func radialGlow(_ cx: CGFloat, _ cy: CGFloat, _ r: CGFloat, _ color: NSColor) {
     let g = CGGradient(colorsSpace: cs,
-        colors: [NSColor(white: 1, alpha: alpha).cgColor,
-                 NSColor(white: 1, alpha: 0).cgColor] as CFArray, locations: [0, 1])!
+        colors: [color.cgColor,
+                 color.withAlphaComponent(0).cgColor] as CFArray, locations: [0, 1])!
     cg.saveGState()
     cg.drawRadialGradient(g, startCenter: CGPoint(x: cx, y: cy), startRadius: 0,
                           endCenter: CGPoint(x: cx, y: cy), endRadius: r, options: [])
     cg.restoreGState()
 }
-radialGlow(appCX, iconCY, 180, 0.5)
-radialGlow(appsCX, iconCY, 180, 0.5)
+
+// Large soft glow from top center for depth
+radialGlow(W / 2, H + 100, 700, NSColor(white: 1.0, alpha: 0.45))
+
+// ── 3. Soft light pools behind icon positions ──
+radialGlow(appCX, iconCY, 200, NSColor(white: 1.0, alpha: 0.5))
+radialGlow(appsCX, iconCY, 200, NSColor(white: 1.0, alpha: 0.5))
+
+// ── 3b. Very subtle inner shadow / vignette at edges ──
+cg.saveGState()
+let vignetteG = CGGradient(colorsSpace: cs,
+    colors: [NSColor(white: 0.0, alpha: 0.0).cgColor,
+             NSColor(white: 0.0, alpha: 0.04).cgColor] as CFArray, locations: [0.6, 1.0])!
+cg.drawRadialGradient(vignetteG,
+    startCenter: CGPoint(x: W / 2, y: H / 2), startRadius: 0,
+    endCenter: CGPoint(x: W / 2, y: H / 2), endRadius: max(W, H) * 0.7,
+    options: .drawsAfterEndLocation)
+cg.restoreGState()
 
 // ── 4. THE ARROW — elegant dashed arc with arrowhead ──
 // Curved path from app to Applications, slightly arching upward

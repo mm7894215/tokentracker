@@ -1156,7 +1156,7 @@ export function DashboardPage({
     return `$${formatted}`;
   }, [summary?.total_cost_usd]);
   const summaryConversationsValue = useMemo(
-    () => toDisplayNumber(summary?.conversation_count),
+    () => summary?.conversation_count ?? null,
     [summary?.conversation_count],
   );
 

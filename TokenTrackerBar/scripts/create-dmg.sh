@@ -21,9 +21,9 @@ ICON_SIZE=128
 
 # Icon positions — must match generate_dmg_bg.swift
 APP_X=170
-APP_Y=200
+APP_Y=180
 APPS_X=490
-APPS_Y=200
+APPS_Y=180
 
 # --- Resolve .app path ---
 if [[ -n "${1:-}" ]]; then
