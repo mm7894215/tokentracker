@@ -30,6 +30,10 @@ enum Strings {
     static let serverStartingHint = "This usually takes a few seconds."
     static let serverOfflineHint = "Check that tokentracker-cli is installed and try again."
 
+    // Menu items
+    static let menuSyncNow = "Sync Now"
+    static let menuLaunchAtLogin = "Launch at Login"
+
     static func minutesAgo(_ n: Int) -> String { "\(n)m ago" }
     static func hoursAgo(_ n: Int) -> String { "\(n)h ago" }
     static func activeDays(_ n: Int) -> String { "\(n) active days" }
