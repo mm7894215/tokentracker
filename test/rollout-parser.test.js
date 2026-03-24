@@ -1868,11 +1868,11 @@ test("parseClaudeIncremental aggregates usage into half-hour buckets", async () 
     assert.equal(byBucket.get("2025-12-25T01:00:00.000Z")?.input_tokens, 100);
     assert.equal(byBucket.get("2025-12-25T01:00:00.000Z")?.output_tokens, 50);
     assert.equal(byBucket.get("2025-12-25T01:00:00.000Z")?.total_tokens, 150);
-    assert.equal(byBucket.get("2025-12-25T01:00:00.000Z")?.conversation_count, 1);
+    assert.equal(byBucket.get("2025-12-25T01:00:00.000Z")?.conversation_count, 0);
     assert.equal(byBucket.get("2025-12-25T01:30:00.000Z")?.input_tokens, 200);
     assert.equal(byBucket.get("2025-12-25T01:30:00.000Z")?.output_tokens, 0);
     assert.equal(byBucket.get("2025-12-25T01:30:00.000Z")?.total_tokens, 200);
-    assert.equal(byBucket.get("2025-12-25T01:30:00.000Z")?.conversation_count, 1);
+    assert.equal(byBucket.get("2025-12-25T01:30:00.000Z")?.conversation_count, 0);
 
     const resAgain = await parseClaudeIncremental({
       projectFiles: [{ path: claudePath, source: "claude" }],

@@ -58,7 +58,7 @@ tokentracker doctor       # Health check
 
 ## Features
 
-- **Multi-Source Tracking** — Claude Code, Codex CLI, Cursor, Gemini CLI, OpenCode, OpenClaw, Every Code
+- **Multi-Source Tracking** — Claude Code, Codex CLI, Cursor, Kiro, Gemini CLI, OpenCode, OpenClaw, Every Code
 - **Local-First** — All data stays on your machine. No cloud account required.
 - **Zero-Config** — Hooks auto-detect and configure on first run
 - **Built-in Dashboard** — Web UI with usage trends, model breakdowns, heatmaps
@@ -71,6 +71,7 @@ tokentracker doctor       # Health check
 | **Claude Code** | ✅ |
 | **Codex CLI** | ✅ |
 | **Cursor** | ✅ (via API) |
+| **Kiro** | ✅ |
 | **Gemini CLI** | ✅ |
 | **OpenCode** | ✅ |
 | **OpenClaw** | ✅ |
@@ -79,7 +80,7 @@ tokentracker doctor       # Health check
 ## How It Works
 
 ```
-AI CLI Tools (Claude, Codex, Cursor, Gemini, OpenCode, ...)
+AI CLI Tools (Claude, Codex, Cursor, Kiro, Gemini, OpenCode, ...)
     │
     │  hooks auto-trigger on usage
     ▼

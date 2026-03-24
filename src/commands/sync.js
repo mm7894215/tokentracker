@@ -1,6 +1,7 @@
 const os = require("node:os");
 const path = require("node:path");
 const fs = require("node:fs/promises");
+const fssync = require("node:fs");
 const cp = require("node:child_process");
 
 const { ensureDir, readJson, writeJson, openLock } = require("../lib/fs");
@@ -10,6 +11,7 @@ const {
   listGeminiSessionFiles,
   listOpencodeMessageFiles,
   readOpencodeDbMessages,
+  resolveKiroDbPath,
   parseRolloutIncremental,
   parseClaudeIncremental,
   parseGeminiIncremental,
@@ -17,6 +19,7 @@ const {
   parseOpencodeDbIncremental,
   parseOpenclawIncremental,
   parseCursorApiIncremental,
+  parseKiroIncremental,
 } = require("../lib/rollout");
 const { drainQueueToCloud } = require("../lib/uploader");
 const { collectLocalSubscriptions } = require("../lib/subscriptions");
@@ -299,6 +302,27 @@ async function cmdSync(argv) {
       }
     }
 
+    // ── Kiro (SQLite-based) ──
+    let kiroResult = { recordsProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
+    const kiroDbPath = resolveKiroDbPath();
+    if (fssync.existsSync(kiroDbPath)) {
+      if (progress?.enabled) {
+        progress.start(`Parsing Kiro ${renderBar(0)} | buckets 0`);
+      }
+      kiroResult = await parseKiroIncremental({
+        dbPath: kiroDbPath,
+        cursors,
+        queuePath,
+        onProgress: (p) => {
+          if (!progress?.enabled) return;
+          const pct = p.total > 0 ? p.index / p.total : 1;
+          progress.update(
+            `Parsing Kiro ${renderBar(pct)} ${formatNumber(p.index)}/${formatNumber(p.total)} records | buckets ${formatNumber(p.bucketsQueued)}`,
+          );
+        },
+      });
+    }
+
     if (cursors?.projectHourly?.projects && projectQueuePath && projectQueueStatePath) {
       for (const [projectKey, meta] of Object.entries(cursors.projectHourly.projects)) {
         if (!meta || typeof meta !== "object") continue;
@@ -473,14 +497,16 @@ async function cmdSync(argv) {
         claudeResult.filesProcessed +
         geminiResult.filesProcessed +
         opencodeResult.filesProcessed +
-        cursorResult.recordsProcessed;
+        cursorResult.recordsProcessed +
+        kiroResult.recordsProcessed;
       const totalBuckets =
         parseResult.bucketsQueued +
         openclawResult.bucketsQueued +
         claudeResult.bucketsQueued +
         geminiResult.bucketsQueued +
         opencodeResult.bucketsQueued +
-        cursorResult.bucketsQueued;
+        cursorResult.bucketsQueued +
+        kiroResult.bucketsQueued;
       process.stdout.write(
         [
           "Sync finished:",

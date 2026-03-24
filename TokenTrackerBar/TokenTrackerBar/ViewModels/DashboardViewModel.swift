@@ -230,7 +230,7 @@ class DashboardViewModel: ObservableObject {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(interval))
                 guard !Task.isCancelled, let self else { break }
-                await self.loadAll()
+                await self.syncThenLoad()
             }
         }
     }

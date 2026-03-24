@@ -2596,12 +2596,211 @@ async function parseCursorApiIncremental({
   return { recordsProcessed: total, eventsAggregated, bucketsQueued };
 }
 
+// ---------------------------------------------------------------------------
+// Kiro token tracking (reads from devdata.sqlite)
+// ---------------------------------------------------------------------------
+
+function resolveKiroBasePath() {
+  const home = require("node:os").homedir();
+  return path.join(
+    home,
+    "Library",
+    "Application Support",
+    "Kiro",
+    "User",
+    "globalStorage",
+    "kiro.kiroagent",
+  );
+}
+
+function resolveKiroDbPath() {
+  return path.join(resolveKiroBasePath(), "dev_data", "devdata.sqlite");
+}
+
+function readKiroDbTokens(dbPath, sinceId) {
+  if (!dbPath || !fssync.existsSync(dbPath)) return [];
+  const minId = Number.isFinite(sinceId) && sinceId > 0 ? sinceId : 0;
+  const sql = `SELECT id, model, provider, tokens_prompt, tokens_generated, timestamp FROM tokens_generated WHERE id > ${minId} ORDER BY id ASC`;
+  let raw;
+  try {
+    raw = cp.execFileSync("sqlite3", ["-json", dbPath, sql], {
+      encoding: "utf8",
+      maxBuffer: 10 * 1024 * 1024,
+      timeout: 15_000,
+    });
+  } catch (_e) {
+    return [];
+  }
+  if (!raw || !raw.trim()) return [];
+  let rows;
+  try {
+    rows = JSON.parse(raw);
+  } catch (_e) {
+    return [];
+  }
+  return Array.isArray(rows) ? rows : [];
+}
+
+// Build a sorted timeline of model usage from Kiro .chat metadata files
+function buildKiroModelTimeline(basePath) {
+  const timeline = []; // [{ startMs, endMs, model }]
+  if (!basePath || !fssync.existsSync(basePath)) return timeline;
+  let dirs;
+  try {
+    dirs = fssync.readdirSync(basePath, { withFileTypes: true });
+  } catch (_e) {
+    return timeline;
+  }
+  for (const entry of dirs) {
+    if (!entry.isDirectory()) continue;
+    const dirPath = path.join(basePath, entry.name);
+    let files;
+    try {
+      files = fssync.readdirSync(dirPath).filter((f) => f.endsWith(".chat"));
+    } catch (_e) {
+      continue;
+    }
+    for (const file of files) {
+      try {
+        const raw = fssync.readFileSync(path.join(dirPath, file), "utf8");
+        const data = JSON.parse(raw);
+        const meta = data?.metadata;
+        if (!meta?.modelId || !meta?.startTime) continue;
+        timeline.push({
+          startMs: meta.startTime,
+          endMs: meta.endTime || meta.startTime,
+          model: String(meta.modelId),
+        });
+      } catch (_e) {}
+    }
+  }
+  timeline.sort((a, b) => a.startMs - b.startMs);
+  return timeline;
+}
+
+// Find the model for a given UTC timestamp string using the .chat timeline
+function resolveKiroModel(timeline, utcTimestamp) {
+  if (!timeline.length || !utcTimestamp) return null;
+  const ts = new Date(utcTimestamp).getTime();
+  if (!Number.isFinite(ts)) return null;
+
+  // Binary search for the closest .chat entry
+  let lo = 0;
+  let hi = timeline.length - 1;
+  let best = null;
+  let bestDist = Infinity;
+  while (lo <= hi) {
+    const mid = (lo + hi) >>> 1;
+    const entry = timeline[mid];
+    // Check if timestamp falls within the .chat execution window
+    if (ts >= entry.startMs && ts <= entry.endMs) return entry.model;
+    const dist = Math.min(Math.abs(ts - entry.startMs), Math.abs(ts - entry.endMs));
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = entry.model;
+    }
+    if (ts < entry.startMs) hi = mid - 1;
+    else lo = mid + 1;
+  }
+  // Only match if within 10 minutes
+  return bestDist < 10 * 60 * 1000 ? best : null;
+}
+
+// Normalize Kiro internal model IDs to readable names
+// e.g. "CLAUDE_SONNET_4_20250514_V1_0" → "claude-sonnet-4"
+function normalizeKiroModelName(raw) {
+  if (!raw || typeof raw !== "string") return null;
+  let name = raw.trim();
+  if (!name) return null;
+  // Already lowercase with dashes (e.g. "claude-opus-4.5") → keep as-is
+  if (name === name.toLowerCase() && name.includes("-")) return name;
+  // UPPER_SNAKE_CASE internal names: strip date/version suffixes, convert to lowercase-dash
+  name = name
+    .replace(/_\d{8}_V\d+_\d+$/i, "") // remove _20250514_V1_0
+    .replace(/_V\d+$/i, "") // remove _V1
+    .toLowerCase()
+    .replace(/_/g, "-");
+  return name || null;
+}
+
+async function parseKiroIncremental({ dbPath, cursors, queuePath, onProgress }) {
+  await ensureDir(path.dirname(queuePath));
+  const kiroState = cursors.kiro && typeof cursors.kiro === "object" ? cursors.kiro : {};
+  const lastId = typeof kiroState.lastId === "number" ? kiroState.lastId : 0;
+
+  const resolvedDbPath = dbPath || resolveKiroDbPath();
+  const rows = readKiroDbTokens(resolvedDbPath, lastId);
+  if (rows.length === 0) {
+    return { recordsProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
+  }
+
+  // Build model timeline from .chat files for model name resolution
+  const basePath = resolveKiroBasePath();
+  const modelTimeline = buildKiroModelTimeline(basePath);
+
+  const hourlyState = normalizeHourlyState(cursors?.hourly);
+  const touchedBuckets = new Set();
+  const cb = typeof onProgress === "function" ? onProgress : null;
+  let eventsAggregated = 0;
+  let maxId = lastId;
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    const inputTokens = toNonNegativeInt(row.tokens_prompt);
+    const outputTokens = toNonNegativeInt(row.tokens_generated);
+    if (inputTokens === 0 && outputTokens === 0) continue;
+
+    // timestamp format: "2026-01-09 15:25:30" (UTC from SQLite DEFAULT CURRENT_TIMESTAMP)
+    const ts = row.timestamp ? row.timestamp.replace(" ", "T") + "Z" : null;
+    const bucketStart = ts ? toUtcHalfHourStart(ts) : null;
+    if (!bucketStart) continue;
+
+    // Resolve actual model from .chat timeline, fallback to "kiro-agent"
+    const resolvedModel = resolveKiroModel(modelTimeline, ts);
+    const model = normalizeKiroModelName(resolvedModel) || "kiro-agent";
+
+    const delta = {
+      input_tokens: inputTokens,
+      cached_input_tokens: 0,
+      output_tokens: outputTokens,
+      reasoning_output_tokens: 0,
+      total_tokens: inputTokens + outputTokens,
+      conversation_count: 1,
+    };
+
+    const bucket = getHourlyBucket(hourlyState, "kiro", model, bucketStart);
+    addTotals(bucket.totals, delta);
+    touchedBuckets.add(bucketKey("kiro", model, bucketStart));
+    eventsAggregated++;
+
+    if (row.id && row.id > maxId) maxId = row.id;
+
+    if (cb) {
+      cb({
+        index: i + 1,
+        total: rows.length,
+        recordsProcessed: i + 1,
+        eventsAggregated,
+        bucketsQueued: touchedBuckets.size,
+      });
+    }
+  }
+
+  const bucketsQueued = await enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets });
+  hourlyState.updatedAt = new Date().toISOString();
+  cursors.hourly = hourlyState;
+  cursors.kiro = { lastId: maxId, updatedAt: new Date().toISOString() };
+
+  return { recordsProcessed: rows.length, eventsAggregated, bucketsQueued };
+}
+
 module.exports = {
   listRolloutFiles,
   listClaudeProjectFiles,
   listGeminiSessionFiles,
   listOpencodeMessageFiles,
   readOpencodeDbMessages,
+  resolveKiroDbPath,
   parseRolloutIncremental,
   parseClaudeIncremental,
   parseGeminiIncremental,
@@ -2609,4 +2808,5 @@ module.exports = {
   parseOpencodeDbIncremental,
   parseOpenclawIncremental,
   parseCursorApiIncremental,
+  parseKiroIncremental,
 };

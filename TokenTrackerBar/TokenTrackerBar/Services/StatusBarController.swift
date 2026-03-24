@@ -73,6 +73,9 @@ final class StatusBarController: NSObject {
                 NSApp.activate(ignoringOtherApps: true)
                 window.makeKey()
             }
+
+            // Refresh data when popover opens
+            Task { await viewModel.loadAll() }
         }
     }
 
@@ -106,6 +109,11 @@ final class StatusBarController: NSObject {
         let dashboardItem = NSMenuItem(title: Strings.openDashboard, action: #selector(openDashboard), keyEquivalent: "d")
         dashboardItem.target = self
         menu.addItem(dashboardItem)
+
+        // Check for Updates
+        let updateItem = NSMenuItem(title: Strings.menuCheckForUpdates, action: #selector(checkForUpdates), keyEquivalent: "u")
+        updateItem.target = self
+        menu.addItem(updateItem)
 
         menu.addItem(.separator())
 
@@ -146,6 +154,10 @@ final class StatusBarController: NSObject {
         if let url = URL(string: Constants.serverBaseURL) {
             NSWorkspace.shared.open(url)
         }
+    }
+
+    @objc private func checkForUpdates() {
+        UpdateChecker.shared.check(silent: false)
     }
 
     @objc private func toggleLaunchAtLogin() {

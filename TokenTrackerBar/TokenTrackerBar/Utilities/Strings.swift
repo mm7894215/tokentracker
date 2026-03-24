@@ -32,6 +32,7 @@ enum Strings {
 
     // Menu items
     static let menuSyncNow = "Sync Now"
+    static let menuCheckForUpdates = "Check for Updates…"
     static let menuLaunchAtLogin = "Launch at Login"
 
     static func minutesAgo(_ n: Int) -> String { "\(n)m ago" }

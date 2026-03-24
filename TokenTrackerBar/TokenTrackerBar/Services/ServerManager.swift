@@ -22,19 +22,18 @@ final class ServerManager: ObservableObject {
 
     /// Call once on app launch. Prefers embedded server, falls back to system CLI.
     func ensureServerRunning() async {
-        // If already running on the port, skip launching a new process
-        let alreadyUp = await APIClient.shared.checkServerHealth()
-        if alreadyUp {
-            status = .running
-            startHealthCheckLoop()
-            return
-        }
-
         status = .starting
 
         // Try embedded server first
         if let embedded = findEmbeddedServer() {
+            // Kill any stale server on the port so we always run the bundled version
+            await killExistingServerOnPort()
             launchServer(nodePath: embedded.nodePath, entryPath: embedded.entryPath)
+        } else if await APIClient.shared.checkServerHealth() {
+            // No embedded server, but an external one is already running — reuse it
+            status = .running
+            startHealthCheckLoop()
+            return
         } else if let binaryPath = findTokenTrackerBinary() {
             // Fall back to system-installed CLI
             launchServer(at: binaryPath)
@@ -68,6 +67,24 @@ final class ServerManager: ObservableObject {
     func retry() async {
         stopServer()
         await ensureServerRunning()
+    }
+
+    // MARK: - Kill Stale Server
+
+    /// Kill any existing process listening on port 7890 so the embedded server can bind.
+    private nonisolated func killExistingServerOnPort() async {
+        guard let output = shellOutput("/usr/sbin/lsof", args: ["-ti", "tcp:7890"]) else { return }
+        let pids = output
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .split(separator: "\n")
+            .compactMap { Int32($0.trimmingCharacters(in: .whitespaces)) }
+        for pid in pids {
+            kill(pid, SIGTERM)
+        }
+        // Brief wait for the port to be released
+        if !pids.isEmpty {
+            try? await Task.sleep(for: .milliseconds(500))
+        }
     }
 
     // MARK: - Find Embedded Server
