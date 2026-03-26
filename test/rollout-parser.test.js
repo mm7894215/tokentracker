@@ -2103,7 +2103,8 @@ test("parseKiroIncremental tracks JSONL fallback with a separate cursor", async 
       "utf8",
     );
 
-    const first = await parseKiroIncremental({ jsonlPath, cursors, queuePath });
+    const noDbPath = path.join(tmp, "nonexistent.sqlite");
+    const first = await parseKiroIncremental({ dbPath: noDbPath, jsonlPath, cursors, queuePath });
     assert.equal(first.recordsProcessed, 2);
     assert.equal(first.eventsAggregated, 2);
     assert.equal(first.bucketsQueued, 1);
@@ -2121,7 +2122,7 @@ test("parseKiroIncremental tracks JSONL fallback with a separate cursor", async 
       "utf8",
     );
 
-    const second = await parseKiroIncremental({ jsonlPath, cursors, queuePath });
+    const second = await parseKiroIncremental({ dbPath: noDbPath, jsonlPath, cursors, queuePath });
     assert.equal(second.recordsProcessed, 1);
     assert.equal(second.eventsAggregated, 1);
     assert.equal(cursors.kiro.jsonl.lastLine, 3);
@@ -2139,6 +2140,7 @@ test("parseKiroIncremental ignores JSONL fallback after file truncation until ne
   try {
     const jsonlPath = path.join(tmp, "tokens_generated.jsonl");
     const queuePath = path.join(tmp, "queue.jsonl");
+    const noDbPath = path.join(tmp, "nonexistent.sqlite");
     const cursors = { version: 1, files: {}, updatedAt: null };
 
     await fs.writeFile(
@@ -2150,7 +2152,7 @@ test("parseKiroIncremental ignores JSONL fallback after file truncation until ne
       "utf8",
     );
 
-    await parseKiroIncremental({ jsonlPath, cursors, queuePath });
+    await parseKiroIncremental({ dbPath: noDbPath, jsonlPath, cursors, queuePath });
 
     await fs.writeFile(
       jsonlPath,
@@ -2158,7 +2160,7 @@ test("parseKiroIncremental ignores JSONL fallback after file truncation until ne
       "utf8",
     );
 
-    const truncated = await parseKiroIncremental({ jsonlPath, cursors, queuePath });
+    const truncated = await parseKiroIncremental({ dbPath: noDbPath, jsonlPath, cursors, queuePath });
     assert.equal(truncated.recordsProcessed, 0);
     assert.equal(truncated.eventsAggregated, 0);
     assert.equal(cursors.kiro.jsonl.lastLine, 1);
@@ -2173,7 +2175,7 @@ test("parseKiroIncremental ignores JSONL fallback after file truncation until ne
       "utf8",
     );
 
-    const resumed = await parseKiroIncremental({ jsonlPath, cursors, queuePath });
+    const resumed = await parseKiroIncremental({ dbPath: noDbPath, jsonlPath, cursors, queuePath });
     assert.equal(resumed.recordsProcessed, 1);
     assert.equal(resumed.eventsAggregated, 1);
 

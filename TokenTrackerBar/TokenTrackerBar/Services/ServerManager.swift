@@ -157,6 +157,7 @@ final class ServerManager: ObservableObject {
         let pipe = Pipe()
         process.executableURL = URL(fileURLWithPath: launchPath)
         process.arguments = args
+        process.currentDirectoryURL = FileManager.default.temporaryDirectory
         process.standardOutput = pipe
         process.standardError = FileHandle.nullDevice
         process.environment = ProcessInfo.processInfo.environment
@@ -177,6 +178,7 @@ final class ServerManager: ObservableObject {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: nodePath)
         process.arguments = [entryPath, "serve", "--no-sync", "--no-open"]
+        process.currentDirectoryURL = FileManager.default.temporaryDirectory
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
 
@@ -208,6 +210,7 @@ final class ServerManager: ObservableObject {
         process.executableURL = URL(fileURLWithPath: "/bin/zsh")
         // Use login shell so Node.js/npm PATH is available
         process.arguments = ["-lc", "\(binaryPath) serve --no-sync"]
+        process.currentDirectoryURL = FileManager.default.temporaryDirectory
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
         process.environment = ProcessInfo.processInfo.environment

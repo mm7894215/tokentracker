@@ -101,7 +101,7 @@ final class StatusBarController: NSObject {
     }
 
     private func makeStatsMenuBarImage(icon: NSImage?, tokens: String, cost: String) -> NSImage {
-        let valueFont = NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .medium)
+        let valueFont = NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .regular)
         let labelFont = NSFont.systemFont(ofSize: 7, weight: .regular)
         let valueColor = NSColor.labelColor
         let labelColor = NSColor.labelColor
@@ -125,7 +125,7 @@ final class StatusBarController: NSObject {
 
         let tokenColumnWidth = ceil(max(tokenValue.size().width, tokenLabel.size().width))
         let costColumnWidth = ceil(max(costValue.size().width, costLabel.size().width))
-        let columnGap: CGFloat = 6
+        let columnGap: CGFloat = 4
         let iconTrailingPadding: CGFloat = 6
         let trailingPadding: CGFloat = 3
         let lineGap: CGFloat = -1
@@ -139,7 +139,7 @@ final class StatusBarController: NSObject {
 
         let iconWidth = menuBarIconSize.width
         let textOriginX = iconWidth + iconTrailingPadding
-        let sepGap: CGFloat = 5  // gap on each side of separator
+        let sepGap: CGFloat = 4  // gap on each side of separator
         let totalWidth = ceil(textOriginX + tokenColumnWidth + sepGap + 1 + sepGap + costColumnWidth + trailingPadding)
         let imageSize = NSSize(width: totalWidth, height: menuBarHeight)
 

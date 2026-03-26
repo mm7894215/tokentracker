@@ -1,6 +1,6 @@
 {
   "name": "tokentracker-cli",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "Token usage tracker for AI agent CLIs (Claude Code, Codex, Cursor, Kiro, Gemini, OpenCode, OpenClaw)",
   "main": "src/cli.js",
   "bin": {
@@ -53,6 +53,28 @@
   "bundledDependencies": [
     "@insforge/sdk"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mm7894215/TokenTracker.git"
+  },
+  "homepage": "https://github.com/mm7894215/TokenTracker#readme",
+  "bugs": {
+    "url": "https://github.com/mm7894215/TokenTracker/issues"
+  },
+  "keywords": [
+    "token",
+    "tracker",
+    "ai",
+    "claude",
+    "codex",
+    "cursor",
+    "gemini",
+    "kiro",
+    "opencode",
+    "usage",
+    "cost"
+  ],
+  "license": "MIT",
   "engines": {
     "node": ">=20"
   }
