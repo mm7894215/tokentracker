@@ -6,6 +6,7 @@ import { Card, Button, Counter } from "../../openai/components";
 import { FadeIn } from "../../foundation/FadeIn.jsx";
 import { useTheme } from "../../../hooks/useTheme.js";
 import { DateRangePopover, formatDateShort } from "./DateRangePopover.jsx";
+import { ProviderIcon } from "./ProviderIcon.jsx";
 
 function normalizePeriods(periods) {
   if (!Array.isArray(periods)) return [];
@@ -251,11 +252,8 @@ export function UsageOverview({
                         : "border-oai-gray-200 dark:border-oai-gray-700 hover:border-oai-gray-300 dark:hover:border-oai-gray-600"
                     }`}
                   >
-                    <div className="flex items-center gap-2 mb-1">
-                      <div
-                        className="w-2 h-2 rounded-full"
-                        style={{ backgroundColor: color }}
-                      />
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <ProviderIcon provider={provider.label} size={15} color={color} className="text-oai-gray-700 dark:text-oai-gray-300 shrink-0" />
                       <span className="text-sm font-medium text-oai-black dark:text-oai-white">{provider.label}</span>
                     </div>
                     <div className="text-lg font-semibold text-oai-black dark:text-oai-white tabular-nums">
@@ -287,11 +285,8 @@ export function UsageOverview({
 
                     return (
                       <div key={provider.label}>
-                        <div className="flex items-center gap-2 mb-3">
-                          <div
-                            className="w-2 h-2 rounded-full"
-                            style={{ backgroundColor: color }}
-                          />
+                        <div className="flex items-center gap-1.5 mb-3">
+                          <ProviderIcon provider={provider.label} size={15} color={color} className="text-oai-gray-700 dark:text-oai-gray-300 shrink-0" />
                           <span className="text-sm font-medium text-oai-black dark:text-oai-white">{provider.label}</span>
                           <span className="text-xs text-oai-gray-400 dark:text-oai-gray-400">
                             {provider.totalPercent}%
