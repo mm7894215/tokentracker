@@ -12,7 +12,10 @@ test("mock leaderboard returns entries and me", async () => {
   assert.equal(typeof res.me.rank, "number");
   assert.equal(typeof res.me.gpt_tokens, "string");
   assert.equal(typeof res.me.claude_tokens, "string");
-  assert.equal(typeof res.me.other_tokens, "string");
+  assert.equal(typeof res.me.gemini_tokens, "string");
+  assert.equal(typeof res.me.cursor_tokens, "string");
+  assert.equal(typeof res.me.opencode_tokens, "string");
+  assert.equal(typeof res.me.openclaw_tokens, "string");
   assert.equal(typeof res.me.total_tokens, "string");
 
   let privateCount = 0;

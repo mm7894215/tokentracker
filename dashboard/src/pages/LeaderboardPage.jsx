@@ -18,8 +18,27 @@ import {
   setPublicVisibility,
 } from "../lib/api";
 import { HeaderGithubStar } from "../ui/openai/components/HeaderGithubStar.jsx";
+import { LeaderboardAvatar } from "../components/LeaderboardAvatar.jsx";
+import { LeaderboardProviderColumnHeader } from "../components/LeaderboardProviderColumnHeader.jsx";
+import {
+  LB_STICKY_TH_RANK,
+  LB_STICKY_TH_USER,
+  LEADERBOARD_TOKEN_COLUMNS,
+  lbStickyTdRank,
+  lbStickyTdUser,
+} from "../lib/leaderboard-columns.js";
 
 const PAGE_LIMIT = 20;
+
+function leaderboardTokenCells(entry, isMe) {
+  const numCls = isMe ? "text-oai-gray-300" : "text-oai-gray-400";
+  const cellBg = isMe ? "bg-oai-brand-900/10" : "bg-oai-gray-950 group-hover:bg-oai-gray-900/60";
+  return LEADERBOARD_TOKEN_COLUMNS.map((col) => (
+    <td key={col.key} className={cn("px-4 py-4 whitespace-nowrap", numCls, cellBg)}>
+      {toDisplayNumber(entry?.[col.key])}
+    </td>
+  ));
+}
 
 function buttonClass(variant = "default", size = "md", className) {
   const base =
@@ -75,6 +94,12 @@ function buildPublicViewPath(userId, search = "") {
   const suffix = period ? `?period=${period}` : "";
 
   return `/share/pv1-${normalized}${suffix}`;
+}
+
+function leaderboardAvatarSeed(entry, displayName) {
+  const id = typeof entry?.user_id === "string" ? entry.user_id.trim() : "";
+  if (id) return id;
+  return `${entry?.rank ?? ""}:${displayName}`;
 }
 
 export function LeaderboardPage({
@@ -190,7 +215,8 @@ export function LeaderboardPage({
   }, [authTokenAllowed, authTokenReady, baseUrl, effectiveAuthToken, mockEnabled]);
 
   useEffect(() => {
-    if (!baseUrl) return;
+    // Mock leaderboard uses local getMockLeaderboard() and does not need baseUrl (Vite passes "").
+    if (!baseUrl && !mockEnabled) return;
     if (!mockEnabled && authTokenAllowed && !authTokenReady) return;
     let active = true;
     setListState((prev) => ({ ...prev, loading: true, error: null }));
@@ -313,23 +339,23 @@ export function LeaderboardPage({
   } else if (hasEntries) {
     listBody = (
       <div className="w-full overflow-x-auto">
-        <table className="w-full text-left text-sm whitespace-nowrap">
-          <colgroup>
-            <col className="w-[80px]" />
-            <col />
-            <col className="w-[120px]" />
-            <col className="w-[120px]" />
-            <col className="w-[120px]" />
-            <col className="w-[120px]" />
-          </colgroup>
-          <thead className="bg-oai-gray-900/50 border-b border-oai-gray-800">
+        <table className="min-w-max w-full text-left text-sm">
+          <thead className="border-b border-oai-gray-800">
             <tr>
-              <th className="px-6 py-4 font-medium text-oai-gray-400">{copy("leaderboard.column.rank")}</th>
-              <th className="px-6 py-4 font-medium text-oai-gray-400">{copy("leaderboard.column.user")}</th>
-              <th className="px-6 py-4 font-medium text-oai-gray-400">{copy("leaderboard.column.total")}</th>
-              <th className="px-6 py-4 font-medium text-oai-gray-400">{copy("leaderboard.column.gpt")}</th>
-              <th className="px-6 py-4 font-medium text-oai-gray-400">{copy("leaderboard.column.claude")}</th>
-              <th className="px-6 py-4 font-medium text-oai-gray-400">{copy("leaderboard.column.other")}</th>
+              <th className={cn(LB_STICKY_TH_RANK, "font-medium text-oai-gray-400")}>
+                {copy("leaderboard.column.rank")}
+              </th>
+              <th className={cn(LB_STICKY_TH_USER, "font-medium text-oai-gray-400")}>
+                {copy("leaderboard.column.user")}
+              </th>
+              <th className="px-4 py-4 font-medium text-oai-gray-400 whitespace-nowrap bg-oai-gray-900/50">
+                {copy("leaderboard.column.total")}
+              </th>
+              {LEADERBOARD_TOKEN_COLUMNS.map((col) => (
+                <th key={col.key} className="px-4 py-4 font-medium text-oai-gray-400 whitespace-nowrap bg-oai-gray-900/50">
+                  <LeaderboardProviderColumnHeader iconSrc={col.icon} label={copy(col.copyKey)} />
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody className="divide-y divide-oai-gray-800/50">
@@ -339,7 +365,6 @@ export function LeaderboardPage({
               const rawName = normalizeName(entry?.display_name);
               const entryName = isAnonymousName(rawName) ? anonLabel : rawName;
               const name = isMe ? meLabel : entryName;
-              // Only clickable when: not me, has user_id, AND is_public=true (backend verified)
               const userLinkEnabled = Boolean(profileUserId) && !isMe && Boolean(entry?.is_public);
               const publicViewPath = userLinkEnabled
                 ? buildPublicViewPath(profileUserId, periodSearch)
@@ -350,26 +375,25 @@ export function LeaderboardPage({
                 return (
                   <tr
                     key={`row-${entry?.rank}-${name}`}
-                    className="bg-oai-brand-900/10 border-y border-oai-brand-500/30 transition-colors"
+                    className="border-y border-oai-brand-500/30 bg-oai-brand-900/10 transition-colors"
                   >
-                    <td className="px-6 py-4 font-semibold text-oai-brand-400">
+                    <td className={cn(lbStickyTdRank(true), "font-semibold text-oai-brand-400")}>
                       {entry?.rank ?? placeholder}
                     </td>
-                    <td className="px-6 py-4 font-semibold text-oai-white truncate max-w-[240px]">
-                      {name}
+                    <td className={lbStickyTdUser(true)}>
+                      <div className="flex min-w-0 max-w-[min(320px,55vw)] items-center gap-4">
+                        <LeaderboardAvatar
+                          avatarUrl={entry?.avatar_url}
+                          displayName={name}
+                          seed={leaderboardAvatarSeed(entry, name)}
+                        />
+                        <span className="truncate font-semibold text-oai-white">{name}</span>
+                      </div>
                     </td>
-                    <td className="px-6 py-4 font-medium text-oai-white">
+                    <td className="px-4 py-4 font-medium text-oai-white whitespace-nowrap bg-oai-brand-900/10">
                       {toDisplayNumber(entry?.total_tokens)}
                     </td>
-                    <td className="px-6 py-4 text-oai-gray-300">
-                      {toDisplayNumber(entry?.gpt_tokens)}
-                    </td>
-                    <td className="px-6 py-4 text-oai-gray-300">
-                      {toDisplayNumber(entry?.claude_tokens)}
-                    </td>
-                    <td className="px-6 py-4 text-oai-gray-300">
-                      {toDisplayNumber(entry?.other_tokens)}
-                    </td>
+                    {leaderboardTokenCells(entry, true)}
                   </tr>
                 );
               }
@@ -378,8 +402,8 @@ export function LeaderboardPage({
                 <tr
                   key={`row-${entry?.rank}-${name}`}
                   className={cn(
-                    "transition-colors",
-                    rowClickable ? "cursor-pointer hover:bg-oai-gray-900/60" : ""
+                    "group transition-colors",
+                    rowClickable ? "cursor-pointer hover:bg-oai-gray-900/60" : "",
                   )}
                   onClick={
                     rowClickable
@@ -410,24 +434,23 @@ export function LeaderboardPage({
                   tabIndex={rowClickable ? 0 : undefined}
                   aria-label={rowClickable ? `Open public dashboard for ${name}` : undefined}
                 >
-                  <td className="px-6 py-4 font-medium text-oai-gray-400">
+                  <td className={cn(lbStickyTdRank(false), "font-medium text-oai-gray-400")}>
                     {entry?.rank ?? placeholder}
                   </td>
-                  <td className="px-6 py-4 font-medium text-oai-gray-200 truncate max-w-[240px]">
-                    {name}
+                  <td className={lbStickyTdUser(false)}>
+                    <div className="flex min-w-0 max-w-[min(320px,55vw)] items-center gap-4">
+                      <LeaderboardAvatar
+                        avatarUrl={entry?.avatar_url}
+                        displayName={name}
+                        seed={leaderboardAvatarSeed(entry, name)}
+                      />
+                      <span className="truncate font-medium text-oai-gray-200">{name}</span>
+                    </div>
                   </td>
-                  <td className="px-6 py-4 text-oai-gray-300">
+                  <td className="px-4 py-4 text-oai-gray-300 whitespace-nowrap bg-oai-gray-950 group-hover:bg-oai-gray-900/60">
                     {toDisplayNumber(entry?.total_tokens)}
                   </td>
-                  <td className="px-6 py-4 text-oai-gray-400">
-                    {toDisplayNumber(entry?.gpt_tokens)}
-                  </td>
-                  <td className="px-6 py-4 text-oai-gray-400">
-                    {toDisplayNumber(entry?.claude_tokens)}
-                  </td>
-                  <td className="px-6 py-4 text-oai-gray-400">
-                    {toDisplayNumber(entry?.other_tokens)}
-                  </td>
+                  {leaderboardTokenCells(entry, false)}
                 </tr>
               );
             })}
@@ -532,7 +555,7 @@ export function LeaderboardPage({
       </header>
 
       <main className="py-12 sm:py-16">
-        <div className="mx-auto max-w-5xl px-4 sm:px-6">
+        <div className="mx-auto max-w-6xl px-4 sm:px-6">
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10">
             <div>
               <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight text-white mb-3">

@@ -11,11 +11,11 @@ shared.range.simple,shared,*,*,label,"Range: {{range}}",,active
 shared.data_source,shared,*,*,label,"Data source: {{source}}",,active
 shared.error.prefix,shared,*,*,label,"Error: {{error}}",,active
 shared.status.unsynced,shared,*,*,status,"—",,active
-error.boundary.title,shared,*,ErrorBoundary,title,"SYSTEM_FAULT",,active
-error.boundary.subtitle,shared,*,ErrorBoundary,subtitle,"RENDER_FAILURE",,active
-error.boundary.hint,shared,*,ErrorBoundary,hint,"OPEN_CONSOLE // THEN RELOAD",,active
-error.boundary.no_details,shared,*,ErrorBoundary,details,"NO_ERROR_DETAILS",,active
-error.boundary.action.reload,shared,*,ErrorBoundary,action_reload,"RELOAD",,active
+error.boundary.title,shared,*,ErrorBoundary,title,"Something went wrong",,active
+error.boundary.subtitle,shared,*,ErrorBoundary,subtitle,"This view failed to render",,active
+error.boundary.hint,shared,*,ErrorBoundary,hint,"Open the console, then reload the page",,active
+error.boundary.no_details,shared,*,ErrorBoundary,details,"No error details",,active
+error.boundary.action.reload,shared,*,ErrorBoundary,action_reload,"Reload",,active
 
 landing.handle.default,landing,LandingPage,LandingPage,handle_default,"VIBE_USER",,active
 landing.handle.special,landing,LandingPage,LandingPage,handle_special,"VOLT",,active
@@ -100,7 +100,7 @@ boot.skip_hint,ui,BootScreen,BootScreen,skip_hint,"Click to skip",,active
 boot.skip_aria,ui,BootScreen,BootScreen,aria_label,"Skip boot screen",,active
 
 landing.v2.hero.title_line1,landing,LandingPage,MarketingLanding,hero_title_1,"TRACK ALL YOUR",,active
-landing.v2.hero.title_line2,landing,LandingPage,MarketingLanding,hero_title_2,"AI TOKENS.",,active
+landing.v2.hero.title_line2,landing,LandingPage,MarketingLanding,hero_title_2,"AI TOKENS",,active
 landing.v2.hero.subtitle,landing,LandingPage,MarketingLanding,hero_subtitle,"UNIFIED USAGE DASHBOARD",,active
 landing.v2.install.btn_copy,landing,LandingPage,MarketingLanding,install_btn_copy,"COPY COMMAND",,active
 landing.v2.install.mac_cta,landing,LandingPage,MarketingLanding,mac_cta,"MAC APP (DMG)",,active
@@ -134,10 +134,10 @@ signalbox.title_default,ui,SignalBox,SignalBox,title_default,"LINK",,active
 
 sparkline.aria_label,components,Sparkline,Sparkline,aria_label,"Daily token usage sparkline",,active
 
-identity_card.title_default,ui,IdentityCard,IdentityCard,title_default,"Identity_Core",,active
-identity_card.name_default,ui,IdentityCard,IdentityCard,name_default,"VOLT.SYS_3M",,active
-identity_card.unknown,ui,IdentityCard,IdentityCard,unknown_label,"UNKNOWN_GHOST",,active
-identity_card.decrypt,ui,IdentityCard,IdentityCard,decrypt_label,"[ ! ] DECRYPT_IDENTITY",,active
+identity_card.title_default,ui,IdentityCard,IdentityCard,title_default,"Identity",,active
+identity_card.name_default,ui,IdentityCard,IdentityCard,name_default,"You",,active
+identity_card.unknown,ui,IdentityCard,IdentityCard,unknown_label,"Unknown",,active
+identity_card.decrypt,ui,IdentityCard,IdentityCard,decrypt_label,"Reveal identity",,active
 identity_card.rank_label,ui,IdentityCard,IdentityCard,rank_label,"Started",,active
 identity_card.streak_label,ui,IdentityCard,IdentityCard,streak_label,"Active days",,active
 identity_card.rank_placeholder,ui,IdentityCard,IdentityCard,rank_placeholder,"—",,active
@@ -146,7 +146,7 @@ identity_card.subscriptions_label,ui,IdentityCard,IdentityCard,subscriptions_lab
 identity_card.subscription_item,ui,IdentityCard,IdentityCard,subscription_item,"{{tool}} {{plan}}",,active
 
 identity_panel.badge,ui,IdentityPanel,IdentityPanel,badge,"VU",,active
-identity_panel.level,ui,IdentityPanel,IdentityPanel,level,"Lvl_05",,active
+identity_panel.level,ui,IdentityPanel,IdentityPanel,level,"Level 5",,active
 identity_panel.rank_label,ui,IdentityPanel,IdentityPanel,rank_label,"START",,active
 identity_panel.streak_label,ui,IdentityPanel,IdentityPanel,streak_label,"ACTIVE",,active
 identity_panel.rank_placeholder,ui,IdentityPanel,IdentityPanel,rank_placeholder,"—",,active
@@ -155,16 +155,16 @@ identity_panel.streak_value,ui,IdentityPanel,IdentityPanel,streak_value,"{{days}
 usage.panel.title,ui,UsagePanel,UsagePanel,title,"Token Usage",,active
 dashboard.core_index.collapse_label,dashboard,DashboardPage,UsagePanel,toggle,"▾",,active
 dashboard.core_index.expand_label,dashboard,DashboardPage,UsagePanel,toggle,"▸",,active
-dashboard.core_index.collapse_aria,dashboard,DashboardPage,UsagePanel,toggle_aria,"Collapse CORE_INDEX breakdown",,active
-dashboard.core_index.expand_aria,dashboard,DashboardPage,UsagePanel,toggle_aria,"Expand CORE_INDEX breakdown",,active
+dashboard.core_index.collapse_aria,dashboard,DashboardPage,UsagePanel,toggle_aria,"Collapse model breakdown",,active
+dashboard.core_index.expand_aria,dashboard,DashboardPage,UsagePanel,toggle_aria,"Expand model breakdown",,active
 usage.summary.total_system_output,ui,UsagePanel,UsagePanel,summary_label_total_system,"Total tokens",,active
 usage.summary.total,ui,UsagePanel,UsagePanel,summary_label_total,"Total tokens",,active
-usage.metric.total,ui,UsagePanel,UsagePanel,metric_total,"TOTAL",,active
-usage.metric.total_cost,ui,UsagePanel,UsagePanel,metric_total_cost,"TOTAL_COST_USD",,active
+usage.metric.total,ui,UsagePanel,UsagePanel,metric_total,"Total",,active
+usage.metric.total_cost,ui,UsagePanel,UsagePanel,metric_total_cost,"Total cost (USD)",,active
 usage.metric.input,ui,UsagePanel,UsagePanel,metric_input,"Input",,active
 usage.metric.output,ui,UsagePanel,UsagePanel,metric_output,"Output",,active
-usage.metric.cached_input,ui,UsagePanel,UsagePanel,metric_cached_input,"CACHED_INPUT",,active
-usage.metric.reasoning_output,ui,UsagePanel,UsagePanel,metric_reasoning_output,"REASONING_OUTPUT",,active
+usage.metric.cached_input,ui,UsagePanel,UsagePanel,metric_cached_input,"Cached input",,active
+usage.metric.reasoning_output,ui,UsagePanel,UsagePanel,metric_reasoning_output,"Reasoning output",,active
 usage.metric.cached_short,ui,UsagePanel,UsagePanel,metric_cached_short,"Cached",,active
 usage.metric.reasoning_short,ui,UsagePanel,UsagePanel,metric_reasoning_short,"Reasoning",,active
 usage.button.loading,ui,UsagePanel,UsagePanel,button_loading,"Loading…",,active
@@ -192,7 +192,7 @@ dashboard.projects.limit_aria,ui,ProjectUsagePanel,ProjectUsagePanel,limit_aria,
 dashboard.projects.limit_top_3,ui,ProjectUsagePanel,ProjectUsagePanel,limit_top_3,"TOP 3",,active
 dashboard.projects.limit_top_6,ui,ProjectUsagePanel,ProjectUsagePanel,limit_top_6,"TOP 6",,active
 dashboard.projects.limit_top_10,ui,ProjectUsagePanel,ProjectUsagePanel,limit_top_10,"TOP 10",,active
-dashboard.projects.empty,ui,ProjectUsagePanel,ProjectUsagePanel,empty,"NO_PUBLIC_REPOS",,active
+dashboard.projects.empty,ui,ProjectUsagePanel,ProjectUsagePanel,empty,"No public repositories",,active
 dashboard.upgrade_alert.title,ui,UpgradeAlertModal,UpgradeAlertModal,title,"Update available",,active
 dashboard.upgrade_alert.subtitle,ui,UpgradeAlertModal,UpgradeAlertModal,subtitle,"TokenTracker v{{required}} is now available.",,active
 dashboard.upgrade_alert.subtitle_generic,ui,UpgradeAlertModal,UpgradeAlertModal,subtitle_generic,"A new version of TokenTracker is available.",,active
@@ -304,67 +304,70 @@ details.pagination.next,dashboard,DashboardPage,DailyTable,pagination_next,"Next
 details.pagination.page,dashboard,DashboardPage,DailyTable,pagination_label,"Page {{page}}/{{total}}",,active
 
 
-leaderboard.nav.open,dashboard,DashboardPage,Header,nav_leaderboard,"$ leaderboard",,active
+leaderboard.nav.open,dashboard,DashboardPage,Header,nav_leaderboard,"$ Leaderboard",,active
 
-leaderboard.nav.back,dashboard,LeaderboardPage,Header,nav_back,"$ dashboard",,active
-leaderboard.profile.nav.back,dashboard,LeaderboardProfilePage,Header,nav_back,"$ leaderboard",,active
-leaderboard.title,dashboard,LeaderboardPage,LeaderboardPage,title,"LEADERBOARD",,active
-leaderboard.range,dashboard,LeaderboardPage,LeaderboardPage,range,"UTC_{{period}}: {{from}}..{{to}}",,active
-leaderboard.range_loading,dashboard,LeaderboardPage,LeaderboardPage,range_loading,"UTC_{{period}}: ...",,active
-leaderboard.range.total,dashboard,LeaderboardPage,LeaderboardPage,range_total,"ALL TIME",,active
-leaderboard.generated_at,dashboard,LeaderboardPage,LeaderboardPage,generated_at,"UPDATED_AT: {{ts}}",,active
-leaderboard.period.week,dashboard,LeaderboardPage,LeaderboardPage,period_week,"WEEK",,active
-leaderboard.period.month,dashboard,LeaderboardPage,LeaderboardPage,period_month,"MONTH",,active
-leaderboard.period.total,dashboard,LeaderboardPage,LeaderboardPage,period_total,"ALL",,active
-leaderboard.metric.all,dashboard,LeaderboardPage,LeaderboardPage,metric_all,"ALL",,active
+leaderboard.nav.back,dashboard,LeaderboardPage,Header,nav_back,"$ Dashboard",,active
+leaderboard.profile.nav.back,dashboard,LeaderboardProfilePage,Header,nav_back,"$ Leaderboard",,active
+leaderboard.title,dashboard,LeaderboardPage,LeaderboardPage,title,"Leaderboard",,active
+leaderboard.range,dashboard,LeaderboardPage,LeaderboardPage,range,"UTC {{period}} · {{from}} – {{to}}",,active
+leaderboard.range_loading,dashboard,LeaderboardPage,LeaderboardPage,range_loading,"UTC {{period}} · …",,active
+leaderboard.range.total,dashboard,LeaderboardPage,LeaderboardPage,range_total,"All time",,active
+leaderboard.generated_at,dashboard,LeaderboardPage,LeaderboardPage,generated_at,"Updated {{ts}}",,active
+leaderboard.period.week,dashboard,LeaderboardPage,LeaderboardPage,period_week,"Week",,active
+leaderboard.period.month,dashboard,LeaderboardPage,LeaderboardPage,period_month,"Month",,active
+leaderboard.period.total,dashboard,LeaderboardPage,LeaderboardPage,period_total,"All",,active
+leaderboard.metric.all,dashboard,LeaderboardPage,LeaderboardPage,metric_all,"All",,active
 leaderboard.metric.gpt,dashboard,LeaderboardPage,LeaderboardPage,metric_gpt,"GPT",,active
-leaderboard.metric.claude,dashboard,LeaderboardPage,LeaderboardPage,metric_claude,"CLAUDE",,active
+leaderboard.metric.claude,dashboard,LeaderboardPage,LeaderboardPage,metric_claude,"Claude",,active
 
-leaderboard.me_label,dashboard,LeaderboardPage,LeaderboardPage,me_label,"YOU",,active
+leaderboard.me_label,dashboard,LeaderboardPage,LeaderboardPage,me_label,"You",,active
 leaderboard.anon_label,dashboard,LeaderboardPage,LeaderboardPage,anon_label,"Anonymous",,active
-leaderboard.public_profile.label,dashboard,LeaderboardPage,LeaderboardPage,public_profile_label,"PUBLIC PROFILE",,active
-leaderboard.public_profile.status.enabled,dashboard,LeaderboardPage,LeaderboardPage,public_profile_status,"PUBLIC_ON",,active
-leaderboard.public_profile.status.disabled,dashboard,LeaderboardPage,LeaderboardPage,public_profile_status,"PUBLIC_OFF",,active
-leaderboard.error.unknown,dashboard,LeaderboardPage,LeaderboardPage,error_unknown,"UNKNOWN_ERROR",,active
-leaderboard.me_card.title,dashboard,LeaderboardPage,AsciiBox,me_card_title,"MY_RANK",,active
-leaderboard.me_card.subtitle,dashboard,LeaderboardPage,AsciiBox,me_card_subtitle,"WEEKLY",,active
+leaderboard.public_profile.label,dashboard,LeaderboardPage,LeaderboardPage,public_profile_label,"Public profile",,active
+leaderboard.public_profile.status.enabled,dashboard,LeaderboardPage,LeaderboardPage,public_profile_status,"On",,active
+leaderboard.public_profile.status.disabled,dashboard,LeaderboardPage,LeaderboardPage,public_profile_status,"Off",,active
+leaderboard.error.unknown,dashboard,LeaderboardPage,LeaderboardPage,error_unknown,"Unknown error",,active
+leaderboard.me_card.title,dashboard,LeaderboardPage,AsciiBox,me_card_title,"My rank",,active
+leaderboard.me_card.subtitle,dashboard,LeaderboardPage,AsciiBox,me_card_subtitle,"Weekly",,active
 
-leaderboard.profile.card.title,dashboard,LeaderboardProfilePage,AsciiBox,card_title,"PROFILE",,active
+leaderboard.profile.card.title,dashboard,LeaderboardProfilePage,AsciiBox,card_title,"Profile",,active
 leaderboard.profile.card.subtitle,dashboard,LeaderboardProfilePage,AsciiBox,card_subtitle,"{{period}}",,active
 
-leaderboard.top10.title,dashboard,LeaderboardPage,AsciiBox,top10_title,"TOP_10",,active
-leaderboard.top10.subtitle,dashboard,LeaderboardPage,AsciiBox,top10_subtitle,"TOP_9_PLUS_YOU",,active
-leaderboard.table.title,dashboard,LeaderboardPage,AsciiBox,table_title,"ALL_RANKS",,active
-leaderboard.table.subtitle,dashboard,LeaderboardPage,AsciiBox,table_subtitle,"PAGED",,active
+leaderboard.top10.title,dashboard,LeaderboardPage,AsciiBox,top10_title,"Top 10",,active
+leaderboard.top10.subtitle,dashboard,LeaderboardPage,AsciiBox,top10_subtitle,"Top 9 plus you",,active
+leaderboard.table.title,dashboard,LeaderboardPage,AsciiBox,table_title,"All ranks",,active
+leaderboard.table.subtitle,dashboard,LeaderboardPage,AsciiBox,table_subtitle,"By page",,active
 
-leaderboard.loading,dashboard,LeaderboardPage,LeaderboardPage,state_loading,"LOADING...",,active
-leaderboard.empty,dashboard,LeaderboardPage,LeaderboardPage,state_empty,"NO_DATA",,active
+leaderboard.loading,dashboard,LeaderboardPage,LeaderboardPage,state_loading,"Loading…",,active
+leaderboard.empty,dashboard,LeaderboardPage,LeaderboardPage,state_empty,"No data",,active
 
-leaderboard.column.rank,dashboard,LeaderboardPage,LeaderboardPage,column_rank,"RANK",,active
-leaderboard.column.user,dashboard,LeaderboardPage,LeaderboardPage,column_user,"USER",,active
-leaderboard.column.total,dashboard,LeaderboardPage,LeaderboardPage,column_total,"TOTAL",,active
-leaderboard.column.gpt,dashboard,LeaderboardPage,LeaderboardPage,column_gpt,"GPT_MODEL",,active
-leaderboard.column.claude,dashboard,LeaderboardPage,LeaderboardPage,column_claude,"CLAUDE_MODEL",,active
-leaderboard.column.other,dashboard,LeaderboardPage,LeaderboardPage,column_other,"OTHER_MODELS",,active
+leaderboard.column.rank,dashboard,LeaderboardPage,LeaderboardPage,column_rank,"Rank",,active
+leaderboard.column.user,dashboard,LeaderboardPage,LeaderboardPage,column_user,"User",,active
+leaderboard.column.total,dashboard,LeaderboardPage,LeaderboardPage,column_total,"Total",,active
+leaderboard.column.codex,dashboard,LeaderboardPage,LeaderboardPage,column_codex,"Codex",,active
+leaderboard.column.claude,dashboard,LeaderboardPage,LeaderboardPage,column_claude,"Claude",,active
+leaderboard.column.gemini,dashboard,LeaderboardPage,LeaderboardPage,column_gemini,"Gemini",,active
+leaderboard.column.cursor,dashboard,LeaderboardPage,LeaderboardPage,column_cursor,"Cursor",,active
+leaderboard.column.opencode,dashboard,LeaderboardPage,LeaderboardPage,column_opencode,"OpenCode",,active
+leaderboard.column.openclaw,dashboard,LeaderboardPage,LeaderboardPage,column_openclaw,"OpenClaw",,active
 
-leaderboard.pagination.prev,dashboard,LeaderboardPage,LeaderboardPage,pagination_prev,"PREV",,active
-leaderboard.pagination.next,dashboard,LeaderboardPage,LeaderboardPage,pagination_next,"NEXT",,active
-leaderboard.pagination.ellipsis,dashboard,LeaderboardPage,LeaderboardPage,pagination_ellipsis,"...",,active
-leaderboard.pagination.page_unknown,dashboard,LeaderboardPage,LeaderboardPage,pagination_unknown,"PAGE {{page}}",,active
+leaderboard.pagination.prev,dashboard,LeaderboardPage,LeaderboardPage,pagination_prev,"Previous",,active
+leaderboard.pagination.next,dashboard,LeaderboardPage,LeaderboardPage,pagination_next,"Next",,active
+leaderboard.pagination.ellipsis,dashboard,LeaderboardPage,LeaderboardPage,pagination_ellipsis,"…",,active
+leaderboard.pagination.page_unknown,dashboard,LeaderboardPage,LeaderboardPage,pagination_unknown,"Page {{page}}",,active
 
 dashboard.sign_out,dashboard,DashboardPage,Header,sign_out,"Sign out",,active
 dashboard.not_signed_in,dashboard,DashboardPage,Header,not_signed_in,"Not signed in",,active
 
 dashboard.footer.active,dashboard,DashboardPage,Footer,footer_active,"{{range}} • click Refresh to reload",,active
 dashboard.footer.auth,dashboard,DashboardPage,Footer,footer_auth,"Sign in to view usage",,active
-dashboard.footer.right,dashboard,DashboardPage,Footer,footer_right,"TokenTracker_Dashboard",,active
+dashboard.footer.right,dashboard,DashboardPage,Footer,footer_right,"Token Tracker dashboard",,active
 
-dashboard.auth_required.title,dashboard,DashboardPage,AsciiBox,title,"Auth_Required",,active
-dashboard.auth_required.subtitle,dashboard,DashboardPage,AsciiBox,subtitle,"LINK_UI_A",,active
+dashboard.auth_required.title,dashboard,DashboardPage,AsciiBox,title,"Authentication required",,active
+dashboard.auth_required.subtitle,dashboard,DashboardPage,AsciiBox,subtitle,"Sign in to continue",,active
 dashboard.auth_required.body,dashboard,DashboardPage,AsciiBox,body,"Sign in / sign up to view your daily token usage (UTC).",,active
 
-dashboard.session_expired.title,dashboard,DashboardPage,AsciiBox,title,"Session_Expired",,active
-dashboard.session_expired.subtitle,dashboard,DashboardPage,AsciiBox,subtitle,"REAUTH_REQUIRED",,active
+dashboard.session_expired.title,dashboard,DashboardPage,AsciiBox,title,"Session expired",,active
+dashboard.session_expired.subtitle,dashboard,DashboardPage,AsciiBox,subtitle,"Sign in again",,active
 dashboard.session_expired.body,dashboard,DashboardPage,AsciiBox,body,"Your session expired.",,active
 dashboard.session_expired.body_tail,dashboard,DashboardPage,AsciiBox,body,"Sign in again to refresh private usage data.",,active
 dashboard.session_expired.copy_label,dashboard,DashboardPage,AsciiBox,body,"run npx --yes tokentracker-cli init",,active
@@ -386,18 +389,18 @@ dashboard.install.link_code.loading,dashboard,DashboardPage,AsciiBox,install_sta
 dashboard.install.link_code.failed,dashboard,DashboardPage,AsciiBox,install_status,"Private code unavailable",,active
 dashboard.install.cmd.sync,dashboard,DashboardPage,AsciiBox,install_cmd,"npx --yes tokentracker-cli sync",,active
 
-dashboard.public_view.title,dashboard,DashboardPage,AsciiBox,title,"PUBLIC PROFILE",,active
-dashboard.public_view.status.enabled,dashboard,DashboardPage,AsciiBox,status,"PUBLIC_ON",,active
-dashboard.public_view.status.disabled,dashboard,DashboardPage,AsciiBox,status,"PUBLIC_OFF",,active
+dashboard.public_view.title,dashboard,DashboardPage,AsciiBox,title,"Public profile",,active
+dashboard.public_view.status.enabled,dashboard,DashboardPage,AsciiBox,status,"On",,active
+dashboard.public_view.status.disabled,dashboard,DashboardPage,AsciiBox,status,"Off",,active
 dashboard.public_view.action.copy,dashboard,DashboardPage,AsciiBox,action_label,"Copy share link",,active
 dashboard.public_view.action.copied,dashboard,DashboardPage,AsciiBox,action_label,"Copied",,active
 dashboard.public_view.action.enable,dashboard,DashboardPage,AsciiBox,action_label,"Enable public profile",,active
 dashboard.public_view.action.disable,dashboard,DashboardPage,AsciiBox,action_label,"Disable public profile",,active
-dashboard.public_view.invalid.title,dashboard,DashboardPage,AsciiBox,title,"Link_Invalid",,active
+dashboard.public_view.invalid.title,dashboard,DashboardPage,AsciiBox,title,"Invalid link",,active
 dashboard.public_view.invalid.body,dashboard,DashboardPage,AsciiBox,body,"This public link is invalid or has been revoked.",,active
 
-dashboard.activity.title,dashboard,DashboardPage,AsciiBox,title,"Activity_Grid",,active
-dashboard.activity.subtitle,dashboard,DashboardPage,AsciiBox,subtitle,"52W_LOCAL",,active
+dashboard.activity.title,dashboard,DashboardPage,AsciiBox,title,"Activity",,active
+dashboard.activity.subtitle,dashboard,DashboardPage,AsciiBox,subtitle,"52 weeks, local",,active
 
 dashboard.daily.title,dashboard,DashboardPage,AsciiBox,title,"Daily Breakdown",,active
 dashboard.daily.subtitle,dashboard,DashboardPage,AsciiBox,subtitle,"Explore your usage by day",,active
@@ -405,7 +408,7 @@ dashboard.daily.empty,dashboard,DashboardPage,AsciiBox,empty_state,"No data yet.
 
 dashboard.identity.title,dashboard,DashboardPage,IdentityCard,title,"Your Profile",,active
 dashboard.identity.subtitle,dashboard,DashboardPage,IdentityCard,subtitle,"Track your coding journey",,active
-dashboard.identity.fallback,dashboard,DashboardPage,IdentityCard,handle_fallback,"ANONYMOUS",,active
+dashboard.identity.fallback,dashboard,DashboardPage,IdentityCard,handle_fallback,"Anonymous",,active
 
 dashboard.version.label,dashboard,App,VersionBadge,label,"Version",,active
 

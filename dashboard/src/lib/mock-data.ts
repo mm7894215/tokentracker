@@ -494,9 +494,12 @@ export function getMockLeaderboard({
     const hash = hashString(`${seedValue}:${name}:${id}`);
     const base = 180000 + (hash % 900000);
     const total = Math.max(0, base + id * 1200);
-    const gpt = Math.floor(total * 0.55);
-    const claude = Math.floor(total * 0.25);
-    const other = Math.max(0, total - gpt - claude);
+    const gpt = Math.floor(total * 0.28);
+    const claude = Math.floor(total * 0.18);
+    const gemini = Math.floor(total * 0.12);
+    const cursor = Math.floor(total * 0.12);
+    const opencode = Math.floor(total * 0.1);
+    const openclaw = Math.max(0, total - gpt - claude - gemini - cursor - opencode);
     const isPublic = id % 7 !== 0;
     return {
       id,
@@ -507,7 +510,10 @@ export function getMockLeaderboard({
       avatar_url: null,
       gpt_tokens: gpt,
       claude_tokens: claude,
-      other_tokens: other,
+      gemini_tokens: gemini,
+      cursor_tokens: cursor,
+      opencode_tokens: opencode,
+      openclaw_tokens: openclaw,
       total_tokens: total,
     };
   });
@@ -516,13 +522,19 @@ export function getMockLeaderboard({
   if (raw[meIndex]) raw[meIndex].is_me = true;
 
   const metricKey =
-    safeMetric === "gpt"
+    safeMetric === "gpt" || safeMetric === "codex"
       ? "gpt_tokens"
       : safeMetric === "claude"
         ? "claude_tokens"
-        : safeMetric === "other"
-          ? "other_tokens"
-          : "total_tokens";
+        : safeMetric === "gemini"
+          ? "gemini_tokens"
+          : safeMetric === "cursor"
+            ? "cursor_tokens"
+            : safeMetric === "opencode"
+              ? "opencode_tokens"
+              : safeMetric === "openclaw"
+                ? "openclaw_tokens"
+                : "total_tokens";
 
   const sorted = raw
     .slice()
@@ -535,7 +547,10 @@ export function getMockLeaderboard({
       avatar_url: entry.avatar_url,
       gpt_tokens: String(entry.gpt_tokens),
       claude_tokens: String(entry.claude_tokens),
-      other_tokens: String(entry.other_tokens),
+      gemini_tokens: String(entry.gemini_tokens),
+      cursor_tokens: String(entry.cursor_tokens),
+      opencode_tokens: String(entry.opencode_tokens),
+      openclaw_tokens: String(entry.openclaw_tokens),
       total_tokens: String(entry.total_tokens),
       is_public: Boolean(entry.is_public),
     }));
@@ -546,10 +561,22 @@ export function getMockLeaderboard({
         rank: meRow.rank,
         gpt_tokens: meRow.gpt_tokens,
         claude_tokens: meRow.claude_tokens,
-        other_tokens: meRow.other_tokens,
+        gemini_tokens: meRow.gemini_tokens,
+        cursor_tokens: meRow.cursor_tokens,
+        opencode_tokens: meRow.opencode_tokens,
+        openclaw_tokens: meRow.openclaw_tokens,
         total_tokens: meRow.total_tokens,
       }
-    : { rank: null, gpt_tokens: "0", claude_tokens: "0", other_tokens: "0", total_tokens: "0" };
+    : {
+        rank: null,
+        gpt_tokens: "0",
+        claude_tokens: "0",
+        gemini_tokens: "0",
+        cursor_tokens: "0",
+        opencode_tokens: "0",
+        openclaw_tokens: "0",
+        total_tokens: "0",
+      };
 
   const entries = sorted.slice(safeOffset, safeOffset + safeLimit);
 

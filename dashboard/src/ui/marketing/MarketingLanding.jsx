@@ -137,7 +137,12 @@ export function MarketingLanding({
                 <h1 className="text-balance text-5xl font-semibold tracking-tight text-white sm:text-6xl lg:text-[4rem] lg:leading-[1.05]">
                   {copy("landing.v2.hero.title_line1")}
                   <br />
-                  <span className="text-oai-gray-500">{copy("landing.v2.hero.title_line2")}</span>
+                  <span 
+                    className="bg-gradient-to-b from-white via-oai-gray-200 to-oai-gray-500 bg-clip-text text-transparent font-bold tracking-tight"
+                    style={{ WebkitTextStroke: "1px rgba(255, 255, 255, 0.15)" }}
+                  >
+                    {copy("landing.v2.hero.title_line2")}
+                  </span>
                 </h1>
                 <p className="mt-6 text-lg leading-relaxed text-oai-gray-400">
                   {copy("landing.v2.hero.subtagline")}

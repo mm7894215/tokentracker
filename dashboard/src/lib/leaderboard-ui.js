@@ -69,6 +69,10 @@ export function injectMeIntoFirstPage({ entries, me, meLabel, limit }) {
     avatar_url: null,
     gpt_tokens: me?.gpt_tokens ?? "0",
     claude_tokens: me?.claude_tokens ?? "0",
+    gemini_tokens: me?.gemini_tokens ?? "0",
+    cursor_tokens: me?.cursor_tokens ?? "0",
+    opencode_tokens: me?.opencode_tokens ?? "0",
+    openclaw_tokens: me?.openclaw_tokens ?? "0",
     total_tokens: me?.total_tokens ?? "0",
   };
 

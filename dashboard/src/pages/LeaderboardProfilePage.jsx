@@ -8,6 +8,15 @@ import { cn } from "../lib/cn";
 import { isMockEnabled } from "../lib/mock-data";
 import { getLeaderboardProfile } from "../lib/api";
 import { HeaderGithubStar } from "../ui/openai/components/HeaderGithubStar.jsx";
+import { LeaderboardAvatar } from "../components/LeaderboardAvatar.jsx";
+import { LeaderboardProviderColumnHeader } from "../components/LeaderboardProviderColumnHeader.jsx";
+import {
+  LB_STICKY_TH_RANK,
+  LB_STICKY_TH_TOTAL,
+  LEADERBOARD_TOKEN_COLUMNS,
+  lbStickyTdRank,
+  lbStickyTdTotalOnly,
+} from "../lib/leaderboard-columns.js";
 
 function buttonClass(variant = "default", size = "md", className) {
   const base =
@@ -86,7 +95,7 @@ export function LeaderboardProfilePage({
   }));
 
   useEffect(() => {
-    if (!baseUrl) return;
+    if (!baseUrl && !mockEnabled) return;
     if (!userId) return;
     if (!mockEnabled && (!authTokenAllowed || !authTokenReady)) return;
     let active = true;
@@ -144,25 +153,35 @@ export function LeaderboardProfilePage({
   } else if (entry) {
     body = (
       <div className="w-full overflow-x-auto">
-        <table className="w-full text-left text-sm whitespace-nowrap">
-          <thead className="bg-oai-gray-900/50 border-b border-oai-gray-800">
+        <table className="min-w-max w-full text-left text-sm">
+          <thead className="border-b border-oai-gray-800">
             <tr>
-              <th className="px-6 py-4 font-medium text-oai-gray-400">{copy("leaderboard.column.rank")}</th>
-              <th className="px-6 py-4 font-medium text-oai-gray-400">{copy("leaderboard.column.total")}</th>
-              <th className="px-6 py-4 font-medium text-oai-gray-400">{copy("leaderboard.column.gpt")}</th>
-              <th className="px-6 py-4 font-medium text-oai-gray-400">{copy("leaderboard.column.claude")}</th>
-              <th className="px-6 py-4 font-medium text-oai-gray-400">{copy("leaderboard.column.other")}</th>
+              <th className={cn(LB_STICKY_TH_RANK, "font-medium text-oai-gray-400")}>
+                {copy("leaderboard.column.rank")}
+              </th>
+              <th className={cn(LB_STICKY_TH_TOTAL, "font-medium text-oai-gray-400 whitespace-nowrap")}>
+                {copy("leaderboard.column.total")}
+              </th>
+              {LEADERBOARD_TOKEN_COLUMNS.map((col) => (
+                <th key={col.key} className="px-4 py-4 font-medium text-oai-gray-400 whitespace-nowrap bg-oai-gray-900/50">
+                  <LeaderboardProviderColumnHeader iconSrc={col.icon} label={copy(col.copyKey)} />
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody className="divide-y divide-oai-gray-800/50">
             <tr className="transition-colors hover:bg-oai-gray-900/60">
-              <td className="px-6 py-4 font-medium text-oai-gray-400">
+              <td className={cn(lbStickyTdRank(false), "font-medium text-oai-gray-400")}>
                 {entry?.rank ?? copy("shared.placeholder.short")}
               </td>
-              <td className="px-6 py-4 text-oai-gray-300">{toDisplayNumber(entry?.total_tokens)}</td>
-              <td className="px-6 py-4 text-oai-gray-400">{toDisplayNumber(entry?.gpt_tokens)}</td>
-              <td className="px-6 py-4 text-oai-gray-400">{toDisplayNumber(entry?.claude_tokens)}</td>
-              <td className="px-6 py-4 text-oai-gray-400">{toDisplayNumber(entry?.other_tokens)}</td>
+              <td className={cn(lbStickyTdTotalOnly(false), "text-oai-gray-300")}>
+                {toDisplayNumber(entry?.total_tokens)}
+              </td>
+              {LEADERBOARD_TOKEN_COLUMNS.map((col) => (
+                <td key={col.key} className="px-4 py-4 text-oai-gray-400 whitespace-nowrap">
+                  {toDisplayNumber(entry?.[col.key])}
+                </td>
+              ))}
             </tr>
           </tbody>
         </table>
@@ -228,9 +247,16 @@ export function LeaderboardProfilePage({
       </header>
 
       <main className="py-12 sm:py-16">
-        <div className="mx-auto max-w-5xl px-4 sm:px-6">
-          <div className="flex flex-col gap-6 mb-10">
-            <div>
+        <div className="mx-auto max-w-6xl px-4 sm:px-6">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-6 mb-10">
+            <LeaderboardAvatar
+              avatarUrl={entry?.avatar_url}
+              displayName={displayName}
+              seed={typeof userId === "string" ? userId : displayName}
+              size="lg"
+              className="shrink-0 ring-2 ring-oai-gray-800"
+            />
+            <div className="min-w-0">
               <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight text-white mb-3">
                 {displayName}
               </h1>
