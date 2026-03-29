@@ -144,7 +144,7 @@ function printHelp() {
     "",
     "Options:",
     "  --base-url <url>       Base URL for the dashboard (default: http://localhost:5173)",
-    "                         Env override: VIBEUSAGE_DASHBOARD_BASE_URL",
+    "                         Env override: TOKENTRACKER_DASHBOARD_BASE_URL",
     "  --baseline-dir <dir>   Baseline directory (default: docs/screenshots/baselines/2026-01-23)",
     "  --no-start-server      Do not auto-start the Vite dev server when base-url is localhost",
     "  --help                 Show help",
@@ -161,7 +161,7 @@ const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "..", "..");
 
 const baseUrl = normalizeBaseUrl(
-  readArg("--base-url", process.env.VIBEUSAGE_DASHBOARD_BASE_URL) || "http://localhost:5173",
+  readArg("--base-url", process.env.TOKENTRACKER_DASHBOARD_BASE_URL) || "http://localhost:5173",
 );
 const baselineDir = resolveFromRepoRoot(
   repoRoot,

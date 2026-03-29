@@ -32,11 +32,7 @@ import {
   getLocalDayKey,
 } from "../lib/timezone";
 import {
-  getPublicVisibility,
-  setPublicVisibility,
   getUserStatus,
-  getPublicViewProfile,
-  requestInstallLinkCode,
   triggerLocalSync,
 } from "../lib/api";
 import { AsciiBox } from "../ui/foundation/AsciiBox.jsx";
@@ -126,13 +122,6 @@ export function DashboardPage({
   const [linkCodeError, setLinkCodeError] = useState(null);
   const [linkCodeExpiryTick, setLinkCodeExpiryTick] = useState(0);
   const [linkCodeRefreshToken, setLinkCodeRefreshToken] = useState(0);
-  const [publicViewEnabled, setPublicViewEnabled] = useState(false);
-  const [publicViewToken, setPublicViewToken] = useState(null);
-  const [publicViewLoading, setPublicViewLoading] = useState(false);
-  const [publicViewActionLoading, setPublicViewActionLoading] = useState(false);
-  const [publicViewCopied, setPublicViewCopied] = useState(false);
-  const [publicProfileName, setPublicProfileName] = useState(null);
-  const [publicProfileAvatarUrl, setPublicProfileAvatarUrl] = useState(null);
   const [userStatus, setUserStatus] = useState(null);
   const [compactSummary, setCompactSummary] = useState(() => {
     if (typeof window === "undefined" || !window.matchMedia) return false;
@@ -203,10 +192,7 @@ export function DashboardPage({
         return;
       }
       try {
-        const data = await requestInstallLinkCode({
-          baseUrl,
-          accessToken: resolvedToken,
-        });
+        const data = { link_code: null, expires_at: null };
         if (!active) return;
         setLinkCode(typeof data?.link_code === "string" ? data.link_code : null);
         setLinkCodeExpiresAt(typeof data?.expires_at === "string" ? data.expires_at : null);
@@ -232,92 +218,6 @@ export function DashboardPage({
     effectiveAuthToken,
     linkCodeRefreshToken,
   ]);
-
-  useEffect(() => {
-    if (!signedIn || mockEnabled || publicMode) {
-      setPublicViewEnabled(false);
-      setPublicViewToken(null);
-      setPublicViewLoading(false);
-      setPublicViewActionLoading(false);
-      setPublicViewCopied(false);
-      return;
-    }
-    if (!authTokenReady) {
-      setPublicViewEnabled(false);
-      setPublicViewToken(null);
-      setPublicViewLoading(false);
-      setPublicViewActionLoading(false);
-      setPublicViewCopied(false);
-      return;
-    }
-    let active = true;
-    setPublicViewLoading(true);
-    (async () => {
-      let resolvedToken = null;
-      try {
-        resolvedToken = await resolveAuthAccessToken(effectiveAuthToken);
-      } catch (_err) {
-        resolvedToken = null;
-      }
-      if (!active) return;
-      if (!resolvedToken) {
-        setPublicViewEnabled(false);
-        setPublicViewToken(null);
-        setPublicViewLoading(false);
-        return;
-      }
-      try {
-        const data = await getPublicVisibility({
-          baseUrl,
-          accessToken: resolvedToken,
-        });
-        if (!active) return;
-        const enabled = Boolean(data?.enabled);
-        setPublicViewEnabled(enabled);
-        setPublicViewToken(data?.share_token || null);
-      } catch (_err) {
-        if (!active) return;
-        setPublicViewEnabled(false);
-        setPublicViewToken(null);
-      } finally {
-        if (!active) return;
-        setPublicViewLoading(false);
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, [baseUrl, mockEnabled, signedIn, publicMode, authTokenReady, effectiveAuthToken]);
-
-  useEffect(() => {
-    if (!publicMode) {
-      setPublicProfileName(null);
-      setPublicProfileAvatarUrl(null);
-      return;
-    }
-    if (!publicToken) {
-      setPublicProfileName(null);
-      setPublicProfileAvatarUrl(null);
-      return;
-    }
-    setPublicProfileName(null);
-    setPublicProfileAvatarUrl(null);
-    let active = true;
-    getPublicViewProfile({ baseUrl, accessToken: publicToken })
-      .then((data) => {
-        if (!active) return;
-        setPublicProfileName(typeof data?.display_name === "string" ? data.display_name : null);
-        setPublicProfileAvatarUrl(typeof data?.avatar_url === "string" ? data.avatar_url : null);
-      })
-      .catch(() => {
-        if (!active) return;
-        setPublicProfileName(null);
-        setPublicProfileAvatarUrl(null);
-      });
-    return () => {
-      active = false;
-    };
-  }, [baseUrl, publicMode, publicToken]);
 
   // 本地模式判断
   const isLocalMode = typeof window !== "undefined" &&
@@ -856,25 +756,11 @@ export function DashboardPage({
       }),
     [usageSource],
   );
-  const publicViewInvalid = useMemo(() => {
-    if (!publicMode || !usageError) return false;
-    const status =
-      typeof usageError === "object" && usageError
-        ? (usageError?.status ?? usageError?.statusCode)
-        : null;
-    if (status === 401) return true;
-    const message =
-      typeof usageError === "string" ? usageError : String(usageError?.message || usageError || "");
-    return /unauthorized|invalid|token|revoked|401/i.test(message);
-  }, [publicMode, usageError]);
   const identityRawName = useMemo(() => {
     if (typeof auth?.name !== "string") return "";
     return auth.name.trim();
   }, [auth?.name]);
-  const publicIdentityName = useMemo(() => {
-    if (typeof publicProfileName !== "string") return "";
-    return publicProfileName.trim();
-  }, [publicProfileName]);
+  const publicIdentityName = "";
 
   const identityLabel = useMemo(() => {
     if (!identityRawName || identityRawName.includes("@")) {
@@ -1237,26 +1123,6 @@ export function DashboardPage({
     hasActiveDeviceToken,
   });
   const installPrompt = copy("dashboard.install.prompt");
-  const publicViewTitle = copy("dashboard.public_view.title");
-  const publicViewStatusEnabledLabel = copy("dashboard.public_view.status.enabled");
-  const publicViewStatusDisabledLabel = copy("dashboard.public_view.status.disabled");
-  const publicViewCopyLabel = copy("dashboard.public_view.action.copy");
-  const publicViewCopiedLabel = copy("dashboard.public_view.action.copied");
-  const publicViewEnableLabel = copy("dashboard.public_view.action.enable");
-  const publicViewDisableLabel = copy("dashboard.public_view.action.disable");
-  const publicViewInvalidTitle = copy("dashboard.public_view.invalid.title");
-  const publicViewInvalidBody = copy("dashboard.public_view.invalid.body");
-  const publicViewBusy = publicViewLoading || publicViewActionLoading;
-  const publicViewStatusLabel = publicViewEnabled
-    ? publicViewStatusEnabledLabel
-    : publicViewStatusDisabledLabel;
-  const publicViewUrl = useMemo(() => {
-    if (!publicViewToken || typeof window === "undefined") return "";
-    const url = new URL(`/share/${publicViewToken}`, window.location.origin);
-    return url.toString();
-  }, [publicViewToken]);
-  const publicViewCopyButtonLabel = publicViewCopied ? publicViewCopiedLabel : publicViewCopyLabel;
-  const publicViewToggleLabel = publicViewEnabled ? publicViewDisableLabel : publicViewEnableLabel;
 
   const handleCopyInstall = useCallback(async () => {
     if (!installInitCmdCopy) return;
@@ -1273,66 +1139,6 @@ export function DashboardPage({
     setSessionExpiredCopied(true);
     window.setTimeout(() => setSessionExpiredCopied(false), 2000);
   }, [installInitCmdBase]);
-
-  const handleCopyPublicView = useCallback(async () => {
-    if (publicViewActionLoading || !publicViewEnabled) return;
-    let nextUrl = publicViewUrl;
-    if (!nextUrl) {
-      setPublicViewActionLoading(true);
-      try {
-        const resolvedToken = await resolveAuthAccessToken(effectiveAuthToken);
-        if (!resolvedToken) {
-          setPublicViewActionLoading(false);
-          return;
-        }
-        const data = await getPublicVisibility({
-          baseUrl,
-          accessToken: resolvedToken,
-        });
-        const token = typeof data?.share_token === "string" ? data.share_token : null;
-        setPublicViewToken(token);
-        if (token && typeof window !== "undefined") {
-          const url = new URL(`/share/${token}`, window.location.origin);
-          nextUrl = url.toString();
-        }
-      } catch (_err) {
-        // ignore issue errors
-      } finally {
-        setPublicViewActionLoading(false);
-      }
-    }
-    if (!nextUrl) return;
-    const didCopy = await safeWriteClipboard(nextUrl);
-    if (!didCopy) return;
-    setPublicViewCopied(true);
-    window.setTimeout(() => setPublicViewCopied(false), 2000);
-  }, [effectiveAuthToken, baseUrl, publicViewActionLoading, publicViewEnabled, publicViewUrl]);
-
-  const handleTogglePublicView = useCallback(async () => {
-    if (publicViewActionLoading) return;
-    setPublicViewCopied(false);
-    setPublicViewActionLoading(true);
-    try {
-      const resolvedToken = await resolveAuthAccessToken(effectiveAuthToken);
-      if (!resolvedToken) {
-        setPublicViewActionLoading(false);
-        return;
-      }
-      const nextValue = !publicViewEnabled;
-      const data = await setPublicVisibility({
-        baseUrl,
-        accessToken: resolvedToken,
-        enabled: nextValue,
-      });
-      const enabled = Boolean(data?.enabled);
-      setPublicViewEnabled(enabled);
-      setPublicViewToken(data?.share_token || null);
-    } catch (_err) {
-      // ignore toggle errors
-    } finally {
-      setPublicViewActionLoading(false);
-    }
-  }, [effectiveAuthToken, baseUrl, publicViewActionLoading, publicViewEnabled]);
 
   const dailyEmptyTemplate = useMemo(() => copy("dashboard.daily.empty", { cmd: "{{cmd}}" }), []);
   const [dailyEmptyPrefix, dailyEmptySuffix] = useMemo(() => {
@@ -1355,9 +1161,6 @@ export function DashboardPage({
     <DashboardView
       copy={copy}
       screenshotMode={screenshotMode}
-      publicViewInvalid={publicViewInvalid}
-      publicViewInvalidTitle={publicViewInvalidTitle}
-      publicViewInvalidBody={publicViewInvalidBody}
       showExpiredGate={showExpiredGate}
       showAuthGate={showAuthGate}
       screenshotTitleLine1={screenshotTitleLine1}
@@ -1383,14 +1186,6 @@ export function DashboardPage({
       installInitCmdDisplay={installInitCmdDisplay}
       linkCodeLoading={linkCodeLoading}
       linkCodeError={linkCodeError}
-      publicViewTitle={publicViewTitle}
-      handleTogglePublicView={handleTogglePublicView}
-      publicViewBusy={publicViewBusy}
-      publicViewEnabled={publicViewEnabled}
-      publicViewToggleLabel={publicViewToggleLabel}
-      publicViewStatusLabel={publicViewStatusLabel}
-      publicViewCopyButtonLabel={publicViewCopyButtonLabel}
-      handleCopyPublicView={handleCopyPublicView}
       trendRowsForDisplay={trendRowsForDisplay}
       trendFromForDisplay={trendFromForDisplay}
       trendToForDisplay={trendToForDisplay}

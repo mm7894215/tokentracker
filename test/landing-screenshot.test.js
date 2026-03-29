@@ -64,9 +64,9 @@ function parseCsv(raw) {
 }
 
 test("LandingPage includes screenshot image and copy alt key", () => {
-  const src = read("dashboard/src/ui/matrix-a/views/LandingView.jsx");
+  const src = read("dashboard/src/ui/marketing/MarketingLanding.jsx");
   assert.match(src, /landing\.screenshot\.alt/);
-  assert.match(src, /landing-dashboard\.jpg/);
+  assert.match(src, /dashboard-dark\.png/);
 });
 
 test("copy registry includes landing screenshot alt", () => {

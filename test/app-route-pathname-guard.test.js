@@ -26,3 +26,10 @@ test("App.jsx routes to /leaderboard page", () => {
   assert.equal(source.includes('"/leaderboard"'), true, "/leaderboard route should exist");
   assert.equal(source.includes("LeaderboardPage"), true, "LeaderboardPage should be referenced");
 });
+
+test("App.jsx routes to /login page", () => {
+  const appPath = path.join(repoRoot, "dashboard/src/App.jsx");
+  const source = fs.readFileSync(appPath, "utf8");
+  assert.equal(source.includes('"/login"'), true, "/login route should exist");
+  assert.equal(source.includes("LoginPage"), true, "LoginPage should be referenced");
+});

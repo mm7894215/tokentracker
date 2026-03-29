@@ -61,6 +61,23 @@ export async function resolveAuthAccessToken(auth) {
   return normalizeAccessToken(auth);
 }
 
+/**
+ * InsForge 等云端接口：localhost 上 `isAccessTokenReady` 可能已为 true，但 `getAccessToken()`
+ * 首帧尚未就绪。短重试避免无 Authorization 的 401。
+ */
+export async function resolveAuthAccessTokenWithRetry(auth, options = {}) {
+  const maxAttempts = Math.max(1, Math.min(12, Math.floor(Number(options.maxAttempts) || 8)));
+  const baseDelayMs = Math.max(20, Math.floor(Number(options.baseDelayMs) || 50));
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const t = await resolveAuthAccessToken(auth);
+    if (t) return t;
+    if (attempt < maxAttempts - 1) {
+      await new Promise((r) => setTimeout(r, baseDelayMs * (attempt + 1)));
+    }
+  }
+  return null;
+}
+
 export function isAccessTokenReady(token) {
   // 本地开发模式不需要真实 token
   if (typeof window !== "undefined" &&

@@ -208,11 +208,28 @@ function trimCommandOutput(value, maxLength = 4000) {
   return text.slice(text.length - maxLength);
 }
 
-async function runLocalSyncCommand() {
+function readJsonBodyVite(req) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    req.on("data", (c) => chunks.push(c));
+    req.on("end", () => {
+      try {
+        const raw = Buffer.concat(chunks).toString("utf8");
+        if (!raw.trim()) return resolve({});
+        resolve(JSON.parse(raw));
+      } catch (e) {
+        reject(e);
+      }
+    });
+    req.on("error", reject);
+  });
+}
+
+async function runLocalSyncCommand(extraEnv = {}) {
   return await new Promise((resolve, reject) => {
     const child = spawn(process.platform === "win32" ? "npx.cmd" : "npx", ["tokentracker-cli", "sync"], {
       cwd: REPO_ROOT,
-      env: process.env,
+      env: { ...process.env, ...extraEnv },
       stdio: ["ignore", "pipe", "pipe"],
     });
 
@@ -422,7 +439,7 @@ async function handleLocalApi(req, res, url) {
 
   const pathname = url.pathname;
 
-  if (pathname === "/functions/vibeusage-local-sync") {
+  if (pathname === "/functions/tokentracker-local-sync") {
     if (String(req.method || "GET").toUpperCase() !== "POST") {
       res.statusCode = 405;
       res.setHeader("Allow", "POST");
@@ -432,7 +449,20 @@ async function handleLocalApi(req, res, url) {
     }
 
     try {
-      const result = await runLocalSyncCommand();
+      let body = {};
+      try {
+        body = await readJsonBodyVite(req);
+      } catch {
+        body = {};
+      }
+      const extraEnv = {};
+      if (typeof body.deviceToken === "string" && body.deviceToken.trim()) {
+        extraEnv.TOKENTRACKER_DEVICE_TOKEN = body.deviceToken.trim();
+      }
+      if (typeof body.insforgeBaseUrl === "string" && /^https?:\/\//i.test(body.insforgeBaseUrl.trim())) {
+        extraEnv.TOKENTRACKER_INSFORGE_BASE_URL = body.insforgeBaseUrl.trim();
+      }
+      const result = await runLocalSyncCommand(extraEnv);
       res.setHeader("Content-Type", "application/json");
       res.end(JSON.stringify({ ok: true, ...result }));
     } catch (error) {
@@ -450,7 +480,7 @@ async function handleLocalApi(req, res, url) {
   }
 
   // 处理 usage-summary
-  if (pathname === "/functions/vibeusage-usage-summary") {
+  if (pathname === "/functions/tokentracker-usage-summary") {
     const from = url.searchParams.get("from") || "";
     const to = url.searchParams.get("to") || "";
     const rows = readQueueData();
@@ -538,7 +568,7 @@ async function handleLocalApi(req, res, url) {
   }
 
   // 处理 usage-daily
-  if (pathname === "/functions/vibeusage-usage-daily") {
+  if (pathname === "/functions/tokentracker-usage-daily") {
     const from = url.searchParams.get("from") || "";
     const to = url.searchParams.get("to") || "";
     const rows = readQueueData();
@@ -549,7 +579,7 @@ async function handleLocalApi(req, res, url) {
   }
 
   // 处理 usage-heatmap
-  if (pathname === "/functions/vibeusage-usage-heatmap") {
+  if (pathname === "/functions/tokentracker-usage-heatmap") {
     const weeks = parseInt(url.searchParams.get("weeks") || "52", 10);
     const rows = readQueueData();
     const daily = aggregateByDay(rows);
@@ -591,13 +621,18 @@ async function handleLocalApi(req, res, url) {
       cursor.setUTCDate(cursor.getUTCDate() + 1);
     }
     const activeDays = cells.filter(c => c.billable_total_tokens > 0).length;
+    // 转为 weeks 二维数组（每 7 天一组），与 local-api.js 格式一致
+    const weeksArr = [];
+    for (let i = 0; i < cells.length; i += 7) {
+      weeksArr.push(cells.slice(i, i + 7));
+    }
     res.setHeader("Content-Type", "application/json");
-    res.end(JSON.stringify({ from, to, week_starts_on: "sun", active_days: activeDays, streak_days: 0, cells }));
+    res.end(JSON.stringify({ from, to, week_starts_on: "sun", active_days: activeDays, streak_days: 0, weeks: weeksArr }));
     return true;
   }
 
   // 处理 usage-model-breakdown
-  if (pathname === "/functions/vibeusage-usage-model-breakdown") {
+  if (pathname === "/functions/tokentracker-usage-model-breakdown") {
     const from = url.searchParams.get("from") || "";
     const to = url.searchParams.get("to") || "";
     const rows = readQueueData();
@@ -679,7 +714,7 @@ async function handleLocalApi(req, res, url) {
   }
 
   // 处理 project-usage-summary
-  if (pathname === "/functions/vibeusage-project-usage-summary") {
+  if (pathname === "/functions/tokentracker-project-usage-summary") {
     // 从原始日志解析项目数据
     const projectMap = new Map();
 
@@ -853,7 +888,7 @@ async function handleLocalApi(req, res, url) {
   }
 
   // 处理 user-status
-  if (pathname === "/functions/vibeusage-user-status") {
+  if (pathname === "/functions/tokentracker-user-status") {
     res.setHeader("Content-Type", "application/json");
     res.end(JSON.stringify({
       user_id: "local-user", email: "local@localhost", name: "Local User", is_public: false,
@@ -918,7 +953,20 @@ export default defineConfig(({ mode }) => {
         rewrites: [
           { from: /^\/functions\/.*$/, to: (ctx) => ctx.parsedUrl.pathname }
         ]
-      }
+      },
+      // 代理 InsForge auth/functions 请求到云端，避免跨域 cookie 问题
+      proxy: (() => {
+        const target = loadEnv("development", ROOT_DIR, "VITE_").VITE_INSFORGE_BASE_URL;
+        if (!target) return {};
+        return {
+          "/api/auth": {
+            target,
+            changeOrigin: true,
+            secure: true,
+            cookieDomainRewrite: "localhost",
+          },
+        };
+      })(),
     },
   };
 });

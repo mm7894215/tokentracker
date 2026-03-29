@@ -8,7 +8,7 @@ type TimeoutOptions = { env?: AnyRecord };
 
 export function getHttpTimeoutMs({ env }: TimeoutOptions = {}) {
   const resolvedEnv = env ?? (typeof import.meta !== "undefined" ? import.meta.env : undefined);
-  const raw = readEnvValue(resolvedEnv, ["VITE_VIBEUSAGE_HTTP_TIMEOUT_MS"]);
+  const raw = readEnvValue(resolvedEnv, ["VITE_TOKENTRACKER_HTTP_TIMEOUT_MS"]);
   if (raw == null || raw === "") return DEFAULT_TIMEOUT_MS;
   const n = Number(raw);
   if (!Number.isFinite(n)) return DEFAULT_TIMEOUT_MS;

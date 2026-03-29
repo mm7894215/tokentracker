@@ -281,10 +281,27 @@ function trimOutput(value, max = 4000) {
   return t.length <= max ? t : t.slice(t.length - max);
 }
 
-function runSyncCommand() {
+function readJsonBody(req) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    req.on("data", (c) => chunks.push(c));
+    req.on("end", () => {
+      try {
+        const raw = Buffer.concat(chunks).toString("utf8");
+        if (!raw.trim()) return resolve({});
+        resolve(JSON.parse(raw));
+      } catch (e) {
+        reject(e);
+      }
+    });
+    req.on("error", reject);
+  });
+}
+
+function runSyncCommand(extraEnv = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [TRACKER_BIN, "sync"], {
-      env: process.env,
+      env: { ...process.env, ...extraEnv },
       stdio: ["ignore", "pipe", "pipe"],
     });
     let stdout = "";
@@ -443,14 +460,79 @@ function createLocalApiHandler({ queuePath }) {
   return async function handleLocalApi(req, res, url) {
     const p = url.pathname;
 
+    // --- auth proxy: forward /api/auth/* to InsForge cloud ---
+    if (p.startsWith("/api/auth/")) {
+      let insforgeBase = process.env.TOKENTRACKER_INSFORGE_BASE_URL
+        || process.env.INSFORGE_BASE_URL
+        || "";
+      if (!insforgeBase) {
+        try {
+          const cfgPath = path.join(os.homedir(), ".tokentracker", "tracker", "config.json");
+          const cfg = JSON.parse(fs.readFileSync(cfgPath, "utf8"));
+          insforgeBase = cfg?.baseUrl || "";
+        } catch { /* ignore */ }
+      }
+      if (!insforgeBase) {
+        json(res, { error: "InsForge base URL not configured" }, 500);
+        return true;
+      }
+      try {
+        const targetUrl = `${insforgeBase.replace(/\/$/, "")}${p}${url.search || ""}`;
+        const proxyHeaders = {};
+        for (const [key, value] of Object.entries(req.headers)) {
+          if (key === "host" || key === "connection") continue;
+          proxyHeaders[key] = value;
+        }
+        const bodyChunks = [];
+        for await (const chunk of req) bodyChunks.push(chunk);
+        const body = bodyChunks.length > 0 ? Buffer.concat(bodyChunks) : undefined;
+        const proxyRes = await fetch(targetUrl, {
+          method: req.method || "GET",
+          headers: proxyHeaders,
+          body,
+          credentials: "include",
+          redirect: "manual",
+        });
+        res.writeHead(proxyRes.status, Object.fromEntries(
+          [...proxyRes.headers.entries()].filter(([k]) =>
+            !["transfer-encoding", "connection"].includes(k.toLowerCase())
+          ).map(([k, v]) => {
+            // Rewrite cookie domain to localhost
+            if (k.toLowerCase() === "set-cookie") {
+              return [k, v.replace(/;\s*[Dd]omain=[^;]*/g, "; Domain=localhost")];
+            }
+            return [k, v];
+          })
+        ));
+        const resBody = await proxyRes.arrayBuffer();
+        res.end(Buffer.from(resBody));
+      } catch (e) {
+        json(res, { error: `Auth proxy error: ${e?.message || e}` }, 502);
+      }
+      return true;
+    }
+
     // --- local-sync (POST) ---
-    if (p === "/functions/vibeusage-local-sync") {
+    if (p === "/functions/tokentracker-local-sync") {
       if (String(req.method || "GET").toUpperCase() !== "POST") {
         json(res, { ok: false, error: "Method Not Allowed" }, 405);
         return true;
       }
       try {
-        const result = await runSyncCommand();
+        let body = {};
+        try {
+          body = await readJsonBody(req);
+        } catch {
+          body = {};
+        }
+        const extraEnv = {};
+        if (typeof body.deviceToken === "string" && body.deviceToken.trim()) {
+          extraEnv.TOKENTRACKER_DEVICE_TOKEN = body.deviceToken.trim();
+        }
+        if (typeof body.insforgeBaseUrl === "string" && /^https?:\/\//i.test(body.insforgeBaseUrl.trim())) {
+          extraEnv.TOKENTRACKER_INSFORGE_BASE_URL = body.insforgeBaseUrl.trim();
+        }
+        const result = await runSyncCommand(extraEnv);
         json(res, { ok: true, ...result });
       } catch (e) {
         json(res, { ok: false, error: e?.message, code: e?.code ?? null, stdout: e?.stdout || "", stderr: e?.stderr || "" }, 500);
@@ -459,7 +541,7 @@ function createLocalApiHandler({ queuePath }) {
     }
 
     // --- usage-summary ---
-    if (p === "/functions/vibeusage-usage-summary") {
+    if (p === "/functions/tokentracker-usage-summary") {
       const from = url.searchParams.get("from") || "";
       const to = url.searchParams.get("to") || "";
       const rows = readQueueData(qp);
@@ -524,7 +606,7 @@ function createLocalApiHandler({ queuePath }) {
     }
 
     // --- usage-daily ---
-    if (p === "/functions/vibeusage-usage-daily") {
+    if (p === "/functions/tokentracker-usage-daily") {
       const from = url.searchParams.get("from") || "";
       const to = url.searchParams.get("to") || "";
       const rows = readQueueData(qp);
@@ -534,7 +616,7 @@ function createLocalApiHandler({ queuePath }) {
     }
 
     // --- usage-heatmap ---
-    if (p === "/functions/vibeusage-usage-heatmap") {
+    if (p === "/functions/tokentracker-usage-heatmap") {
       const weeks = parseInt(url.searchParams.get("weeks") || "52", 10);
       const rows = readQueueData(qp);
       const daily = aggregateByDay(rows);
@@ -577,7 +659,7 @@ function createLocalApiHandler({ queuePath }) {
     }
 
     // --- usage-model-breakdown ---
-    if (p === "/functions/vibeusage-usage-model-breakdown") {
+    if (p === "/functions/tokentracker-usage-model-breakdown") {
       const from = url.searchParams.get("from") || "";
       const to = url.searchParams.get("to") || "";
       const rows = readQueueData(qp).filter((r) => {
@@ -639,7 +721,7 @@ function createLocalApiHandler({ queuePath }) {
     }
 
     // --- project-usage-summary ---
-    if (p === "/functions/vibeusage-project-usage-summary") {
+    if (p === "/functions/tokentracker-project-usage-summary") {
       const projectMap = new Map();
       scanCodexProjects(projectMap);
       scanClaudeProjects(projectMap);
@@ -676,7 +758,7 @@ function createLocalApiHandler({ queuePath }) {
     }
 
     // --- user-status (stub) ---
-    if (p === "/functions/vibeusage-user-status") {
+    if (p === "/functions/tokentracker-user-status") {
       json(res, {
         user_id: "local-user", email: "local@localhost", name: "Local User", is_public: false,
         created_at: new Date().toISOString(),
@@ -686,7 +768,7 @@ function createLocalApiHandler({ queuePath }) {
     }
 
     // --- usage-hourly (stub for day-view) ---
-    if (p === "/functions/vibeusage-usage-hourly") {
+    if (p === "/functions/tokentracker-usage-hourly") {
       const day = url.searchParams.get("day") || new Date().toISOString().slice(0, 10);
       const timeZoneContext = getTimeZoneContext(url);
       const rows = readQueueData(qp);
@@ -696,7 +778,7 @@ function createLocalApiHandler({ queuePath }) {
     }
 
     // --- usage-monthly (stub for trend view) ---
-    if (p === "/functions/vibeusage-usage-monthly") {
+    if (p === "/functions/tokentracker-usage-monthly") {
       const from = url.searchParams.get("from") || "";
       const to = url.searchParams.get("to") || "";
       const rows = readQueueData(qp);

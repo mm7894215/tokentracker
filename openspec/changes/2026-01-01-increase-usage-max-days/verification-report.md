@@ -9,8 +9,8 @@
 
 - `node --test test/edge-functions.test.js --test-name-pattern="getUsageMaxDays defaults to 800 days"` (PASS)
 - `npm test` (PASS)
-- `curl -s -H "Authorization: Bearer <REDACTED>" "https://5tmappuk.us-east.insforge.app/functions/vibescore-usage-summary?from=2024-02-01&to=2026-01-01"` (200)
-- `curl -s -H "Authorization: Bearer <REDACTED>" "https://5tmappuk.us-east.insforge.app/functions/vibescore-usage-summary?from=2023-01-01&to=2026-01-01"` (400)
+- `curl -s -H "Authorization: Bearer <REDACTED>" "https://b46ug8xu.us-east.insforge.app/functions/vibescore-usage-summary?from=2024-02-01&to=2026-01-01"` (200)
+- `curl -s -H "Authorization: Bearer <REDACTED>" "https://b46ug8xu.us-east.insforge.app/functions/vibescore-usage-summary?from=2023-01-01&to=2026-01-01"` (400)
 
 ## Results
 

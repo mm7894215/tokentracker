@@ -1,11 +1,16 @@
-import React, { Suspense, useEffect, useMemo, useState } from "react";
+import React, { Suspense, useMemo } from "react";
 import { useLocation } from "react-router-dom";
 import { ErrorBoundary } from "./components/ErrorBoundary.jsx";
 import { ThemeProvider } from "./ui/foundation/ThemeProvider.jsx";
+import { useInsforgeAuth } from "./contexts/InsforgeAuthContext.jsx";
+import { LoginModalProvider } from "./contexts/LoginModalContext.jsx";
+import { LoginModal } from "./components/LoginModal.jsx";
+import { getBackendBaseUrl } from "./lib/config";
 import { isMockEnabled } from "./lib/mock-data";
-import { fetchLatestTrackerVersion } from "./lib/npm-version";
 import { isScreenshotModeEnabled } from "./lib/screenshot-mode";
+import { useCloudUsageSync } from "./hooks/use-cloud-usage-sync";
 import { LandingPage } from "./pages/LandingPage.jsx";
+import { LoginPage } from "./pages/LoginPage.jsx";
 
 const DashboardPage = React.lazy(() =>
   import("./pages/DashboardPage.jsx").then((mod) => ({
@@ -27,24 +32,13 @@ const LeaderboardProfilePage = React.lazy(() =>
 
 export default function App() {
   const location = useLocation();
+  const insforge = useInsforgeAuth();
+  useCloudUsageSync();
   const mockEnabled = isMockEnabled();
   const screenshotMode = useMemo(() => {
     if (typeof window === "undefined") return false;
     return isScreenshotModeEnabled(window.location.search);
   }, []);
-  const [latestVersion, setLatestVersion] = useState(null);
-
-  useEffect(() => {
-    let active = true;
-    fetchLatestTrackerVersion({ allowStale: true }).then((version) => {
-      if (!active) return;
-      setLatestVersion(version);
-    });
-    return () => {
-      active = false;
-    };
-  }, []);
-
   const pathname = location?.pathname || "/";
   const pageUrl = new URL(window.location.href);
   const sharePathname = pageUrl.pathname.replace(/\/+$/, "") || "/";
@@ -57,10 +51,28 @@ export default function App() {
     sharePathname === "/share.html" ||
     sharePathname.startsWith("/share/");
 
-  const isLocalMode = typeof window !== "undefined" &&
+  const isLocalMode =
+    typeof window !== "undefined" &&
     (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
 
   const normalizedPath = pathname.replace(/\/+$/, "") || "/";
+  const leaderboardProfileMatch = normalizedPath.match(/^\/leaderboard\/u\/([^/]+)$/i);
+  const leaderboardProfileUserId = leaderboardProfileMatch ? leaderboardProfileMatch[1] : null;
+  const isLeaderboardPath =
+    normalizedPath === "/leaderboard" || Boolean(leaderboardProfileUserId);
+
+  const cloudAuthSignedIn = Boolean(insforge.enabled && insforge.signedIn);
+  const signedIn = isLocalMode || cloudAuthSignedIn;
+  const sessionSoftExpired = false;
+  const baseUrl = getBackendBaseUrl();
+
+  const authObject = useMemo(() => {
+    if (!insforge.enabled || !cloudAuthSignedIn) return null;
+    return {
+      getAccessToken: () => insforge.getAccessToken(),
+    };
+  }, [insforge, cloudAuthSignedIn]);
+
   let gate = isLocalMode || mockEnabled || screenshotMode ? "dashboard" : "landing";
   if (normalizedPath === "/landing") {
     gate = "landing";
@@ -68,9 +80,10 @@ export default function App() {
   if (normalizedPath === "/dashboard") {
     gate = "dashboard";
   }
+  if (isLeaderboardPath) {
+    gate = "dashboard";
+  }
 
-  const leaderboardProfileMatch = normalizedPath.match(/^\/leaderboard\/u\/([^/]+)$/i);
-  const leaderboardProfileUserId = leaderboardProfileMatch ? leaderboardProfileMatch[1] : null;
   const PageComponent = leaderboardProfileUserId
     ? LeaderboardProfilePage
     : normalizedPath === "/leaderboard"
@@ -80,22 +93,26 @@ export default function App() {
   const loadingShell = <div className="min-h-screen bg-[#050505]" />;
 
   let content = null;
-  if (gate === "landing") {
-    content = <LandingPage signInUrl="/" signUpUrl="/" />;
+  if (normalizedPath === "/login") {
+    content = <LoginPage />;
+  } else if (gate === "landing") {
+    content = (
+      <LandingPage signInUrl="/login" signUpUrl="/login" />
+    );
   } else {
     content = (
       <Suspense fallback={loadingShell}>
         <PageComponent
-          baseUrl=""
-          auth={null}
-          signedIn={false}
-          sessionSoftExpired={false}
-          signOut={() => Promise.resolve()}
+          baseUrl={baseUrl}
+          auth={authObject}
+          signedIn={signedIn}
+          sessionSoftExpired={sessionSoftExpired}
+          signOut={() => (insforge.enabled ? insforge.signOut() : Promise.resolve())}
           publicMode={publicMode}
           publicToken={publicToken}
           userId={leaderboardProfileUserId}
-          signInUrl="/"
-          signUpUrl="/"
+          signInUrl="/login"
+          signUpUrl="/login"
         />
       </Suspense>
     );
@@ -104,7 +121,10 @@ export default function App() {
   return (
     <ErrorBoundary>
       <ThemeProvider>
-        {content}
+        <LoginModalProvider>
+          {content}
+          <LoginModal />
+        </LoginModalProvider>
       </ThemeProvider>
     </ErrorBoundary>
   );

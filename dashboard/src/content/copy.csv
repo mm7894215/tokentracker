@@ -1,4 +1,26 @@
 key,module,page,component,slot,text,notes,status
+header.auth.sign_in_aria,shared,*,InsforgeUserHeaderControls,sign_in_aria,"Sign in",,active
+header.auth.user_fallback,shared,*,InsforgeUserHeaderControls,user_fallback,"User",,active
+header.cloud_sync.label,shared,*,InsforgeUserHeaderControls,cloud_sync_label,"Sync local usage to cloud",,active
+header.cloud_sync.hint,shared,*,InsforgeUserHeaderControls,cloud_sync_hint,"Runs local tokentracker sync so InsForge can ingest your queue. Turn off to keep usage offline only.",,active
+login.back_home,shared,LoginPage,LoginPage,back_home,"Back to home",,active
+login.cloud_only,shared,LoginPage,LoginPage,cloud_only,"Cloud sign-in is not configured. Use the local dashboard on localhost.",,active
+login.title,shared,LoginPage,LoginPage,title,"Sign in",,active
+login.subtitle,shared,LoginPage,LoginPage,subtitle,"Choose email or a connected account.",,active
+login.dismiss,shared,LoginPage,LoginPage,dismiss,"Dismiss",,active
+login.verify_email_success,shared,LoginPage,LoginPage,verify_ok,"Email verified. You can sign in below.",,active
+login.verify_email_pending,shared,LoginPage,LoginPage,verify_pending,"Check your email to verify your account, then sign in.",,active
+login.oauth.continue,shared,LoginPage,LoginPage,oauth_continue,"Continue with {{provider}}",,active
+login.divider,shared,LoginPage,LoginPage,divider,"Or",,active
+login.tab.sign_in,shared,LoginPage,LoginPage,tab_sign_in,"Sign in",,active
+login.tab.sign_up,shared,LoginPage,LoginPage,tab_sign_up,"Create account",,active
+login.field.name,shared,LoginPage,LoginPage,field_name,"Display name",,active
+login.field.name_placeholder,shared,LoginPage,LoginPage,name_placeholder,"Optional",,active
+login.field.email,shared,LoginPage,LoginPage,field_email,"Email",,active
+login.field.password,shared,LoginPage,LoginPage,field_password,"Password",,active
+login.password_hint,shared,LoginPage,LoginPage,pw_hint,"At least {{min}} characters.",,active
+login.submit.sign_in,shared,LoginPage,LoginPage,submit_sign_in,"Sign in with email",,active
+login.submit.sign_up,shared,LoginPage,LoginPage,submit_sign_up,"Create account",,active
 shared.placeholder.short,shared,*,*,placeholder_short,"--",,active
 shared.placeholder.anon_mark,shared,*,*,placeholder_anon_mark,"?",,active
 shared.unit.percent,shared,*,*,unit_percent,"%",,active
@@ -349,6 +371,10 @@ leaderboard.column.gemini,dashboard,LeaderboardPage,LeaderboardPage,column_gemin
 leaderboard.column.cursor,dashboard,LeaderboardPage,LeaderboardPage,column_cursor,"Cursor",,active
 leaderboard.column.opencode,dashboard,LeaderboardPage,LeaderboardPage,column_opencode,"OpenCode",,active
 leaderboard.column.openclaw,dashboard,LeaderboardPage,LeaderboardPage,column_openclaw,"OpenClaw",,active
+leaderboard.column.supplemental,dashboard,LeaderboardPage,LeaderboardPage,column_supplemental,"Supplemental",,active
+
+landing.oauth.google,landing,LandingPage,MarketingLanding,oauth_google,"Continue with Google",,active
+landing.oauth.github,landing,LandingPage,MarketingLanding,oauth_github,"Continue with GitHub",,active
 
 leaderboard.pagination.prev,dashboard,LeaderboardPage,LeaderboardPage,pagination_prev,"Previous",,active
 leaderboard.pagination.next,dashboard,LeaderboardPage,LeaderboardPage,pagination_next,"Next",,active

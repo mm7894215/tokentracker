@@ -5,14 +5,13 @@ const path = require("node:path");
 
 const root = path.resolve(__dirname, "..");
 const copyPath = path.join(root, "dashboard", "src", "content", "copy.csv");
-const landingViewPath = path.join(
+const marketingLandingPath = path.join(
   root,
   "dashboard",
   "src",
   "ui",
-  "matrix-a",
-  "views",
-  "LandingView.jsx",
+  "marketing",
+  "MarketingLanding.jsx",
 );
 
 function read(filePath) {
@@ -32,11 +31,14 @@ test("landing CTA copy keys exist", () => {
   }
 });
 
-test("LandingView uses CTA copy keys", () => {
-  const source = read(landingViewPath);
-  const requiredKeys = ["landing.cta.login_signup"];
+test("Marketing landing uses CTA copy keys", () => {
+  const source = read(marketingLandingPath);
+  const requiredKeys = ["landing.cta.primary", "landing.cta.secondary"];
 
   for (const key of requiredKeys) {
-    assert.ok(source.includes(`copy("${key}"`), `expected LandingView to use copy key ${key}`);
+    assert.ok(
+      source.includes(`copy("${key}"`),
+      `expected MarketingLanding to use copy key ${key}`,
+    );
   }
 });

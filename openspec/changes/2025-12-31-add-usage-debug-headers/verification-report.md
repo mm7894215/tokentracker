@@ -16,9 +16,9 @@ Date: 2025-12-31
 ## Live Verification (InsForge)
 
 - Prior header attempt: HTTP 200 but response headers did **not** include `Access-Control-Expose-Headers` or any `x-vibescore-*` headers (as of 2025-12-31 19:15 UTC). Interpretation: custom headers are stripped by proxy/gateway or not emitted by runtime.
-- Command: `curl -s -H "Authorization: Bearer <redacted>" "https://5tmappuk.us-east.insforge.app/functions/vibescore-usage-summary?from=2025-12-30&to=2025-12-30&debug=1"`
+- Command: `curl -s -H "Authorization: Bearer <redacted>" "https://b46ug8xu.us-east.insforge.app/functions/vibescore-usage-summary?from=2025-12-30&to=2025-12-30&debug=1"`
 - Result: response includes `debug` object with `request_id`, `status`, `query_ms`, `slow_threshold_ms`, `slow_query` (2025-12-31 19:31 UTC).
-- Command: `curl -s -H "Authorization: Bearer <redacted>" "https://5tmappuk.us-east.insforge.app/functions/vibescore-usage-summary?from=2025-12-30&to=2025-12-30&debug=1"`
+- Command: `curl -s -H "Authorization: Bearer <redacted>" "https://b46ug8xu.us-east.insforge.app/functions/vibescore-usage-summary?from=2025-12-30&to=2025-12-30&debug=1"`
 - Result: response includes `debug` object with `request_id`, `status`, `query_ms`, `slow_threshold_ms`, `slow_query` (2025-12-31 19:34 UTC).
 - Command: `node -e "<script>"` (fetches usage summary without `debug=1`)
 - Result: status 200 and `debug` field absent (2025-12-31 19:37 UTC).

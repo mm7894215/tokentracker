@@ -49,13 +49,15 @@ const MOCK_LEADERBOARD_NAMES = [
 ];
 
 export function isMockEnabled() {
-  if (typeof import.meta !== "undefined" && import.meta.env) {
-    const flag = String(import.meta.env.VITE_TOKENTRACKER_MOCK || import.meta.env.VITE_VIBEUSAGE_MOCK || "").toLowerCase();
-    if (flag === "1" || flag === "true") return true;
-  }
   if (typeof window !== "undefined") {
     const params = new URLSearchParams(window.location.search);
-    const flag = String(params.get("mock") || "").toLowerCase();
+    const q = String(params.get("mock") || "").toLowerCase();
+    // 显式关闭：?mock=0 / false / off 优先于环境变量（便于联调真实接口）
+    if (q === "0" || q === "false" || q === "off" || q === "no") return false;
+    if (q === "1" || q === "true" || q === "on" || q === "yes") return true;
+  }
+  if (typeof import.meta !== "undefined" && import.meta.env) {
+    const flag = String(import.meta.env.VITE_TOKENTRACKER_MOCK || "").toLowerCase();
     if (flag === "1" || flag === "true") return true;
   }
   return false;
@@ -63,9 +65,9 @@ export function isMockEnabled() {
 
 function readMockNowRaw() {
   if (typeof import.meta !== "undefined" && import.meta.env) {
-    const envNow = String(import.meta.env.VITE_TOKENTRACKER_MOCK_NOW || import.meta.env.VITE_VIBEUSAGE_MOCK_NOW || "").trim();
+    const envNow = String(import.meta.env.VITE_TOKENTRACKER_MOCK_NOW || "").trim();
     if (envNow) return envNow;
-    const envToday = String(import.meta.env.VITE_TOKENTRACKER_MOCK_TODAY || import.meta.env.VITE_VIBEUSAGE_MOCK_TODAY || "").trim();
+    const envToday = String(import.meta.env.VITE_TOKENTRACKER_MOCK_TODAY || "").trim();
     if (envToday) return envToday;
   }
   if (typeof window !== "undefined") {
@@ -101,7 +103,7 @@ export function getMockNow() {
 
 function readMockSeed() {
   if (typeof import.meta !== "undefined" && import.meta.env) {
-    const seed = String(import.meta.env.VITE_TOKENTRACKER_MOCK_SEED || import.meta.env.VITE_VIBEUSAGE_MOCK_SEED || "").trim();
+    const seed = String(import.meta.env.VITE_TOKENTRACKER_MOCK_SEED || "").trim();
     if (seed) return seed;
   }
   if (typeof window !== "undefined") {
@@ -114,7 +116,7 @@ function readMockSeed() {
 
 function readMockMissingCount() {
   if (typeof import.meta !== "undefined" && import.meta.env) {
-    const raw = String(import.meta.env.VITE_TOKENTRACKER_MOCK_MISSING || import.meta.env.VITE_VIBEUSAGE_MOCK_MISSING || "").trim();
+    const raw = String(import.meta.env.VITE_TOKENTRACKER_MOCK_MISSING || "").trim();
     const n = Number(raw);
     if (Number.isFinite(n) && n > 0) return Math.floor(n);
   }
@@ -514,6 +516,7 @@ export function getMockLeaderboard({
       cursor_tokens: cursor,
       opencode_tokens: opencode,
       openclaw_tokens: openclaw,
+      other_tokens: 0,
       total_tokens: total,
     };
   });
@@ -551,6 +554,7 @@ export function getMockLeaderboard({
       cursor_tokens: String(entry.cursor_tokens),
       opencode_tokens: String(entry.opencode_tokens),
       openclaw_tokens: String(entry.openclaw_tokens),
+      other_tokens: String(entry.other_tokens ?? 0),
       total_tokens: String(entry.total_tokens),
       is_public: Boolean(entry.is_public),
     }));
@@ -565,6 +569,7 @@ export function getMockLeaderboard({
         cursor_tokens: meRow.cursor_tokens,
         opencode_tokens: meRow.opencode_tokens,
         openclaw_tokens: meRow.openclaw_tokens,
+        other_tokens: meRow.other_tokens,
         total_tokens: meRow.total_tokens,
       }
     : {
@@ -575,6 +580,7 @@ export function getMockLeaderboard({
         cursor_tokens: "0",
         opencode_tokens: "0",
         openclaw_tokens: "0",
+        other_tokens: "0",
         total_tokens: "0",
       };
 

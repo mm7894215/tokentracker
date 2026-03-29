@@ -1,25 +1,25 @@
-# VibeUsage LLMs Index
+# Token Tracker LLMs Index
 
-VibeUsage tracks token usage across AI coding agent clients (Codex, Claude Code, OpenCode, Gemini, OpenClaw).
+Token Tracker tracks token usage across AI coding agent clients (Codex, Claude Code, OpenCode, Gemini, OpenClaw).
 
 ## Canonical URL
-- [Homepage](https://www.vibeusage.cc/)
+- [Homepage](https://www.tokentracker.cc/)
 
 ## Priority URLs
-- [Homepage](https://www.vibeusage.cc/)
-- [Share dashboard view](https://www.vibeusage.cc/share)
-- [Sitemap](https://www.vibeusage.cc/sitemap.xml)
-- [RSS feed](https://www.vibeusage.cc/feed.xml)
+- [Homepage](https://www.tokentracker.cc/)
+- [Share dashboard view](https://www.tokentracker.cc/share)
+- [Sitemap](https://www.tokentracker.cc/sitemap.xml)
+- [RSS feed](https://www.tokentracker.cc/feed.xml)
 
 ## Product
-- Install command: `npx --yes vibeusage init`
-- [NPM package](https://www.npmjs.com/package/vibeusage)
-- [Source repository](https://github.com/victorGPT/vibeusage)
+- Install command: `npx --yes tokentracker init`
+- [NPM package](https://www.npmjs.com/package/tokentracker-cli)
+- [Source repository](https://github.com/mm7894215/tokentracker)
 
 ## Policy and Discovery
-- [robots.txt](https://www.vibeusage.cc/robots.txt)
-- [llms.txt](https://www.vibeusage.cc/llms.txt)
+- [robots.txt](https://www.tokentracker.cc/robots.txt)
+- [llms.txt](https://www.tokentracker.cc/llms.txt)
 - Data principle: minimal data collection and auditable metrics.
 
 ## Contact
-- [GitHub issues](https://github.com/victorGPT/vibeusage/issues)
+- [GitHub issues](https://github.com/mm7894215/tokentracker/issues)

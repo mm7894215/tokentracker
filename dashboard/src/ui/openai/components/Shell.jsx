@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { InsforgeUserHeaderControls } from "../../../components/InsforgeUserHeaderControls.jsx";
 import { useTheme } from "../../../hooks/useTheme.js";
 import { ThemeToggle } from "../../foundation/ThemeToggle.jsx";
 import { shouldFetchGithubStars } from "../../matrix-a/util/should-fetch-github-stars.js";
@@ -92,6 +93,7 @@ export function Shell({
           <div className="flex items-center gap-3">
             <HeaderGithubStar />
             <ThemeToggle theme={resolvedTheme} onToggle={toggleTheme} />
+            <InsforgeUserHeaderControls />
           </div>
         </header>
       )}

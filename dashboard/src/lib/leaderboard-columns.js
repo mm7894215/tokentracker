@@ -11,39 +11,46 @@ export const LEADERBOARD_TOKEN_COLUMNS = [
   { key: "cursor_tokens", copyKey: "leaderboard.column.cursor", icon: "/brand-logos/cursor.svg" },
   { key: "opencode_tokens", copyKey: "leaderboard.column.opencode", icon: "/brand-logos/opencode.svg" },
   { key: "openclaw_tokens", copyKey: "leaderboard.column.openclaw", icon: "/brand-logos/openclaw.svg" },
+  { key: "other_tokens", copyKey: "leaderboard.column.supplemental", icon: "/brand-logos/gemini.svg" },
 ];
 
 /** Rank column width matches `left` offset of the second sticky column */
 export const LEADERBOARD_STICKY_RANK_PX = 72;
 
 export const LB_STICKY_TH_RANK =
-  "sticky left-0 z-40 w-[72px] min-w-[72px] max-w-[72px] border-r border-oai-gray-800 bg-oai-gray-950/95 backdrop-blur-sm px-4 py-4 shadow-[4px_0_10px_-4px_rgba(0,0,0,0.45)]";
+  "sticky left-0 z-40 w-[72px] min-w-[72px] max-w-[72px] border-r border-oai-gray-200 dark:border-oai-gray-800 bg-white dark:bg-oai-gray-950 px-4 py-4";
 
 export const LB_STICKY_TH_USER =
-  "sticky left-[72px] z-40 min-w-[220px] max-w-[min(320px,40vw)] border-r border-oai-gray-800 bg-oai-gray-950/95 backdrop-blur-sm px-4 py-4 shadow-[4px_0_10px_-4px_rgba(0,0,0,0.45)]";
+  "sticky left-[72px] z-40 min-w-[220px] max-w-[min(320px,40vw)] border-r border-oai-gray-200 dark:border-oai-gray-800 bg-white dark:bg-oai-gray-950 px-4 py-4";
 
 /** Second sticky column on profile page (Rank + Total; no User column in table) */
 export const LB_STICKY_TH_TOTAL =
-  "sticky left-[72px] z-40 min-w-[6rem] border-r border-oai-gray-800 bg-oai-gray-950/95 backdrop-blur-sm px-4 py-4 shadow-[4px_0_10px_-4px_rgba(0,0,0,0.45)]";
+  "sticky left-[72px] z-40 min-w-[6rem] border-r border-oai-gray-200 dark:border-oai-gray-800 bg-white dark:bg-oai-gray-950 px-4 py-4";
 
 export function lbStickyTdRank(isMe) {
   return cn(
-    "sticky left-0 z-30 w-[72px] min-w-[72px] max-w-[72px] border-r border-oai-gray-800 px-4 py-4 whitespace-nowrap shadow-[4px_0_10px_-4px_rgba(0,0,0,0.45)]",
-    isMe ? "bg-oai-brand-900/10" : "bg-oai-gray-950 group-hover:bg-oai-gray-900/60",
+    "sticky left-0 z-30 w-[72px] min-w-[72px] max-w-[72px] border-r border-oai-gray-200 dark:border-oai-gray-800 px-4 py-4 whitespace-nowrap",
+    isMe
+      ? "bg-oai-brand-50 dark:bg-oai-brand-900/10"
+      : "bg-white dark:bg-oai-gray-950 group-hover:bg-oai-gray-50 dark:group-hover:bg-oai-gray-900/60",
   );
 }
 
 export function lbStickyTdUser(isMe) {
   return cn(
-    "sticky left-[72px] z-30 min-w-[220px] max-w-[min(320px,40vw)] border-r border-oai-gray-800 px-4 py-4 min-w-0 shadow-[4px_0_10px_-4px_rgba(0,0,0,0.45)]",
-    isMe ? "bg-oai-brand-900/10" : "bg-oai-gray-950 group-hover:bg-oai-gray-900/60",
+    "sticky left-[72px] z-30 min-w-[220px] max-w-[min(320px,40vw)] border-r border-oai-gray-200 dark:border-oai-gray-800 px-4 py-4 min-w-0",
+    isMe
+      ? "bg-oai-brand-50 dark:bg-oai-brand-900/10"
+      : "bg-white dark:bg-oai-gray-950 group-hover:bg-oai-gray-50 dark:group-hover:bg-oai-gray-900/60",
   );
 }
 
 /** Second sticky body cell when the column is Total (profile table) */
 export function lbStickyTdTotalOnly(isMe) {
   return cn(
-    "sticky left-[72px] z-30 min-w-[6rem] border-r border-oai-gray-800 px-4 py-4 whitespace-nowrap shadow-[4px_0_10px_-4px_rgba(0,0,0,0.45)]",
-    isMe ? "bg-oai-brand-900/10" : "bg-oai-gray-950",
+    "sticky left-[72px] z-30 min-w-[6rem] border-r border-oai-gray-200 dark:border-oai-gray-800 px-4 py-4 whitespace-nowrap",
+    isMe
+      ? "bg-oai-brand-50 dark:bg-oai-brand-900/10"
+      : "bg-white dark:bg-oai-gray-950",
   );
 }

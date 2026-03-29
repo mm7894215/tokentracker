@@ -13,9 +13,6 @@ export function DashboardView(props) {
   const {
     copy,
     screenshotMode,
-    publicViewInvalid,
-    publicViewInvalidTitle,
-    publicViewInvalidBody,
     showExpiredGate,
     showAuthGate,
     screenshotTitleLine1,
@@ -37,12 +34,6 @@ export function DashboardView(props) {
     handleCopyInstall,
     installCopied,
     installInitCmdDisplay,
-    publicViewTitle,
-    handleTogglePublicView,
-    publicViewBusy,
-    publicViewEnabled,
-    publicViewCopyButtonLabel,
-    handleCopyPublicView,
     trendRowsForDisplay,
     trendFromForDisplay,
     trendToForDisplay,
@@ -109,13 +100,6 @@ export function DashboardView(props) {
         footer={!screenshotMode ? footer : null}
         className={screenshotMode ? "screenshot-mode" : ""}
       >
-        {publicViewInvalid ? (
-          <div className="mb-6">
-            <Card title={publicViewInvalidTitle} className="border-oai-gray-200 dark:border-oai-gray-800">
-              <p className="text-sm text-oai-gray-500 dark:text-oai-gray-300 mt-0">{publicViewInvalidBody}</p>
-            </Card>
-          </div>
-        ) : null}
         {(showExpiredGate || showAuthGate) ? null : (
           <>
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
@@ -169,48 +153,6 @@ export function DashboardView(props) {
                         >
                           {installCopied ? "Copied ✓" : "Copy"}
                         </motion.span>
-                      </motion.button>
-                    </div>
-                  </FadeIn>
-                ) : null}
-
-                {!screenshotMode && signedIn && !publicMode ? (
-                  <FadeIn delay={0.3}>
-                    <div className="rounded-xl border border-oai-gray-200 dark:border-oai-gray-800 bg-white dark:bg-oai-gray-900 p-3 flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <motion.button
-                          type="button"
-                          onClick={handleTogglePublicView}
-                          disabled={publicViewBusy}
-                          whileTap={{ scale: 0.95 }}
-                          className={`relative inline-flex h-4 w-7 items-center px-0.5 transition-colors rounded-full ${
-                            publicViewEnabled ? "bg-oai-brand" : "bg-oai-gray-300 dark:bg-oai-gray-600"
-                          } disabled:opacity-50`}
-                        >
-                          <motion.span
-                            initial={false}
-                            animate={{ x: publicViewEnabled ? 12 : 0 }}
-                            transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                            className="inline-block h-3 w-3 bg-white rounded-full"
-                          />
-                        </motion.button>
-                        <motion.span
-                          key={publicViewEnabled ? "public" : "private"}
-                          initial={{ opacity: 0, y: -5 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          className="text-xs text-oai-gray-600 dark:text-oai-gray-300"
-                        >
-                          {publicViewEnabled ? "Public" : "Private"}
-                        </motion.span>
-                      </div>
-                      <motion.button
-                        onClick={handleCopyPublicView}
-                        disabled={!publicViewEnabled || publicViewBusy}
-                        whileHover={{ scale: publicViewEnabled ? 1.05 : 1 }}
-                        whileTap={{ scale: publicViewEnabled ? 0.95 : 1 }}
-                        className="text-xs text-oai-brand hover:text-oai-brand-dark disabled:text-oai-gray-300 dark:disabled:text-oai-gray-600 transition-colors"
-                      >
-                        {publicViewCopyButtonLabel}
                       </motion.button>
                     </div>
                   </FadeIn>

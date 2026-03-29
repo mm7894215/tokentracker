@@ -26,14 +26,14 @@ test("getHttpTimeoutMs returns defaults and clamps", async () => {
   const { getHttpTimeoutMs } = await loadModule();
 
   assert.equal(getHttpTimeoutMs({ env: {} }), 15000);
-  assert.equal(getHttpTimeoutMs({ env: { VITE_VIBEUSAGE_HTTP_TIMEOUT_MS: "" } }), 15000);
-  assert.equal(getHttpTimeoutMs({ env: { VITE_VIBEUSAGE_HTTP_TIMEOUT_MS: "nope" } }), 15000);
-  assert.equal(getHttpTimeoutMs({ env: { VITE_VIBEUSAGE_HTTP_TIMEOUT_MS: "999" } }), 1000);
-  assert.equal(getHttpTimeoutMs({ env: { VITE_VIBEUSAGE_HTTP_TIMEOUT_MS: "30001" } }), 30000);
+  assert.equal(getHttpTimeoutMs({ env: { VITE_TOKENTRACKER_HTTP_TIMEOUT_MS: "" } }), 15000);
+  assert.equal(getHttpTimeoutMs({ env: { VITE_TOKENTRACKER_HTTP_TIMEOUT_MS: "nope" } }), 15000);
+  assert.equal(getHttpTimeoutMs({ env: { VITE_TOKENTRACKER_HTTP_TIMEOUT_MS: "999" } }), 1000);
+  assert.equal(getHttpTimeoutMs({ env: { VITE_TOKENTRACKER_HTTP_TIMEOUT_MS: "30001" } }), 30000);
   assert.equal(
     getHttpTimeoutMs({
       env: {
-        VITE_VIBEUSAGE_HTTP_TIMEOUT_MS: "",
+        VITE_TOKENTRACKER_HTTP_TIMEOUT_MS: "",
         VITE_VIBESCORE_HTTP_TIMEOUT_MS: "5000",
       },
     }),
@@ -42,7 +42,7 @@ test("getHttpTimeoutMs returns defaults and clamps", async () => {
   assert.equal(
     getHttpTimeoutMs({
       env: {
-        VITE_VIBEUSAGE_HTTP_TIMEOUT_MS: undefined,
+        VITE_TOKENTRACKER_HTTP_TIMEOUT_MS: undefined,
         VITE_VIBESCORE_HTTP_TIMEOUT_MS: "5000",
       },
     }),
@@ -53,8 +53,8 @@ test("getHttpTimeoutMs returns defaults and clamps", async () => {
 test("getHttpTimeoutMs disables timeout for non-positive values", async () => {
   const { getHttpTimeoutMs } = await loadModule();
 
-  assert.equal(getHttpTimeoutMs({ env: { VITE_VIBEUSAGE_HTTP_TIMEOUT_MS: "0" } }), 0);
-  assert.equal(getHttpTimeoutMs({ env: { VITE_VIBEUSAGE_HTTP_TIMEOUT_MS: "-5" } }), 0);
+  assert.equal(getHttpTimeoutMs({ env: { VITE_TOKENTRACKER_HTTP_TIMEOUT_MS: "0" } }), 0);
+  assert.equal(getHttpTimeoutMs({ env: { VITE_TOKENTRACKER_HTTP_TIMEOUT_MS: "-5" } }), 0);
 });
 
 test("createTimeoutFetch throws timeout error when timer aborts", async () => {
@@ -72,7 +72,7 @@ test("createTimeoutFetch throws timeout error when timer aborts", async () => {
 
   try {
     const fetcher = createTimeoutFetch(baseFetch, {
-      env: { VITE_VIBEUSAGE_HTTP_TIMEOUT_MS: "1000" },
+      env: { VITE_TOKENTRACKER_HTTP_TIMEOUT_MS: "1000" },
     });
 
     await assert.rejects(
@@ -95,7 +95,7 @@ test("createTimeoutFetch preserves caller abort errors", async () => {
   const caller = new AbortController();
 
   const fetcher = createTimeoutFetch(baseFetch, {
-    env: { VITE_VIBEUSAGE_HTTP_TIMEOUT_MS: "5000" },
+    env: { VITE_TOKENTRACKER_HTTP_TIMEOUT_MS: "5000" },
   });
 
   const pending = fetcher("http://example.com", { signal: caller.signal });
@@ -110,7 +110,7 @@ test("createTimeoutFetch respects Request.signal", async () => {
   const caller = new AbortController();
 
   const fetcher = createTimeoutFetch(baseFetch, {
-    env: { VITE_VIBEUSAGE_HTTP_TIMEOUT_MS: "5000" },
+    env: { VITE_TOKENTRACKER_HTTP_TIMEOUT_MS: "5000" },
   });
 
   const req = new Request("http://example.com", { signal: caller.signal });
@@ -124,7 +124,7 @@ test("createTimeoutFetch passes through when timeout disabled", async () => {
   const { createTimeoutFetch } = await loadModule();
   const baseFetch = async (_input, init = {}) => init.signal;
   const fetcher = createTimeoutFetch(baseFetch, {
-    env: { VITE_VIBEUSAGE_HTTP_TIMEOUT_MS: "0" },
+    env: { VITE_TOKENTRACKER_HTTP_TIMEOUT_MS: "0" },
   });
 
   const signal = new AbortController().signal;

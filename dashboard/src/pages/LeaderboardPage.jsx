@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate, Link } from "react-router-dom";
-import { BackendStatus } from "../components/BackendStatus.jsx";
-import { isAccessTokenReady, resolveAuthAccessToken } from "../lib/auth-token";
+import { useInsforgeAuth } from "../contexts/InsforgeAuthContext.jsx";
+import { useLoginModal } from "../contexts/LoginModalContext.jsx";
+import { isAccessTokenReady, resolveAuthAccessTokenWithRetry } from "../lib/auth-token";
 import { copy } from "../lib/copy";
 import { toDisplayNumber } from "../lib/format";
 import { cn } from "../lib/cn";
@@ -11,15 +12,21 @@ import {
   getPaginationFlags,
   injectMeIntoFirstPage,
 } from "../lib/leaderboard-ui";
+import { getLeaderboardBaseUrl } from "../lib/config";
+import { getDashboardEntryPath } from "../lib/host-mode";
 import { isMockEnabled } from "../lib/mock-data";
 import {
   getLeaderboard,
-  getPublicVisibility,
-  setPublicVisibility,
+  refreshLeaderboard,
 } from "../lib/api";
+import { getCloudSyncEnabled, setCloudSyncEnabled } from "../lib/cloud-sync-prefs";
+import { runCloudUsageSyncNow } from "../lib/cloud-sync";
+import { InsforgeUserHeaderControls } from "../components/InsforgeUserHeaderControls.jsx";
 import { HeaderGithubStar } from "../ui/openai/components/HeaderGithubStar.jsx";
 import { LeaderboardAvatar } from "../components/LeaderboardAvatar.jsx";
 import { LeaderboardProviderColumnHeader } from "../components/LeaderboardProviderColumnHeader.jsx";
+import { useTheme } from "../hooks/useTheme.js";
+import { ThemeToggle } from "../ui/foundation/ThemeToggle.jsx";
 import {
   LB_STICKY_TH_RANK,
   LB_STICKY_TH_USER,
@@ -30,31 +37,26 @@ import {
 
 const PAGE_LIMIT = 20;
 
+function formatCost(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return "-";
+  if (n >= 1000) return `$${Math.round(n).toLocaleString()}`;
+  if (n >= 10) return `$${Math.round(n)}`;
+  return `$${n.toFixed(2)}`;
+}
+
 function leaderboardTokenCells(entry, isMe) {
-  const numCls = isMe ? "text-oai-gray-300" : "text-oai-gray-400";
-  const cellBg = isMe ? "bg-oai-brand-900/10" : "bg-oai-gray-950 group-hover:bg-oai-gray-900/60";
+  const numCls = isMe
+    ? "text-oai-gray-700 dark:text-oai-gray-300"
+    : "text-oai-gray-500 dark:text-oai-gray-400";
+  const cellBg = isMe
+    ? "bg-oai-brand-50 dark:bg-oai-brand-900/10"
+    : "bg-white dark:bg-oai-gray-950 group-hover:bg-oai-gray-50 dark:group-hover:bg-oai-gray-900/60";
   return LEADERBOARD_TOKEN_COLUMNS.map((col) => (
     <td key={col.key} className={cn("px-4 py-4 whitespace-nowrap", numCls, cellBg)}>
       {toDisplayNumber(entry?.[col.key])}
     </td>
   ));
-}
-
-function buttonClass(variant = "default", size = "md", className) {
-  const base =
-    "inline-flex items-center justify-center rounded font-medium transition-colors duration-200 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-oai-brand-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-oai-gray-950";
-  const variants = {
-    default:
-      "bg-oai-gray-900 text-white hover:bg-oai-gray-800 active:bg-oai-gray-950 dark:bg-white dark:text-oai-gray-900 dark:hover:bg-oai-gray-100 dark:active:bg-oai-gray-200",
-    ghost:
-      "text-oai-gray-600 hover:text-oai-gray-900 hover:bg-oai-gray-100 active:bg-oai-gray-200 dark:text-oai-gray-400 dark:hover:text-white dark:hover:bg-oai-gray-800 dark:active:bg-oai-gray-700",
-  };
-  const sizes = {
-    sm: "h-9 px-4 text-sm",
-    md: "h-11 px-6 text-sm",
-    lg: "h-12 px-8 text-base",
-  };
-  return cn(base, variants[variant], sizes[size], className);
 }
 
 function normalizePeriod(value) {
@@ -103,15 +105,16 @@ function leaderboardAvatarSeed(entry, displayName) {
 }
 
 export function LeaderboardPage({
-  baseUrl,
   auth,
   signedIn,
   sessionSoftExpired,
-  signOut,
-  signInUrl = "/sign-in",
 }) {
   const location = useLocation();
   const navigate = useNavigate();
+  const { openLoginModal } = useLoginModal();
+  const { signedIn: cloudSignedIn } = useInsforgeAuth();
+  const { resolvedTheme, toggleTheme } = useTheme();
+  const leaderboardBaseUrl = useMemo(() => getLeaderboardBaseUrl(), []);
   const mockEnabled = isMockEnabled();
   const authTokenAllowed = signedIn && !sessionSoftExpired;
   const authAccessToken = useMemo(() => {
@@ -124,11 +127,6 @@ export function LeaderboardPage({
   const effectiveAuthToken = authTokenAllowed ? authAccessToken : null;
   const authTokenReady = authTokenAllowed && isAccessTokenReady(effectiveAuthToken);
 
-  let headerStatus = null;
-  if (authTokenAllowed && authTokenReady) {
-    headerStatus = <BackendStatus baseUrl={baseUrl} accessToken={effectiveAuthToken} />;
-  }
-
   const placeholder = copy("shared.placeholder.short");
   const [listPage, setListPage] = useState(1);
   const [listReloadToken, setListReloadToken] = useState(0);
@@ -138,12 +136,9 @@ export function LeaderboardPage({
     data: null,
   }));
 
-  const [profileState, setProfileState] = useState(() => ({
-    loading: false,
-    saving: false,
-    error: null,
-    leaderboardPublic: null,
-  }));
+  const [cloudSyncOn, setCloudSyncOn] = useState(() => getCloudSyncEnabled());
+  const [syncing, setSyncing] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   const period = useMemo(() => {
     const params = new URLSearchParams(location?.search || "");
@@ -171,12 +166,6 @@ export function LeaderboardPage({
     if (!authTokenAllowed) return;
     if (authTokenReady) return;
     setListState({ loading: false, error: null, data: null });
-    setProfileState({
-      loading: false,
-      saving: false,
-      error: null,
-      leaderboardPublic: null,
-    });
   }, [authTokenAllowed, authTokenReady, mockEnabled]);
 
   const listOffset = useMemo(() => {
@@ -185,47 +174,17 @@ export function LeaderboardPage({
   }, [listPage]);
 
   useEffect(() => {
-    if (!baseUrl) return;
-    if (mockEnabled) return;
-    if (!authTokenAllowed || !authTokenReady) return;
-    let active = true;
-    setProfileState((prev) => ({ ...prev, loading: true, error: null }));
-    (async () => {
-      const token = await resolveAuthAccessToken(effectiveAuthToken);
-      const data = await getPublicVisibility({ baseUrl, accessToken: token });
-      if (!active) return;
-      setProfileState((prev) => ({
-        ...prev,
-        loading: false,
-        error: null,
-        leaderboardPublic: Boolean(data?.enabled),
-      }));
-    })().catch((err) => {
-      if (!active) return;
-      setProfileState((prev) => ({
-        ...prev,
-        loading: false,
-        error: normalizeLeaderboardError(err),
-        leaderboardPublic: null,
-      }));
-    });
-    return () => {
-      active = false;
-    };
-  }, [authTokenAllowed, authTokenReady, baseUrl, effectiveAuthToken, mockEnabled]);
-
-  useEffect(() => {
-    // Mock leaderboard uses local getMockLeaderboard() and does not need baseUrl (Vite passes "").
-    if (!baseUrl && !mockEnabled) return;
+    // Mock leaderboard uses local getMockLeaderboard(); real data needs InsForge URL from getLeaderboardBaseUrl().
+    if (!leaderboardBaseUrl && !mockEnabled) return;
     if (!mockEnabled && authTokenAllowed && !authTokenReady) return;
     let active = true;
     setListState((prev) => ({ ...prev, loading: true, error: null }));
     (async () => {
       const token = authTokenAllowed
-        ? await resolveAuthAccessToken(effectiveAuthToken)
+        ? await resolveAuthAccessTokenWithRetry(effectiveAuthToken)
         : null;
       const data = await getLeaderboard({
-        baseUrl,
+        baseUrl: leaderboardBaseUrl,
         accessToken: token,
         period,
         limit: PAGE_LIMIT,
@@ -241,7 +200,7 @@ export function LeaderboardPage({
       active = false;
     };
   }, [
-    baseUrl,
+    leaderboardBaseUrl,
     effectiveAuthToken,
     authTokenAllowed,
     authTokenReady,
@@ -265,9 +224,6 @@ export function LeaderboardPage({
   const me = listData?.me || null;
   const meLabel = copy("leaderboard.me_label");
   const anonLabel = copy("leaderboard.anon_label");
-  const publicProfileLabel = copy("leaderboard.public_profile.label");
-  const publicProfileStatusEnabledLabel = copy("leaderboard.public_profile.status.enabled");
-  const publicProfileStatusDisabledLabel = copy("leaderboard.public_profile.status.disabled");
   const weekLabel = copy("leaderboard.period.week");
   const monthLabel = copy("leaderboard.period.month");
   const totalLabel = copy("leaderboard.period.total");
@@ -284,39 +240,35 @@ export function LeaderboardPage({
     });
   }, [currentPage, listData?.entries, me, meLabel]);
 
-  const publicProfileEnabled = Boolean(profileState.leaderboardPublic);
-  const publicProfileBusy = profileState.loading || profileState.saving;
-  const publicProfileStatusLabel = publicProfileEnabled
-    ? publicProfileStatusEnabledLabel
-    : publicProfileStatusDisabledLabel;
-
-  const handleTogglePublicProfile = async () => {
-    if (!baseUrl) return;
-    if (mockEnabled) return;
-    if (!authTokenAllowed || !authTokenReady) return;
-    if (publicProfileBusy) return;
-    setProfileState((prev) => ({ ...prev, saving: true, error: null }));
+  const handleEnableSync = async () => {
+    setSyncing(true);
     try {
-      const token = await resolveAuthAccessToken(effectiveAuthToken);
-      const nextValue = !publicProfileEnabled;
-      const data = await setPublicVisibility({
-        baseUrl,
-        accessToken: token,
-        enabled: nextValue,
-      });
-      setProfileState((prev) => ({
-        ...prev,
-        saving: false,
-        error: null,
-        leaderboardPublic: Boolean(data?.enabled),
-      }));
-      setListReloadToken((value) => value + 1);
-    } catch (err) {
-      setProfileState((prev) => ({
-        ...prev,
-        saving: false,
-        error: normalizeLeaderboardError(err),
-      }));
+      setCloudSyncEnabled(true);
+      setCloudSyncOn(true);
+      await runCloudUsageSyncNow(() => resolveAuthAccessTokenWithRetry(effectiveAuthToken));
+      const token = await resolveAuthAccessTokenWithRetry(effectiveAuthToken);
+      if (token) await refreshLeaderboard({ accessToken: token });
+      setListReloadToken((v) => v + 1);
+    } catch (e) {
+      console.warn("[tokentracker] sync:", e);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      const token = await resolveAuthAccessTokenWithRetry(effectiveAuthToken);
+      if (cloudSyncOn && token) {
+        await runCloudUsageSyncNow(() => Promise.resolve(token));
+      }
+      if (token) await refreshLeaderboard({ accessToken: token });
+      setListReloadToken((v) => v + 1);
+    } catch (e) {
+      console.warn("[tokentracker] refresh:", e);
+    } finally {
+      setRefreshing(false);
     }
   };
 
@@ -327,38 +279,41 @@ export function LeaderboardPage({
   if (listState.loading) {
     listBody = (
       <div className="px-6 py-12 text-center">
-        <p className="text-sm text-oai-gray-400">{copy("leaderboard.loading")}</p>
+        <p className="text-sm text-oai-gray-500 dark:text-oai-gray-400">{copy("leaderboard.loading")}</p>
       </div>
     );
   } else if (listState.error) {
     listBody = (
       <div className="px-6 py-12 text-center">
-        <p className="text-sm text-red-400">{listState.error}</p>
+        <p className="text-sm text-red-500 dark:text-red-400">{listState.error}</p>
       </div>
     );
   } else if (hasEntries) {
     listBody = (
       <div className="w-full overflow-x-auto">
         <table className="min-w-max w-full text-left text-sm">
-          <thead className="border-b border-oai-gray-800">
+          <thead className="border-b border-oai-gray-200 dark:border-oai-gray-800">
             <tr>
-              <th className={cn(LB_STICKY_TH_RANK, "font-medium text-oai-gray-400")}>
+              <th className={cn(LB_STICKY_TH_RANK, "font-medium text-oai-gray-500 dark:text-oai-gray-400")}>
                 {copy("leaderboard.column.rank")}
               </th>
-              <th className={cn(LB_STICKY_TH_USER, "font-medium text-oai-gray-400")}>
+              <th className={cn(LB_STICKY_TH_USER, "font-medium text-oai-gray-500 dark:text-oai-gray-400")}>
                 {copy("leaderboard.column.user")}
               </th>
-              <th className="px-4 py-4 font-medium text-oai-gray-400 whitespace-nowrap bg-oai-gray-900/50">
+              <th className="px-4 py-4 font-medium text-oai-gray-500 dark:text-oai-gray-400 whitespace-nowrap">
                 {copy("leaderboard.column.total")}
               </th>
+              <th className="px-4 py-4 font-medium text-oai-gray-500 dark:text-oai-gray-400 whitespace-nowrap" title="Based on estimated API pricing, not actual billing">
+                Est. Cost
+              </th>
               {LEADERBOARD_TOKEN_COLUMNS.map((col) => (
-                <th key={col.key} className="px-4 py-4 font-medium text-oai-gray-400 whitespace-nowrap bg-oai-gray-900/50">
+                <th key={col.key} className="px-4 py-4 font-medium text-oai-gray-500 dark:text-oai-gray-400 whitespace-nowrap">
                   <LeaderboardProviderColumnHeader iconSrc={col.icon} label={copy(col.copyKey)} />
                 </th>
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-oai-gray-800/50">
+          <tbody className="divide-y divide-oai-gray-100 dark:divide-oai-gray-800/50">
             {displayEntries.map((entry) => {
               const isMe = Boolean(entry?.is_me);
               const profileUserId = typeof entry?.user_id === "string" ? entry.user_id : null;
@@ -375,9 +330,9 @@ export function LeaderboardPage({
                 return (
                   <tr
                     key={`row-${entry?.rank}-${name}`}
-                    className="border-y border-oai-brand-500/30 bg-oai-brand-900/10 transition-colors"
+                    className="border-y border-oai-brand-300/40 dark:border-oai-brand-500/30 bg-oai-brand-50 dark:bg-oai-brand-900/10 transition-colors"
                   >
-                    <td className={cn(lbStickyTdRank(true), "font-semibold text-oai-brand-400")}>
+                    <td className={cn(lbStickyTdRank(true), "font-semibold text-oai-brand-600 dark:text-oai-brand-400")}>
                       {entry?.rank ?? placeholder}
                     </td>
                     <td className={lbStickyTdUser(true)}>
@@ -387,11 +342,14 @@ export function LeaderboardPage({
                           displayName={name}
                           seed={leaderboardAvatarSeed(entry, name)}
                         />
-                        <span className="truncate font-semibold text-oai-white">{name}</span>
+                        <span className="truncate font-semibold text-oai-black dark:text-oai-white">{name}</span>
                       </div>
                     </td>
-                    <td className="px-4 py-4 font-medium text-oai-white whitespace-nowrap bg-oai-brand-900/10">
+                    <td className="px-4 py-4 font-medium text-oai-black dark:text-oai-white whitespace-nowrap bg-oai-brand-50 dark:bg-oai-brand-900/10">
                       {toDisplayNumber(entry?.total_tokens)}
+                    </td>
+                    <td className="px-4 py-4 font-medium text-oai-brand-600 dark:text-oai-brand-400 whitespace-nowrap bg-oai-brand-50 dark:bg-oai-brand-900/10" title="Based on estimated API pricing, not actual billing">
+                      {formatCost(entry?.estimated_cost_usd)}
                     </td>
                     {leaderboardTokenCells(entry, true)}
                   </tr>
@@ -403,7 +361,7 @@ export function LeaderboardPage({
                   key={`row-${entry?.rank}-${name}`}
                   className={cn(
                     "group transition-colors",
-                    rowClickable ? "cursor-pointer hover:bg-oai-gray-900/60" : "",
+                    rowClickable ? "cursor-pointer hover:bg-oai-gray-50 dark:hover:bg-oai-gray-900/60" : "",
                   )}
                   onClick={
                     rowClickable
@@ -434,7 +392,7 @@ export function LeaderboardPage({
                   tabIndex={rowClickable ? 0 : undefined}
                   aria-label={rowClickable ? `Open public dashboard for ${name}` : undefined}
                 >
-                  <td className={cn(lbStickyTdRank(false), "font-medium text-oai-gray-400")}>
+                  <td className={cn(lbStickyTdRank(false), "font-medium text-oai-gray-500 dark:text-oai-gray-400")}>
                     {entry?.rank ?? placeholder}
                   </td>
                   <td className={lbStickyTdUser(false)}>
@@ -444,11 +402,14 @@ export function LeaderboardPage({
                         displayName={name}
                         seed={leaderboardAvatarSeed(entry, name)}
                       />
-                      <span className="truncate font-medium text-oai-gray-200">{name}</span>
+                      <span className="truncate font-medium text-oai-gray-800 dark:text-oai-gray-200">{name}</span>
                     </div>
                   </td>
-                  <td className="px-4 py-4 text-oai-gray-300 whitespace-nowrap bg-oai-gray-950 group-hover:bg-oai-gray-900/60">
+                  <td className="px-4 py-4 text-oai-gray-700 dark:text-oai-gray-300 whitespace-nowrap bg-white dark:bg-oai-gray-950 group-hover:bg-oai-gray-50 dark:group-hover:bg-oai-gray-900/60">
                     {toDisplayNumber(entry?.total_tokens)}
+                  </td>
+                  <td className="px-4 py-4 text-oai-gray-500 dark:text-oai-gray-400 whitespace-nowrap bg-white dark:bg-oai-gray-950 group-hover:bg-oai-gray-50 dark:group-hover:bg-oai-gray-900/60" title="Based on estimated API pricing, not actual billing">
+                    {formatCost(entry?.estimated_cost_usd)}
                   </td>
                   {leaderboardTokenCells(entry, false)}
                 </tr>
@@ -461,7 +422,7 @@ export function LeaderboardPage({
   } else {
     listBody = (
       <div className="px-6 py-12 text-center">
-        <p className="text-sm text-oai-gray-400">{copy("leaderboard.empty")}</p>
+        <p className="text-sm text-oai-gray-500 dark:text-oai-gray-400">{copy("leaderboard.empty")}</p>
       </div>
     );
   }
@@ -473,7 +434,7 @@ export function LeaderboardPage({
         return (
           <span
             key={`ellipsis-${idx}`}
-            className="px-2 text-oai-gray-500"
+            className="px-2 text-oai-gray-400 dark:text-oai-gray-500"
           >
             {copy("leaderboard.pagination.ellipsis")}
           </span>
@@ -485,8 +446,8 @@ export function LeaderboardPage({
           className={cn(
             "flex h-8 w-8 items-center justify-center rounded-md text-sm font-medium transition-colors",
             p === currentPage
-              ? "bg-oai-gray-800 text-white"
-              : "text-oai-gray-400 hover:bg-oai-gray-800 hover:text-white"
+              ? "bg-oai-gray-200 dark:bg-oai-gray-800 text-oai-black dark:text-white"
+              : "text-oai-gray-500 dark:text-oai-gray-400 hover:bg-oai-gray-100 dark:hover:bg-oai-gray-800 hover:text-oai-black dark:hover:text-white"
           )}
           onClick={() => setListPage(p)}
           disabled={listState.loading}
@@ -497,15 +458,15 @@ export function LeaderboardPage({
     });
   } else {
     pageButtons = (
-      <span className="text-sm text-oai-gray-400">
+      <span className="text-sm text-oai-gray-500 dark:text-oai-gray-400">
         {copy("leaderboard.pagination.page_unknown", { page: String(currentPage) })}
       </span>
     );
   }
 
   return (
-    <div className="min-h-screen bg-oai-gray-950 text-oai-white font-oai antialiased dark">
-      <header className="sticky top-0 z-50 bg-oai-gray-950/80 backdrop-blur-md border-b border-oai-gray-900">
+    <div className="flex flex-col min-h-screen bg-oai-white dark:bg-oai-gray-950 text-oai-black dark:text-oai-white font-oai antialiased transition-colors duration-200">
+      <header className="sticky top-0 z-50 bg-white/80 dark:bg-oai-gray-950/80 backdrop-blur-md border-b border-oai-gray-200 dark:border-oai-gray-900 transition-colors duration-200">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
           <div className="flex items-center gap-5">
             <Link
@@ -513,70 +474,64 @@ export function LeaderboardPage({
               className="flex items-center gap-3 no-underline outline-none rounded focus-visible:ring-2 focus-visible:ring-oai-brand-500 focus-visible:ring-offset-2 dark:ring-offset-oai-gray-950 transition-opacity hover:opacity-80"
             >
               <img src="/app-icon.png" alt="" width={24} height={24} className="rounded-md" />
-              <span className="text-sm font-semibold tracking-wide text-white uppercase hidden sm:inline-block">
+              <span className="text-sm font-semibold tracking-wide text-oai-black dark:text-white uppercase">
                 Token Tracker
               </span>
-            </Link>
-            {headerStatus && <div className="hidden md:block">{headerStatus}</div>}
-          </div>
-          <div className="flex items-center gap-3 sm:gap-4">
-            <Link 
-              to="/" 
-              className="text-sm font-medium text-oai-gray-400 hover:text-white transition-colors mr-2 hidden sm:block"
-            >
-              {copy("leaderboard.nav.back")}
             </Link>
             <div className="hidden sm:block">
               <HeaderGithubStar />
             </div>
-            {signedIn ? (
-              <button
-                onClick={signOut}
-                className={cn(buttonClass("ghost", "sm"), "text-oai-gray-400 hover:text-white")}
-              >
-                {copy("dashboard.sign_out")}
-              </button>
-            ) : (
-              <a
-                href={signInUrl}
-                className={cn(
-                  buttonClass("default", "sm"),
-                  "no-underline px-5 rounded-full shadow-sm ring-1 ring-white/10 group"
-                )}
-              >
-                {copy("shared.button.sign_in")}
-                <span className="ml-2 inline-block transition-transform duration-200 group-hover:translate-x-0.5">
-                  &rarr;
-                </span>
-              </a>
-            )}
+          </div>
+          <div className="flex items-center gap-2 sm:gap-3">
+            <Link
+              to={getDashboardEntryPath()}
+              className={cn(
+                "no-underline inline-flex items-center justify-center h-9 px-5 text-sm font-medium rounded-full transition-colors",
+                cloudSignedIn
+                  ? "shadow-sm ring-1 ring-oai-gray-200 dark:ring-white/10 bg-oai-gray-900 dark:bg-white text-white dark:text-oai-gray-900 hover:bg-oai-gray-800 dark:hover:bg-oai-gray-100"
+                  : "ring-1 ring-oai-gray-200 dark:ring-oai-gray-700 text-oai-gray-600 dark:text-oai-gray-400 hover:text-oai-gray-900 dark:hover:text-white hover:bg-oai-gray-100 dark:hover:bg-oai-gray-800",
+              )}
+            >
+              {copy("landing.v2.cta.primary")}
+            </Link>
+            <ThemeToggle theme={resolvedTheme} onToggle={toggleTheme} />
+            <InsforgeUserHeaderControls />
           </div>
         </div>
       </header>
 
-      <main className="py-12 sm:py-16">
+      <main className="flex-1 py-12 sm:py-16">
         <div className="mx-auto max-w-6xl px-4 sm:px-6">
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10">
             <div>
-              <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight text-white mb-3">
+              <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight text-oai-black dark:text-white mb-3">
                 {copy("leaderboard.title")}
               </h1>
-              <p className="text-oai-gray-400 text-sm sm:text-base">
+              <p className="text-oai-gray-500 dark:text-oai-gray-400 text-sm sm:text-base">
                 {period === "total"
                   ? copy("leaderboard.range.total")
                   : from && to
                     ? copy("leaderboard.range", { period: periodLabel, from, to })
                     : copy("leaderboard.range_loading", { period: periodLabel })}
                 {generatedAt && (
-                  <span className="ml-2 pl-2 border-l border-oai-gray-800 inline-block text-oai-gray-500 text-xs">
+                  <span className="ml-2 pl-2 border-l border-oai-gray-200 dark:border-oai-gray-800 inline-block text-oai-gray-400 dark:text-oai-gray-500 text-xs">
                     {copy("leaderboard.generated_at", { ts: generatedAt })}
                   </span>
                 )}
               </p>
             </div>
 
-            <div className="flex items-center gap-4">
-              <div className="inline-flex p-1 bg-[#0a0a0a] border border-oai-gray-800 rounded-lg shadow-inner">
+            <div className="flex items-center gap-3">
+              {authTokenAllowed && authTokenReady && (
+                <button
+                  onClick={handleRefresh}
+                  disabled={refreshing || listState.loading}
+                  className="text-sm text-oai-gray-500 dark:text-oai-gray-400 hover:text-oai-black dark:hover:text-white transition-colors disabled:opacity-50"
+                >
+                  {refreshing ? "Refreshing..." : "\u21BB"}
+                </button>
+              )}
+              <div className="inline-flex p-1 border border-oai-gray-200 dark:border-oai-gray-800 rounded-lg">
                 {["week", "month", "total"].map((p) => (
                   <button
                     key={p}
@@ -585,8 +540,8 @@ export function LeaderboardPage({
                     className={cn(
                       "px-4 py-1.5 text-sm font-medium rounded-md transition-colors",
                       period === p
-                        ? "bg-oai-gray-800 text-white shadow"
-                        : "text-oai-gray-400 hover:text-oai-gray-200 hover:bg-oai-gray-900/50"
+                        ? "bg-oai-gray-200 dark:bg-oai-gray-800 text-oai-black dark:text-white"
+                        : "text-oai-gray-500 dark:text-oai-gray-400 hover:text-oai-gray-800 dark:hover:text-oai-gray-200"
                     )}
                   >
                     {p === "week" ? weekLabel : p === "month" ? monthLabel : totalLabel}
@@ -596,57 +551,41 @@ export function LeaderboardPage({
             </div>
           </div>
 
-          <div className="rounded-xl border border-oai-gray-800 bg-[#0a0a0a]/50 backdrop-blur-md shadow-2xl shadow-black/50 overflow-hidden">
-            <div className="px-6 py-4 border-b border-oai-gray-800 bg-oai-gray-900/20 flex flex-wrap items-center justify-between gap-4">
-              <div>
-                <h2 className="text-base font-medium text-white">{copy("leaderboard.table.title")}</h2>
-                <p className="text-xs text-oai-gray-500 mt-1">{copy("leaderboard.table.subtitle")}</p>
-              </div>
-
-              {authTokenAllowed && authTokenReady && (
-                <div className="flex items-center gap-3">
-                  {profileState.error && (
-                    <span className="text-xs text-red-400 mr-2">
-                      {profileState.error}
-                    </span>
-                  )}
-                  <span className="text-sm font-medium text-oai-gray-400">
-                    {publicProfileLabel}
-                  </span>
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={publicProfileEnabled}
-                    onClick={handleTogglePublicProfile}
-                    disabled={publicProfileBusy}
-                    className={cn(
-                      "relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-oai-brand-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-oai-gray-950 disabled:opacity-50 disabled:cursor-not-allowed",
-                      publicProfileEnabled ? "bg-oai-brand-500" : "bg-oai-gray-700"
-                    )}
-                  >
-                    <span
-                      className={cn(
-                        "inline-block h-4 w-4 transform rounded-full bg-white transition-transform",
-                        publicProfileEnabled ? "translate-x-6" : "translate-x-1"
-                      )}
-                    />
-                  </button>
-                  <span className="text-xs text-oai-gray-500 min-w-[60px]">
-                    {publicProfileStatusLabel}
-                  </span>
-                </div>
-              )}
+          {!signedIn && (
+            <div className="mb-6 flex items-center justify-between text-sm">
+              <p className="text-oai-gray-500 dark:text-oai-gray-400">Sign in to join the leaderboard</p>
+              <button
+                onClick={openLoginModal}
+                className="px-3 py-1.5 text-sm font-medium text-oai-gray-600 dark:text-oai-gray-300 border border-oai-gray-300 dark:border-oai-gray-700 rounded-md hover:text-oai-black dark:hover:text-white hover:border-oai-gray-400 dark:hover:border-oai-gray-600 transition-colors"
+              >
+                Sign In
+              </button>
             </div>
+          )}
 
+          {authTokenAllowed && authTokenReady && !cloudSyncOn && (
+            <div className="mb-6 flex items-center justify-between text-sm">
+              <p className="text-oai-gray-500 dark:text-oai-gray-400">Enable Cloud Sync to appear in rankings</p>
+              <button
+                onClick={handleEnableSync}
+                disabled={syncing}
+                className="px-3 py-1.5 text-sm font-medium text-oai-gray-600 dark:text-oai-gray-300 border border-oai-gray-300 dark:border-oai-gray-700 rounded-md hover:text-oai-black dark:hover:text-white hover:border-oai-gray-400 dark:hover:border-oai-gray-600 disabled:opacity-50 transition-colors"
+              >
+                {syncing ? "Syncing..." : "Enable & Sync"}
+              </button>
+            </div>
+          )}
+
+          <div className="rounded-xl border border-oai-gray-200 dark:border-oai-gray-800 overflow-hidden">
             {listBody}
 
-            <div className="px-6 py-4 border-t border-oai-gray-800 bg-oai-gray-900/20 flex flex-wrap items-center justify-between gap-4">
+            <div className="px-6 py-3 border-t border-oai-gray-200 dark:border-oai-gray-800 flex flex-wrap items-center justify-between gap-4">
               <div className="flex items-center gap-2">
                 <button
                   className={cn(
-                    "px-3 py-1.5 text-sm font-medium text-oai-gray-400 rounded-md border border-oai-gray-800 transition-colors",
+                    "px-3 py-1.5 text-sm font-medium text-oai-gray-500 dark:text-oai-gray-400 rounded-md transition-colors",
                     canPrev && !listState.loading
-                      ? "hover:bg-oai-gray-800 hover:text-white"
+                      ? "hover:bg-oai-gray-100 dark:hover:bg-oai-gray-800 hover:text-oai-black dark:hover:text-white"
                       : "opacity-50 cursor-not-allowed"
                   )}
                   onClick={() => setListPage((p) => Math.max(1, p - 1))}
@@ -656,9 +595,9 @@ export function LeaderboardPage({
                 </button>
                 <button
                   className={cn(
-                    "px-3 py-1.5 text-sm font-medium text-oai-gray-400 rounded-md border border-oai-gray-800 transition-colors",
+                    "px-3 py-1.5 text-sm font-medium text-oai-gray-500 dark:text-oai-gray-400 rounded-md transition-colors",
                     canNext && !listState.loading
-                      ? "hover:bg-oai-gray-800 hover:text-white"
+                      ? "hover:bg-oai-gray-100 dark:hover:bg-oai-gray-800 hover:text-oai-black dark:hover:text-white"
                       : "opacity-50 cursor-not-allowed"
                   )}
                   onClick={() => setListPage((p) => p + 1)}
@@ -672,26 +611,18 @@ export function LeaderboardPage({
           </div>
         </div>
       </main>
-      
-      <footer className="border-t border-oai-gray-900 bg-oai-gray-950 py-12">
-        <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-6 px-4 sm:px-6 text-sm text-oai-gray-400 sm:flex-row">
+
+      <footer className="border-t border-oai-gray-200 dark:border-oai-gray-900 py-8 transition-colors duration-200">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 sm:px-6 text-sm text-oai-gray-400 dark:text-oai-gray-500">
           <p>{copy("landing.v2.footer.line")}</p>
-          <div className="flex items-center gap-6">
-            <a
-              href="https://github.com/mm7894215/tokentracker"
-              className="font-medium text-oai-gray-400 hover:text-white transition-colors"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              {copy("landing.v2.nav.github")}
-            </a>
-            <Link
-              to="/"
-              className="font-medium text-oai-brand-500 hover:text-oai-brand-400 transition-colors"
-            >
-              {copy("leaderboard.nav.back")} &rarr;
-            </Link>
-          </div>
+          <a
+            href="https://github.com/mm7894215/tokentracker"
+            className="text-oai-gray-400 dark:text-oai-gray-500 hover:text-oai-black dark:hover:text-white transition-colors"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            {copy("landing.v2.nav.github")}
+          </a>
         </div>
       </footer>
     </div>

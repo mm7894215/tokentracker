@@ -9,4 +9,8 @@ export type AuthTokenProvider =
 
 export function normalizeAccessToken(token: unknown): string | null;
 export function resolveAuthAccessToken(auth: AuthTokenProvider): Promise<string | null>;
+export function resolveAuthAccessTokenWithRetry(
+  auth: AuthTokenProvider,
+  options?: { maxAttempts?: number; baseDelayMs?: number },
+): Promise<string | null>;
 export function isAccessTokenReady(token: AuthTokenProvider | unknown): boolean;

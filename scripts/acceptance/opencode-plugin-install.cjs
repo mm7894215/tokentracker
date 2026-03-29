@@ -10,7 +10,7 @@ const {
 
 async function main() {
   const repoRoot = path.resolve(__dirname, "..", "..");
-  const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "vibeusage-accept-"));
+  const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-accept-"));
   const homeDir = tmpRoot;
   const codexHome = path.join(tmpRoot, ".codex");
   const opencodeConfigDir = path.join(tmpRoot, ".config", "opencode");

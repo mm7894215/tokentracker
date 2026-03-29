@@ -10,19 +10,20 @@ import {
   getMockLeaderboard,
   isMockEnabled,
 } from "./mock-data";
+import { getInsforgeRemoteUrl, getInsforgeAnonKey } from "./insforge-config";
 
 type AnyRecord = Record<string, any>;
 
 const PATHS = {
-  usageSummary: "vibeusage-usage-summary",
-  usageDaily: "vibeusage-usage-daily",
-  usageHourly: "vibeusage-usage-hourly",
-  usageMonthly: "vibeusage-usage-monthly",
-  usageHeatmap: "vibeusage-usage-heatmap",
-  usageModelBreakdown: "vibeusage-usage-model-breakdown",
-  projectUsageSummary: "vibeusage-project-usage-summary",
-  userStatus: "vibeusage-user-status",
-  localSync: "vibeusage-local-sync",
+  usageSummary: "tokentracker-usage-summary",
+  usageDaily: "tokentracker-usage-daily",
+  usageHourly: "tokentracker-usage-hourly",
+  usageMonthly: "tokentracker-usage-monthly",
+  usageHeatmap: "tokentracker-usage-heatmap",
+  usageModelBreakdown: "tokentracker-usage-model-breakdown",
+  projectUsageSummary: "tokentracker-project-usage-summary",
+  userStatus: "tokentracker-user-status",
+  localSync: "tokentracker-local-sync",
 };
 
 async function fetchLocalJson(slug: string, params?: AnyRecord, options?: AnyRecord) {
@@ -110,6 +111,42 @@ export async function getProjectUsageSummary({
   return fetchLocalJson(PATHS.projectUsageSummary, params);
 }
 
+async function fetchInsforgeFunction(slug: string, options: {
+  method?: string;
+  accessToken?: string;
+  params?: AnyRecord;
+  body?: unknown;
+} = {}) {
+  const baseUrl = getInsforgeRemoteUrl();
+  if (!baseUrl) throw new Error("InsForge base URL not configured");
+  const root = baseUrl.replace(/\/$/, "");
+  const url = new URL(`${root}/functions/${slug}`);
+  if (options.params) {
+    for (const [key, value] of Object.entries(options.params)) {
+      if (value != null && value !== "") url.searchParams.set(key, String(value));
+    }
+  }
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+    "Content-Type": "application/json",
+  };
+  const anonKey = getInsforgeAnonKey();
+  if (anonKey) headers.apikey = anonKey;
+  if (options.accessToken) headers.Authorization = `Bearer ${options.accessToken}`;
+
+  const res = await fetch(url.toString(), {
+    method: options.method || "GET",
+    headers,
+    ...(options.body != null ? { body: JSON.stringify(options.body) } : {}),
+  });
+  if (!res.ok) {
+    const err: any = new Error(`Request failed with HTTP ${res.status}`);
+    err.status = res.status;
+    throw err;
+  }
+  return res.json();
+}
+
 export async function getLeaderboard({
   accessToken,
   period,
@@ -120,15 +157,36 @@ export async function getLeaderboard({
   if (isMockEnabled()) {
     return getMockLeaderboard({ seed: accessToken, period, metric, limit, offset });
   }
-  return { entries: [], period: period || "week", from: null, to: null, generated_at: new Date().toISOString() };
+  return fetchInsforgeFunction("tokentracker-leaderboard", {
+    accessToken,
+    params: { period, limit, offset },
+  });
 }
 
-export async function getPublicVisibility(_opts: AnyRecord = {}) {
-  return { enabled: false, updated_at: null, share_token: null };
+export async function getPublicVisibility({ accessToken }: AnyRecord = {}) {
+  return fetchInsforgeFunction("tokentracker-public-visibility", {
+    accessToken,
+    method: "GET",
+  });
 }
 
-export async function setPublicVisibility({ enabled }: AnyRecord = {}) {
-  return { enabled: Boolean(enabled), updated_at: new Date().toISOString(), share_token: null };
+export async function setPublicVisibility({ accessToken, enabled, anonymous }: AnyRecord = {}) {
+  const body: AnyRecord = {};
+  if (enabled !== undefined) body.enabled = Boolean(enabled);
+  if (anonymous !== undefined) body.anonymous = Boolean(anonymous);
+  return fetchInsforgeFunction("tokentracker-public-visibility", {
+    accessToken,
+    method: "POST",
+    body,
+  });
+}
+
+export async function refreshLeaderboard({ accessToken, period }: AnyRecord = {}) {
+  return fetchInsforgeFunction("tokentracker-leaderboard-refresh", {
+    accessToken,
+    method: "POST",
+    body: period ? { period } : {},
+  });
 }
 
 export async function getLeaderboardProfile({
@@ -148,7 +206,10 @@ export async function getLeaderboardProfile({
       entry: match,
     };
   }
-  return { period: period || "week", from: null, to: null, generated_at: new Date().toISOString(), entry: null };
+  return fetchInsforgeFunction("tokentracker-leaderboard-profile", {
+    accessToken,
+    params: { user_id: userId, period },
+  });
 }
 
 export async function getUserStatus(_opts: AnyRecord = {}) {
@@ -290,10 +351,3 @@ export async function getUsageHeatmap({
   });
 }
 
-export async function requestInstallLinkCode(_opts: AnyRecord = {}) {
-  return { link_code: null, expires_at: null };
-}
-
-export async function getPublicViewProfile(_opts: AnyRecord = {}) {
-  return null;
-}

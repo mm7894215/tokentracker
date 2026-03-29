@@ -21,59 +21,59 @@ actor APIClient {
     // MARK: - Public API
 
 	func fetchSummary(from: String, to: String) async throws -> UsageSummaryResponse {
-		try await fetch("/functions/vibeusage-usage-summary", queryItems: withTimeZoneQueryItems([
+		try await fetch("/functions/tokentracker-usage-summary", queryItems: withTimeZoneQueryItems([
 			URLQueryItem(name: "from", value: from),
 			URLQueryItem(name: "to", value: to)
 		]))
 	}
 
 	func fetchDaily(from: String, to: String) async throws -> DailyUsageResponse {
-		try await fetch("/functions/vibeusage-usage-daily", queryItems: withTimeZoneQueryItems([
+		try await fetch("/functions/tokentracker-usage-daily", queryItems: withTimeZoneQueryItems([
 			URLQueryItem(name: "from", value: from),
 			URLQueryItem(name: "to", value: to)
 		]))
 	}
 
 	func fetchHeatmap(weeks: Int = 52) async throws -> HeatmapResponse {
-		try await fetch("/functions/vibeusage-usage-heatmap", queryItems: withTimeZoneQueryItems([
+		try await fetch("/functions/tokentracker-usage-heatmap", queryItems: withTimeZoneQueryItems([
 			URLQueryItem(name: "weeks", value: String(weeks))
 		]))
 	}
 
 	func fetchModelBreakdown(from: String, to: String) async throws -> ModelBreakdownResponse {
-		try await fetch("/functions/vibeusage-usage-model-breakdown", queryItems: withTimeZoneQueryItems([
+		try await fetch("/functions/tokentracker-usage-model-breakdown", queryItems: withTimeZoneQueryItems([
 			URLQueryItem(name: "from", value: from),
 			URLQueryItem(name: "to", value: to)
 		]))
 	}
 
 	func fetchProjectUsage(from: String, to: String) async throws -> ProjectUsageResponse {
-		try await fetch("/functions/vibeusage-project-usage-summary", queryItems: withTimeZoneQueryItems([
+		try await fetch("/functions/tokentracker-project-usage-summary", queryItems: withTimeZoneQueryItems([
 			URLQueryItem(name: "from", value: from),
 			URLQueryItem(name: "to", value: to)
 		]))
 	}
 
 	func fetchMonthly(from: String, to: String) async throws -> MonthlyUsageResponse {
-		try await fetch("/functions/vibeusage-usage-monthly", queryItems: withTimeZoneQueryItems([
+		try await fetch("/functions/tokentracker-usage-monthly", queryItems: withTimeZoneQueryItems([
 			URLQueryItem(name: "from", value: from),
 			URLQueryItem(name: "to", value: to)
 		]))
 	}
 
 	func fetchHourly(day: String) async throws -> HourlyUsageResponse {
-		try await fetch("/functions/vibeusage-usage-hourly", queryItems: withTimeZoneQueryItems([
+		try await fetch("/functions/tokentracker-usage-hourly", queryItems: withTimeZoneQueryItems([
 			URLQueryItem(name: "day", value: day)
 		]))
 	}
 
     func triggerSync() async throws -> SyncResponse {
-        try await post("/functions/vibeusage-local-sync")
+        try await post("/functions/tokentracker-local-sync")
     }
 
     func checkServerHealth() async -> Bool {
         do {
-            guard let url = URL(string: baseURL + "/functions/vibeusage-user-status") else {
+            guard let url = URL(string: baseURL + "/functions/tokentracker-user-status") else {
                 return false
             }
             let (_, response) = try await session.data(from: url)

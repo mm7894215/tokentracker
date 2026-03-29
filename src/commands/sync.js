@@ -345,6 +345,24 @@ async function cmdSync(argv) {
     let uploadResult = { inserted: 0, skipped: 0 };
     let uploadAttempted = false;
 
+    if (runtime.deviceToken && runtime.baseUrl) {
+      uploadAttempted = true;
+      try {
+        uploadResult = await drainQueueToCloud({
+          baseUrl: runtime.baseUrl,
+          deviceToken: runtime.deviceToken,
+          queuePath,
+          queueStatePath,
+          maxBatches: opts.drain ? 100 : 5,
+          batchSize: 200,
+        });
+      } catch (e) {
+        if (!opts.auto) {
+          process.stderr.write(`Upload error: ${e?.message || e}\n`);
+        }
+      }
+    }
+
     const afterState = (await readJson(queueStatePath)) || { offset: 0 };
     const queueSize = await safeStatSize(queuePath);
     const projectAfterState = (await readJson(projectQueueStatePath)) || { offset: 0 };
@@ -706,3 +724,92 @@ async function writeOpenclawSignal(trackerDir) {
 
 const AUTO_RETRY_FILENAME = "auto.retry.json";
 const AUTO_RETRY_MAX_DELAY_MS = 2 * 60 * 60 * 1000;
+
+const readline = require("node:readline");
+
+const INGEST_SLUG = "tokentracker-ingest";
+const MAX_INGEST_BUCKETS = 500;
+
+async function drainQueueToCloud({ baseUrl, deviceToken, queuePath, queueStatePath, maxBatches = 5, batchSize = 200 }) {
+  const state = (await readJson(queueStatePath)) || { offset: 0 };
+  let offset = Number(state.offset || 0);
+  let inserted = 0;
+  let skipped = 0;
+
+  const queueSize = await safeStatSize(queuePath);
+  const limit = Math.min(Math.max(1, Math.floor(Number(batchSize || 200))), MAX_INGEST_BUCKETS);
+
+  for (let batch = 0; batch < maxBatches; batch++) {
+    if (offset >= queueSize) break;
+    const result = await readQueueBatch(queuePath, offset, limit);
+    if (result.buckets.length === 0) break;
+
+    const root = baseUrl.replace(/\/$/, "");
+    const anonKey = process.env.TOKENTRACKER_INSFORGE_ANON_KEY || "";
+    const headers = {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      Authorization: `Bearer ${deviceToken}`,
+    };
+    if (anonKey) headers.apikey = anonKey;
+    const res = await fetch(`${root}/functions/${INGEST_SLUG}`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ hourly: result.buckets }),
+    });
+
+    const rawText = await res.text().catch(() => "");
+    let data = {};
+    try { data = JSON.parse(rawText); } catch { data = {}; }
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}: ${rawText.substring(0, 500)}`);
+    }
+
+    inserted += Number(data?.inserted || 0);
+    skipped += Number(data?.skipped || 0);
+
+    offset = result.nextOffset;
+    state.offset = offset;
+    state.updatedAt = new Date().toISOString();
+    await writeJson(queueStatePath, state);
+  }
+
+  return { inserted, skipped };
+}
+
+async function readQueueBatch(queuePath, startOffset, maxBuckets) {
+  const st = await fs.stat(queuePath).catch(() => null);
+  if (!st || !st.isFile()) return { buckets: [], nextOffset: startOffset };
+  if (startOffset >= st.size) return { buckets: [], nextOffset: startOffset };
+
+  const stream = fssync.createReadStream(queuePath, { encoding: "utf8", start: startOffset });
+  const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
+
+  const bucketMap = new Map();
+  let offset = startOffset;
+  let linesRead = 0;
+  for await (const line of rl) {
+    const bytes = Buffer.byteLength(line, "utf8") + 1;
+    offset += bytes;
+    if (!line.trim()) continue;
+    let bucket;
+    try {
+      bucket = JSON.parse(line);
+    } catch (_e) {
+      continue;
+    }
+    const hourStart = typeof bucket?.hour_start === "string" ? bucket.hour_start : null;
+    if (!hourStart) continue;
+    const source = (typeof bucket?.source === "string" ? bucket.source.trim().toLowerCase() : "") || "codex";
+    const model = (typeof bucket?.model === "string" ? bucket.model.trim() : "") || "unknown";
+    bucket.source = source;
+    bucket.model = model;
+    bucketMap.set(`${source}|${model}|${hourStart}`, bucket);
+    linesRead += 1;
+    if (linesRead >= maxBuckets) break;
+  }
+
+  rl.close();
+  stream.close?.();
+  return { buckets: Array.from(bucketMap.values()), nextOffset: offset };
+}

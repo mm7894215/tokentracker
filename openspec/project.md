@@ -114,7 +114,7 @@
 
 ### 6.1 CLI（Node）
 
-- `VIBEUSAGE_INSFORGE_BASE_URL`：InsForge base URL（默认：`https://5tmappuk.us-east.insforge.app`）
+- `VIBEUSAGE_INSFORGE_BASE_URL`：InsForge base URL（默认：`https://b46ug8xu.us-east.insforge.app`）
 - `VIBEUSAGE_INSFORGE_ANON_KEY`：可选；InsForge anon key（SDK 使用）
 - `VIBEUSAGE_DASHBOARD_URL`：可选；用于 CLI 打开自托管 landing page（根路径），并携带 `redirect`
 - `VIBEUSAGE_DEVICE_TOKEN`：可选；用于无交互配置 device token（覆盖本地 config）

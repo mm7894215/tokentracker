@@ -1,5 +1,9 @@
-import { describe, expect, it } from "vitest";
-import { isLikelyExpiredAccessToken, resolveAuthAccessToken } from "../auth-token";
+import { describe, expect, it, vi } from "vitest";
+import {
+  isLikelyExpiredAccessToken,
+  resolveAuthAccessToken,
+  resolveAuthAccessTokenWithRetry,
+} from "../auth-token";
 
 describe("resolveAuthAccessToken", () => {
   it("falls back to object.accessToken when getAccessToken returns null", async () => {
@@ -29,6 +33,22 @@ describe("resolveAuthAccessToken", () => {
     });
 
     expect(token).toBe("fresh-token");
+  });
+});
+
+describe("resolveAuthAccessTokenWithRetry", () => {
+  it("returns token after transient nulls", async () => {
+    let calls = 0;
+    const auth = {
+      getAccessToken: vi.fn(async () => {
+        calls++;
+        if (calls < 3) return null;
+        return "ok-token";
+      }),
+    };
+    const token = await resolveAuthAccessTokenWithRetry(auth, { maxAttempts: 6, baseDelayMs: 1 });
+    expect(token).toBe("ok-token");
+    expect(calls).toBe(3);
   });
 });
 

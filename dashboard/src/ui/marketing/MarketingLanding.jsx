@@ -4,6 +4,8 @@ import { motion, useReducedMotion } from "motion/react";
 import { cn } from "../../lib/cn";
 import { getDashboardEntryPath } from "../../lib/host-mode";
 import { HeaderGithubStar } from "../openai/components/HeaderGithubStar.jsx";
+import { InsforgeUserHeaderControls } from "../../components/InsforgeUserHeaderControls.jsx";
+import { useInsforgeAuth } from "../../contexts/InsforgeAuthContext.jsx";
 import LaserFlow from "./components/LaserFlow.jsx";
 
 function AppleIcon({ className }) {
@@ -68,6 +70,7 @@ export function MarketingLanding({
   onCopyInstallCommand,
 }) {
   const reduceMotion = useReducedMotion();
+  const { signedIn, loading: authLoading } = useInsforgeAuth();
 
   const modelAgentLabels = useMemo(
     () => ({
@@ -113,14 +116,21 @@ export function MarketingLanding({
               <HeaderGithubStar />
             </div>
           </div>
-          <div className="flex items-center gap-3 sm:gap-4">
+          <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3">
             <Link
               to={getDashboardEntryPath()}
-              className={cn(buttonClass("default", "sm"), "no-underline px-5 rounded-full shadow-sm ring-1 ring-white/10 group")}
+              className={cn(
+                buttonClass(signedIn || authLoading ? "default" : "ghost", "sm"),
+                "no-underline px-5 rounded-full group",
+                signedIn || authLoading
+                  ? "shadow-sm ring-1 ring-white/10"
+                  : "ring-1 ring-oai-gray-700",
+              )}
             >
               {copy("landing.v2.cta.primary")}
               <span className="ml-2 inline-block transition-transform duration-200 group-hover:translate-x-0.5">&rarr;</span>
             </Link>
+            <InsforgeUserHeaderControls />
           </div>
         </div>
       </header>

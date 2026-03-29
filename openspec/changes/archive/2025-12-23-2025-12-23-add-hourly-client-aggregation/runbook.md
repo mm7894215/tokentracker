@@ -72,7 +72,7 @@ Content-Type: application/json
 - Workflow: `.github/workflows/vibescore-events-retention.yml`
 - Schedule: daily at 02:30 UTC (`30 2 * * *`)
 - Secrets required:
-  - `INSFORGE_BASE_URL` (example: `https://5tmappuk.us-east.insforge.app`)
+  - `INSFORGE_BASE_URL` (example: `https://b46ug8xu.us-east.insforge.app`)
   - `INSFORGE_SERVICE_ROLE_KEY` (or `INSFORGE_API_KEY`)
 - Payload: `{"days":30,"dry_run":false}` (set `dry_run` to `true` for validation)
 

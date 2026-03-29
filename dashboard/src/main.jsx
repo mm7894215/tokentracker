@@ -1,6 +1,7 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
 import { createBrowserRouter, RouterProvider } from "react-router-dom";
+import { InsforgeAuthProvider } from "./contexts/InsforgeAuthContext.jsx";
 import App from "./App.jsx";
 import "@fontsource/geist-mono/400.css";
 import "@fontsource/geist-mono/500.css";
@@ -14,6 +15,8 @@ const router = createBrowserRouter([
 
 createRoot(document.getElementById("root")).render(
   <React.StrictMode>
-    <RouterProvider router={router} />
+    <InsforgeAuthProvider>
+      <RouterProvider router={router} />
+    </InsforgeAuthProvider>
   </React.StrictMode>,
 );
