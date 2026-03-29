@@ -51,7 +51,7 @@ function leaderboardTokenCells(entry, isMe) {
     : "text-oai-gray-500 dark:text-oai-gray-400";
   const cellBg = isMe
     ? "bg-oai-brand-50 dark:bg-oai-brand-900/10"
-    : "bg-white dark:bg-oai-gray-950 group-hover:bg-oai-gray-50 dark:group-hover:bg-oai-gray-900/60";
+    : "bg-white dark:bg-oai-gray-950 ";
   return LEADERBOARD_TOKEN_COLUMNS.map((col) => (
     <td key={col.key} className={cn("px-4 py-4 whitespace-nowrap", numCls, cellBg)}>
       {toDisplayNumber(entry?.[col.key])}
@@ -142,7 +142,7 @@ export function LeaderboardPage({
 
   const period = useMemo(() => {
     const params = new URLSearchParams(location?.search || "");
-    return normalizePeriod(params.get("period")) || "week";
+    return normalizePeriod(params.get("period")) || "total";
   }, [location?.search]);
 
   const periodSearch = location?.search || "";
@@ -344,7 +344,7 @@ export function LeaderboardPage({
                       {entry?.rank ?? placeholder}
                     </td>
                     <td className={lbStickyTdUser(true)}>
-                      <div className="flex min-w-0 max-w-[min(320px,55vw)] items-center gap-4">
+                      <div className="flex min-w-0 max-w-[min(160px,40vw)] items-center gap-4">
                         <LeaderboardAvatar
                           avatarUrl={entry?.avatar_url}
                           displayName={name}
@@ -367,44 +367,13 @@ export function LeaderboardPage({
               return (
                 <tr
                   key={`row-${entry?.rank}-${name}`}
-                  className={cn(
-                    "group transition-colors",
-                    rowClickable ? "cursor-pointer hover:bg-oai-gray-50 dark:hover:bg-oai-gray-900/60" : "",
-                  )}
-                  onClick={
-                    rowClickable
-                      ? () => {
-                          if (typeof window !== "undefined") {
-                            window.location.assign(publicViewPath);
-                            return;
-                          }
-                          navigate(publicViewPath);
-                        }
-                      : undefined
-                  }
-                  onKeyDown={
-                    rowClickable
-                      ? (event) => {
-                          if (event.key === "Enter" || event.key === " ") {
-                            event.preventDefault();
-                            if (typeof window !== "undefined") {
-                              window.location.assign(publicViewPath);
-                              return;
-                            }
-                            navigate(publicViewPath);
-                          }
-                        }
-                      : undefined
-                  }
-                  role={rowClickable ? "link" : undefined}
-                  tabIndex={rowClickable ? 0 : undefined}
-                  aria-label={rowClickable ? `Open public dashboard for ${name}` : undefined}
+                  className="group transition-colors"
                 >
                   <td className={cn(lbStickyTdRank(false), "font-medium text-oai-gray-500 dark:text-oai-gray-400")}>
                     {entry?.rank ?? placeholder}
                   </td>
                   <td className={lbStickyTdUser(false)}>
-                    <div className="flex min-w-0 max-w-[min(320px,55vw)] items-center gap-4">
+                    <div className="flex min-w-0 max-w-[min(160px,40vw)] items-center gap-4">
                       <LeaderboardAvatar
                         avatarUrl={entry?.avatar_url}
                         displayName={name}
@@ -413,10 +382,10 @@ export function LeaderboardPage({
                       <span className="truncate font-medium text-oai-gray-800 dark:text-oai-gray-200">{name}</span>
                     </div>
                   </td>
-                  <td className="px-4 py-4 text-oai-gray-700 dark:text-oai-gray-300 whitespace-nowrap bg-white dark:bg-oai-gray-950 group-hover:bg-oai-gray-50 dark:group-hover:bg-oai-gray-900/60">
+                  <td className="px-4 py-4 text-oai-gray-700 dark:text-oai-gray-300 whitespace-nowrap bg-white dark:bg-oai-gray-950 ">
                     {toDisplayNumber(entry?.total_tokens)}
                   </td>
-                  <td className="px-4 py-4 text-oai-gray-500 dark:text-oai-gray-400 whitespace-nowrap bg-white dark:bg-oai-gray-950 group-hover:bg-oai-gray-50 dark:group-hover:bg-oai-gray-900/60" title="Based on estimated API pricing, not actual billing">
+                  <td className="px-4 py-4 text-oai-gray-500 dark:text-oai-gray-400 whitespace-nowrap bg-white dark:bg-oai-gray-950 " title="Based on estimated API pricing, not actual billing">
                     {formatCost(entry?.estimated_cost_usd)}
                   </td>
                   {leaderboardTokenCells(entry, false)}

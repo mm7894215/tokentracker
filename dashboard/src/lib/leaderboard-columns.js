@@ -21,7 +21,7 @@ export const LB_STICKY_TH_RANK =
   "sticky left-0 z-40 w-[72px] min-w-[72px] max-w-[72px] border-r border-oai-gray-200 dark:border-oai-gray-800 bg-white dark:bg-oai-gray-950 px-4 py-4";
 
 export const LB_STICKY_TH_USER =
-  "sticky left-[72px] z-40 min-w-[220px] max-w-[min(320px,40vw)] border-r border-oai-gray-200 dark:border-oai-gray-800 bg-white dark:bg-oai-gray-950 px-4 py-4";
+  "sticky left-[72px] z-40 min-w-[140px] max-w-[min(180px,35vw)] border-r border-oai-gray-200 dark:border-oai-gray-800 bg-white dark:bg-oai-gray-950 px-4 py-4";
 
 /** Second sticky column on profile page (Rank + Total; no User column in table) */
 export const LB_STICKY_TH_TOTAL =
@@ -38,7 +38,7 @@ export function lbStickyTdRank(isMe) {
 
 export function lbStickyTdUser(isMe) {
   return cn(
-    "sticky left-[72px] z-30 min-w-[220px] max-w-[min(320px,40vw)] border-r border-oai-gray-200 dark:border-oai-gray-800 px-4 py-4 min-w-0",
+    "sticky left-[72px] z-30 min-w-[140px] max-w-[min(180px,35vw)] border-r border-oai-gray-200 dark:border-oai-gray-800 px-4 py-4 min-w-0",
     isMe
       ? "bg-oai-brand-50 dark:bg-oai-brand-900/10"
       : "bg-white dark:bg-oai-gray-950 group-hover:bg-oai-gray-50 dark:group-hover:bg-oai-gray-900/60",
