@@ -337,7 +337,7 @@ final class StatusBarController: NSObject {
     }
 
     @objc private func openAbout() {
-        if let url = URL(string: "https://github.com/mm7894215/tokentracker") {
+        if let url = URL(string: "https://github.com/mm7894215/TokenTracker") {
             NSWorkspace.shared.open(url)
         }
     }

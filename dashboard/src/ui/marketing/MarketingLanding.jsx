@@ -42,8 +42,8 @@ function CheckIcon({ className }) {
   );
 }
 
-const REPO_URL = "https://github.com/mm7894215/tokentracker";
-const MAC_RELEASE_URL = "https://github.com/mm7894215/tokentracker/releases/latest";
+const REPO_URL = "https://github.com/mm7894215/TokenTracker";
+const MAC_RELEASE_URL = "https://github.com/mm7894215/TokenTracker/releases/latest";
 
 function buttonClass(variant = "default", size = "md", className) {
   const base =

@@ -28,7 +28,7 @@ function BrandLogo() {
 /**
  * OAI-style GitHub star button for the header
  */
-function HeaderGithubStar({ repo = "mm7894215/tokentracker" }) {
+function HeaderGithubStar({ repo = "mm7894215/TokenTracker" }) {
   const [stars, setStars] = useState(null);
 
   useEffect(() => {

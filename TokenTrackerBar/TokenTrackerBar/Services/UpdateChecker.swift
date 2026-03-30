@@ -6,8 +6,8 @@ final class UpdateChecker {
 
     static let shared = UpdateChecker()
 
-    private let repo = "mm7894215/tokentracker"
-    private let releaseURL: String = "https://github.com/mm7894215/tokentracker/releases/latest"
+    private let repo = "mm7894215/TokenTracker"
+    private let releaseURL: String = "https://github.com/mm7894215/TokenTracker/releases/latest"
 
     /// Observable status for menu item display
     private(set) var statusText: String? = nil
@@ -60,7 +60,18 @@ final class UpdateChecker {
         }
 
         var dmgAsset: Asset? {
-            assets.first { $0.name.hasSuffix(".dmg") }
+            let isArm64: Bool = {
+                var sysinfo = utsname()
+                uname(&sysinfo)
+                let machine = withUnsafePointer(to: &sysinfo.machine) {
+                    $0.withMemoryRebound(to: CChar.self, capacity: 1) { String(cString: $0) }
+                }
+                return machine == "arm64"
+            }()
+            let suffix = isArm64 ? "arm64.dmg" : "x64.dmg"
+            // Prefer arch-specific DMG, fall back to any .dmg
+            return assets.first { $0.name.hasSuffix(suffix) }
+                ?? assets.first { $0.name.hasSuffix(".dmg") }
         }
     }
 

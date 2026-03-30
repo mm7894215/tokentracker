@@ -5,7 +5,7 @@ import { useInsforgeAuth } from "../../../contexts/InsforgeAuthContext.jsx";
 
 const DISMISS_KEY = "macAppBannerDismissed";
 const LOGIN_DISMISS_KEY = "leaderboardBannerDismissed";
-const RELEASE_URL = "https://github.com/mm7894215/tokentracker/releases/latest";
+const RELEASE_URL = "https://github.com/mm7894215/TokenTracker/releases/latest";
 
 /** True when loaded inside the native macOS app (WKWebView with ?app=1) */
 const NATIVE_APP_KEY = "tokentracker_native_app";
