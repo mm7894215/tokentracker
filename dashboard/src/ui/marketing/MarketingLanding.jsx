@@ -130,7 +130,7 @@ export function MarketingLanding({
         />
       </div>
       <header className={cn("sticky top-0 z-50 transition-all duration-300", scrolled ? "bg-oai-gray-950/80 backdrop-blur-md border-b border-oai-gray-900" : "bg-transparent border-b border-transparent")}>
-        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4 sm:px-6">
+        <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4 sm:px-6">
           <div className="flex items-center gap-5">
             <Link
               to={signUpUrl || "/"}

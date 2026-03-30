@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Clawd pixel-art companion with full animation suite.
-/// Animations ported from Clawd-on-Desk SVG keyframes.
+/// Animations ported from Clawd-on-Desk SVG keyframes (39 states).
 struct ClawdCompanionView: View {
     @ObservedObject var viewModel: DashboardViewModel
 
@@ -13,13 +13,15 @@ struct ClawdCompanionView: View {
     @State private var syncRotation: Double = 0
     @State private var hoveringSync = false
     @State private var hoveringCharacter = false
+    @State private var tapOverrideState: ClawdState?
+    @State private var idleVariant: ClawdState = .idleLiving
 
     private let px: CGFloat = 4.0
 
     var body: some View {
         HStack(alignment: .center, spacing: 10) {
             characterView
-                .frame(width: 15 * px, height: 11 * px)
+                .frame(width: 15 * px, height: 16 * px)
                 .modifier(ActionModifier(action: currentAction))
                 .onContinuousHover { phase in
                     switch phase {
@@ -47,7 +49,10 @@ struct ClawdCompanionView: View {
         .padding(.horizontal, 20)
         .padding(.top, 24)
         .padding(.bottom, 10)
-        .onAppear { startBlinkLoop() }
+        .onAppear {
+            startBlinkLoop()
+            startIdleVariantLoop()
+        }
     }
 
     // MARK: - Speech Bubble
@@ -117,131 +122,229 @@ struct ClawdCompanionView: View {
             Canvas { context, size in
                 let t = timeline.date.timeIntervalSinceReferenceDate
                 let s = px
+                let state = clawdState
                 let yBase: CGFloat = 6
                 let yOff: CGFloat = (size.height - 10 * s) / 2
-                let syncing = viewModel.isSyncing
-                let sleeping = mood == .sleeping
 
-                // === BODY TRANSFORMS ===
+                let bodyColor = Color(red: 0.87, green: 0.53, blue: 0.43) // #DE886D
+                let eyeColor = Color.black
 
-                // Breathing (3.2s cycle)
-                let breathPhase = sin(t / 3.2 * .pi * 2)
-                let breathY = breathPhase * 0.5
-
-                // Syncing jitter (0.08s cycle, like typing)
-                let jitter: CGFloat = syncing ? sin(t * 78.5) * 0.5 : 0
-
-                // Idle sway (8s cycle, subtle lean left/right)
-                let swayPhase = sin(t / 8.0 * .pi * 2)
-                let idleSway: CGFloat = (!syncing && !sleeping) ? swayPhase * 0.6 : 0
-
-                // Hover lean
-                let hoverLean: CGFloat = switch hoverSide {
-                case .left: -1.2
-                case .right: 1.2
-                case .center: 0
-                case .none: 0
-                }
-
-                let totalX = idleSway + hoverLean
-                let totalY = breathY + jitter
-
-                func r(_ x: CGFloat, _ y: CGFloat, _ w: CGFloat, _ h: CGFloat) -> CGRect {
-                    CGRect(x: (x + totalX) * s, y: (y - yBase) * s + yOff + totalY * s,
+                // Common coordinate helper
+                func r(_ x: CGFloat, _ y: CGFloat, _ w: CGFloat, _ h: CGFloat,
+                       dx: CGFloat = 0, dy: CGFloat = 0) -> CGRect {
+                    CGRect(x: (x + dx) * s, y: (y - yBase + dy) * s + yOff,
                            width: w * s, height: h * s)
                 }
 
-                let body = Color(red: 0.87, green: 0.53, blue: 0.43)
-                let eye = Color.black
+                switch state {
 
-                // === SHADOW ===
-                let shadowScaleX: CGFloat = 1.0 + breathPhase * 0.03
-                let shadowW: CGFloat = 9 * shadowScaleX
-                let shadowX: CGFloat = 3 + (9 - shadowW) / 2
-                context.fill(Path(r(shadowX, 15, shadowW, 0.5)),
-                             with: .color(.black.opacity(0.12)))
+                // =====================================================
+                // MARK: Idle Living — breathing + eye wander + scratch
+                // =====================================================
+                case .idleLiving:
+                    let breathPhase = sin(t / 3.2 * .pi * 2)
+                    let breathDx: CGFloat = 0
+                    let breathDy = breathPhase * 0.5
 
-                // === LEGS ===
-                for lx: CGFloat in [3, 5, 9, 11] {
-                    context.fill(Path(r(lx, 13, 1, 2)), with: .color(body))
-                }
-
-                // === TORSO (with breathing scale) ===
-                let torsoScaleX: CGFloat = 1.0 + breathPhase * 0.015
-                let torsoScaleY: CGFloat = 1.0 - breathPhase * 0.015
-                let torsoW: CGFloat = 11 * torsoScaleX
-                let torsoH: CGFloat = 7 * torsoScaleY
-                let torsoX: CGFloat = 2 + (11 - torsoW) / 2
-                let torsoY: CGFloat = 6 + (7 - torsoH)  // anchor at bottom
-                context.fill(Path(r(torsoX, torsoY, torsoW, torsoH)), with: .color(body))
-
-                // === ARMS ===
-                if syncing {
-                    // Typing: arms oscillate up/down rapidly
-                    let leftArmY: CGFloat = 9 + sin(t * 41.9) * 1.5
-                    let rightArmY: CGFloat = 9 + sin(t * 52.4) * 1.5
-                    context.fill(Path(r(0, leftArmY, 2, 2)), with: .color(body))
-                    context.fill(Path(r(13, rightArmY, 2, 2)), with: .color(body))
-                } else {
-                    let leftArmYShift: CGFloat = armWave ? -2.5 : 0
-                    context.fill(Path(r(0, 9 + leftArmYShift, 2, 2)), with: .color(body))
-                    context.fill(Path(r(13, 9, 2, 2)), with: .color(body))
-                }
-
-                // === EYES ===
-                if sleeping || eyesClosed {
-                    // Closed: thin horizontal line
-                    context.fill(Path(r(4, 9, 1, 0.35)), with: .color(eye))
-                    context.fill(Path(r(10, 9, 1, 0.35)), with: .color(eye))
-                } else {
-                    // Eye shift: hover tracking > idle wander > syncing scan
-                    let eyeShift: CGFloat
-                    if hoverSide != .none {
-                        eyeShift = switch hoverSide {
-                        case .left: -0.5
-                        case .right: 0.5
-                        case .center: 0
-                        case .none: 0
+                    // 10s action cycle (look right, scratch, look left)
+                    let actionT = (t / 10.0).truncatingRemainder(dividingBy: 1.0)
+                    let bodyShiftX: CGFloat = {
+                        if actionT < 0.08 || (actionT > 0.25 && actionT < 0.30) || (actionT > 0.45 && actionT < 0.60) || actionT > 0.60 {
+                            return 0
                         }
-                    } else if syncing {
-                        // Scanning: eyes sweep left-right (1.2s cycle)
-                        let scanPhase = (t / 1.2).truncatingRemainder(dividingBy: 1.0)
-                        eyeShift = CGFloat(scanPhase < 0.5 ? scanPhase * 4 - 1 : 3 - scanPhase * 4)
-                    } else {
-                        // Idle wander (8s cycle)
-                        let wanderT = (t / 8.0).truncatingRemainder(dividingBy: 1.0)
-                        if wanderT < 0.15 || wanderT > 0.85 { eyeShift = 0 }
-                        else if wanderT < 0.35 { eyeShift = 0.5 }
-                        else if wanderT < 0.5 { eyeShift = 0 }
-                        else if wanderT < 0.7 { eyeShift = -0.5 }
-                        else { eyeShift = 0 }
-                    }
-                    context.fill(Path(r(4 + eyeShift, 8, 1, 2)), with: .color(eye))
-                    context.fill(Path(r(10 + eyeShift, 8, 1, 2)), with: .color(eye))
-                }
+                        if actionT >= 0.12 && actionT <= 0.22 { return 1 } // look right
+                        if actionT >= 0.48 && actionT <= 0.57 { return -1 } // look left
+                        if actionT >= 0.33 && actionT <= 0.38 { return 0.5 } // scratch lean
+                        return 0
+                    }()
 
-                // === SLEEPING Z's ===
-                if sleeping {
-                    for i in 0..<2 {
-                        let zT = (t + Double(i) * 1.0).truncatingRemainder(dividingBy: 2.5) / 2.5
-                        let rise = zT * 5
-                        let alpha = zT < 0.2 ? zT * 5 : (zT > 0.7 ? (1.0 - zT) / 0.3 : 1.0)
-                        let fontSize: CGFloat = i == 0 ? 9 : 12
-                        let xPos: CGFloat = i == 0 ? 13 : 14.5
+                    let hoverLean = hoverLeanX
+                    let dx = bodyShiftX + hoverLean + breathDx
+                    let dy = breathDy
+
+                    // Shadow
+                    context.fill(Path(r(3, 15, 9, 0.5, dx: dx)), with: .color(.black.opacity(0.12)))
+
+                    // Legs (static)
+                    for lx: CGFloat in [3, 5, 9, 11] {
+                        context.fill(Path(r(lx, 12, 1, 3, dx: 0)), with: .color(bodyColor))
+                    }
+
+                    // Torso with breathing
+                    let tScaleX: CGFloat = 1.0 + breathPhase * 0.015
+                    let tScaleY: CGFloat = 1.0 - breathPhase * 0.015
+                    let tW = 11 * tScaleX, tH = 7 * tScaleY
+                    let tX = 2 + (11 - tW) / 2, tY = 6 + (7 - tH)
+                    context.fill(Path(r(tX, tY, tW, tH, dx: dx, dy: dy)), with: .color(bodyColor))
+
+                    // Left arm (scratch during 33-39% of cycle)
+                    let scratching = actionT >= 0.33 && actionT <= 0.39
+                    let scratchY: CGFloat = scratching ? 9 + sin(t * 30) * 1.5 : 9
+                    context.fill(Path(r(0, scratchY, 2, 2, dx: dx, dy: dy)), with: .color(bodyColor))
+
+                    // Right arm
+                    context.fill(Path(r(13, 9, 2, 2, dx: dx, dy: dy)), with: .color(bodyColor))
+
+                    // Eyes with tracking
+                    let eyeShift: CGFloat = {
+                        if hoverSide != .none { return hoverEyeShift }
+                        if actionT >= 0.12 && actionT <= 0.22 { return 1.5 }
+                        if actionT >= 0.48 && actionT <= 0.57 { return -1.5 }
+                        return 0
+                    }()
+
+                    // Blink at 5%, 20%, 49%, 80%
+                    let blinkPhases: [ClosedRange<Double>] = [0.03...0.07, 0.18...0.22, 0.47...0.51, 0.78...0.82]
+                    let isBlinkTime = blinkPhases.contains { $0.contains(actionT) }
+
+                    if eyesClosed || isBlinkTime {
+                        context.fill(Path(r(4 + eyeShift, 9, 1, 0.35, dx: dx, dy: dy)), with: .color(eyeColor))
+                        context.fill(Path(r(10 + eyeShift, 9, 1, 0.35, dx: dx, dy: dy)), with: .color(eyeColor))
+                    } else {
+                        context.fill(Path(r(4 + eyeShift, 8, 1, 2, dx: dx, dy: dy)), with: .color(eyeColor))
+                        context.fill(Path(r(10 + eyeShift, 8, 1, 2, dx: dx, dy: dy)), with: .color(eyeColor))
+                    }
+
+                    // Hover glow
+                    if hoveringCharacter {
+                        context.fill(Path(r(tX, tY, tW, tH, dx: dx, dy: dy)), with: .color(.white.opacity(0.06)))
+                    }
+
+                // =====================================================
+                // MARK: Idle Look — eye tracking + body lean 10s cycle
+                // =====================================================
+                case .idleLook:
+                    let breathPhase = sin(t / 3.2 * .pi * 2)
+                    let dy = breathPhase * 0.4
+
+                    // 10s action cycle
+                    let actionT = (t / 10.0).truncatingRemainder(dividingBy: 1.0)
+                    let bodyShiftX: CGFloat = {
+                        if actionT >= 0.12 && actionT <= 0.22 { return 1 } // right
+                        if actionT >= 0.48 && actionT <= 0.57 { return -1 } // left
+                        if actionT >= 0.33 && actionT <= 0.38 { return 0.5 }
+                        return 0
+                    }()
+                    let eyeShift: CGFloat = {
+                        if hoverSide != .none { return hoverEyeShift }
+                        if actionT >= 0.12 && actionT <= 0.22 { return 3 }
+                        if actionT >= 0.48 && actionT <= 0.57 { return -3 }
+                        return 0
+                    }()
+                    let dx = bodyShiftX + hoverLeanX
+
+                    drawBaseCharacter(context: context, r: { r($0, $1, $2, $3, dx: dx, dy: dy) },
+                                      bodyColor: bodyColor, eyeColor: eyeColor,
+                                      eyeShift: eyeShift, eyesClosed: eyesClosed,
+                                      breathPhase: breathPhase, hoveringCharacter: hoveringCharacter)
+
+                // =====================================================
+                // MARK: Idle Doze — squashed body, eyes shut, slow breathe
+                // =====================================================
+                case .idleDoze:
+                    let breathPhase = sin(t / 4.0 * .pi * 2)
+                    let squashX: CGFloat = 1.05 + breathPhase * 0.03
+                    let dy: CGFloat = 1.0 + breathPhase * 0.8
+
+                    context.fill(Path(r(3, 15, 9 * squashX, 0.5)), with: .color(.black.opacity(0.14)))
+
+                    for lx: CGFloat in [3, 5, 9, 11] {
+                        context.fill(Path(r(lx, 12, 1, 3)), with: .color(bodyColor))
+                    }
+
+                    let tW = 11 * squashX, tH = 7 * (1.0 - breathPhase * 0.03)
+                    let tX = 2 + (11 - tW) / 2
+                    context.fill(Path(r(tX, 6 + (7 - tH), tW, tH, dy: dy)), with: .color(bodyColor))
+
+                    // Relaxed arms drooping
+                    context.fill(Path(r(0, 10, 2, 2, dy: dy)), with: .color(bodyColor))
+                    context.fill(Path(r(13, 10, 2, 2, dy: dy)), with: .color(bodyColor))
+
+                    // Eyes shut
+                    context.fill(Path(r(4, 9, 1, 0.35, dy: dy)), with: .color(eyeColor))
+                    context.fill(Path(r(10, 9, 1, 0.35, dy: dy)), with: .color(eyeColor))
+
+                // =====================================================
+                // MARK: Sleeping — deep breathe + floating Z's
+                // =====================================================
+                case .sleeping:
+                    let breathPhase = sin(t / 4.5 * .pi * 2)
+                    let squashScale = 1.0 + breathPhase * 0.03
+                    let dy: CGFloat = 1.0 + breathPhase * 0.8
+
+                    context.fill(Path(r(3, 15, 9 * squashScale, 0.5)), with: .color(.black.opacity(0.12)))
+
+                    for lx: CGFloat in [3, 5, 9, 11] {
+                        context.fill(Path(r(lx, 12, 1, 3)), with: .color(bodyColor))
+                    }
+
+                    let tW = 11 * squashScale, tH = 7 * (1.0 - breathPhase * 0.02)
+                    let tX = 2 + (11 - tW) / 2
+                    context.fill(Path(r(tX, 6 + (7 - tH), tW, tH, dy: dy)), with: .color(bodyColor))
+                    context.fill(Path(r(0, 10, 2, 2, dy: dy)), with: .color(bodyColor))
+                    context.fill(Path(r(13, 10, 2, 2, dy: dy)), with: .color(bodyColor))
+
+                    // Eyes shut
+                    context.fill(Path(r(4, 9, 1, 0.35, dy: dy)), with: .color(eyeColor))
+                    context.fill(Path(r(10, 9, 1, 0.35, dy: dy)), with: .color(eyeColor))
+
+                    // Floating Z particles (3 staggered)
+                    for i in 0..<3 {
+                        let zT = (t + Double(i) * 2.0).truncatingRemainder(dividingBy: 6.0) / 6.0
+                        let rise = zT * 8
+                        let sway = sin(zT * .pi * 3) * 2
+                        let alpha: Double = {
+                            if zT < 0.1 { return zT * 10 }
+                            if zT > 0.9 { return (1.0 - zT) * 10 }
+                            return 0.8
+                        }()
+                        let fontSize: CGFloat = 8 + CGFloat(zT) * 4
                         context.draw(
-                            Text(i == 0 ? "z" : "Z")
+                            Text("Z")
                                 .font(.system(size: fontSize, weight: .bold, design: .monospaced))
                                 .foregroundColor(.secondary.opacity(alpha * 0.5)),
-                            at: CGPoint(x: (xPos + totalX) * s, y: (3 - rise - yBase) * s + yOff + totalY * s)
+                            at: CGPoint(x: (13 + CGFloat(sway)) * s, y: (4 - rise) * s + yOff)
                         )
                     }
-                }
 
-                // === SYNCING DATA PARTICLES ===
-                if syncing {
-                    let particleColor = Color(red: 0.25, green: 0.77, blue: 1.0) // #40C4FF
-                    for i in 0..<6 {
-                        let pT = (t * 1.2 + Double(i) * 0.17).truncatingRemainder(dividingBy: 1.0)
+                // =====================================================
+                // MARK: Working Typing — jitter + typing arms + data particles
+                // =====================================================
+                case .workingTyping:
+                    let jitterX: CGFloat = sin(t * 78.5) * 0.3
+                    let jitterY: CGFloat = sin(t * 65.3) * 0.5
+                    let dx = jitterX + hoverLeanX
+                    let dy = jitterY
+
+                    context.fill(Path(r(3, 15, 9, 0.5, dx: dx)), with: .color(.black.opacity(0.12)))
+
+                    for lx: CGFloat in [3, 5, 9, 11] {
+                        context.fill(Path(r(lx, 13, 1, 2)), with: .color(bodyColor))
+                    }
+
+                    context.fill(Path(r(2, 6, 11, 7, dx: dx, dy: dy)), with: .color(bodyColor))
+
+                    // Typing arms (rapid oscillation)
+                    let leftArmY: CGFloat = 9 + sin(t * 41.9) * 1.5
+                    let rightArmY: CGFloat = 9 + sin(t * 52.4) * 1.5
+                    context.fill(Path(r(0, leftArmY, 2, 2, dx: dx, dy: dy)), with: .color(bodyColor))
+                    context.fill(Path(r(13, rightArmY, 2, 2, dx: dx, dy: dy)), with: .color(bodyColor))
+
+                    // Eyes scanning left-right
+                    let scanPhase = (t / 1.2).truncatingRemainder(dividingBy: 1.0)
+                    let eyeShift = CGFloat(scanPhase < 0.5 ? scanPhase * 4 - 1 : 3 - scanPhase * 4)
+                    if eyesClosed {
+                        context.fill(Path(r(4 + eyeShift, 9, 1, 0.35, dx: dx, dy: dy)), with: .color(eyeColor))
+                        context.fill(Path(r(10 + eyeShift, 9, 1, 0.35, dx: dx, dy: dy)), with: .color(eyeColor))
+                    } else {
+                        context.fill(Path(r(4 + eyeShift, 8, 1, 2, dx: dx, dy: dy)), with: .color(eyeColor))
+                        context.fill(Path(r(10 + eyeShift, 8, 1, 2, dx: dx, dy: dy)), with: .color(eyeColor))
+                    }
+
+                    // Data particles
+                    let particleColor = Color(red: 0.25, green: 0.77, blue: 1.0)
+                    for i in 0..<7 {
+                        let pT = (t * 1.2 + Double(i) * 0.14).truncatingRemainder(dividingBy: 1.0)
                         let pY = 14.0 - pT * 14.0
                         let pX = 7.5 + sin(Double(i) * 2.1) * 3.5
                         let alpha = pT < 0.15 ? pT / 0.15 : (pT > 0.75 ? (1.0 - pT) / 0.25 : 1.0)
@@ -249,26 +352,348 @@ struct ClawdCompanionView: View {
                         context.fill(Path(r(CGFloat(pX), CGFloat(pY), pSize, pSize)),
                                      with: .color(particleColor.opacity(alpha * 0.8)))
                     }
-                }
 
-                // === HOVER GLOW (subtle highlight on character) ===
-                if hoveringCharacter && !sleeping {
-                    context.fill(Path(r(torsoX, torsoY, torsoW, torsoH)),
-                                 with: .color(.white.opacity(0.06)))
+                // =====================================================
+                // MARK: Working Thinking — sway + chin tap + thought bubble dots
+                // =====================================================
+                case .workingThinking:
+                    let swayPhase = sin(t / 4.0 * .pi * 2)
+                    let swayX = swayPhase * 1.0
+                    let dx = swayX + hoverLeanX
+
+                    context.fill(Path(r(3 + swayX, 15, 9, 0.5)), with: .color(.black.opacity(0.12)))
+
+                    for lx: CGFloat in [3, 5, 9, 11] {
+                        context.fill(Path(r(lx, 13, 1, 2)), with: .color(bodyColor))
+                    }
+
+                    context.fill(Path(r(2, 6, 11, 7, dx: dx)), with: .color(bodyColor))
+
+                    // Left arm (static, slight rotation lean)
+                    context.fill(Path(r(0, 9, 2, 2, dx: dx)), with: .color(bodyColor))
+
+                    // Right arm tapping chin (oscillates y)
+                    let tapPhase = sin(t / 0.8 * .pi * 2)
+                    let tapArmY: CGFloat = 7 + tapPhase * 0.5
+                    context.fill(Path(r(13, tapArmY, 2, 2, dx: dx)), with: .color(bodyColor))
+
+                    // Slow blink (4s cycle, blink at 50%)
+                    let thinkBlinkT = (t / 4.0).truncatingRemainder(dividingBy: 1.0)
+                    let isThinkBlink = thinkBlinkT > 0.46 && thinkBlinkT < 0.54
+
+                    if eyesClosed || isThinkBlink {
+                        context.fill(Path(r(4, 8.5, 1, 0.35, dx: dx)), with: .color(eyeColor))
+                        context.fill(Path(r(10, 8.5, 1, 0.35, dx: dx)), with: .color(eyeColor))
+                    } else {
+                        context.fill(Path(r(4, 7, 1, 2, dx: dx)), with: .color(eyeColor))
+                        context.fill(Path(r(10, 7, 1, 2, dx: dx)), with: .color(eyeColor))
+                    }
+
+                    // Thought bubble with loading dots
+                    let dotColor = Color(red: 0, green: 0.51, blue: 0.99) // #0082FC
+                    let bubbleX: CGFloat = -3, bubbleY: CGFloat = -1
+                    // Bubble background
+                    context.fill(Path(r(bubbleX + 1, bubbleY, 10, 7)), with: .color(.white.opacity(0.85)))
+                    context.fill(Path(r(bubbleX + 8, bubbleY + 7, 2, 2)), with: .color(.white.opacity(0.85)))
+                    context.fill(Path(r(bubbleX + 10, bubbleY + 9, 1, 1)), with: .color(.white.opacity(0.85)))
+
+                    // Loading dots (sequential appear, 2s cycle)
+                    let dotT = (t / 2.0).truncatingRemainder(dividingBy: 1.0)
+                    if dotT > 0.2 {
+                        context.fill(Path(r(bubbleX + 2.5, bubbleY + 3, 1, 1)), with: .color(dotColor))
+                    }
+                    if dotT > 0.4 {
+                        context.fill(Path(r(bubbleX + 5.5, bubbleY + 3, 1, 1)), with: .color(dotColor))
+                    }
+                    if dotT > 0.6 {
+                        context.fill(Path(r(bubbleX + 8.5, bubbleY + 3, 1, 1)), with: .color(dotColor))
+                    }
+
+                // =====================================================
+                // MARK: Working Ultrathink — shake + sparks + steam + rainbow text
+                // =====================================================
+                case .workingUltrathink:
+                    let shakeX: CGFloat = sin(t * 42) * 0.3
+                    let shakeY: CGFloat = cos(t * 38) * 0.2
+                    let dx = shakeX
+                    let dy = shakeY
+
+                    // Vibrating shadow
+                    let shadowW: CGFloat = 9 + sin(t * 42) * 0.2
+                    context.fill(Path(r(3, 15, shadowW, 0.5, dx: dx)), with: .color(.black.opacity(0.12)))
+
+                    for lx: CGFloat in [3, 5, 9, 11] {
+                        context.fill(Path(r(lx, 13, 1, 2)), with: .color(bodyColor))
+                    }
+
+                    context.fill(Path(r(2, 6, 11, 7, dx: dx, dy: dy)), with: .color(bodyColor))
+
+                    // Left arm raised
+                    context.fill(Path(r(0, 9, 2, 2, dx: dx, dy: dy)), with: .color(bodyColor))
+
+                    // Right arm tapping chin fast
+                    let tapFastY: CGFloat = 7 + sin(t / 0.8 * .pi * 2) * 0.5
+                    context.fill(Path(r(13, tapFastY, 2, 2, dx: dx, dy: dy)), with: .color(bodyColor))
+
+                    // Focus-blink eyes (2s cycle, squint at 74%)
+                    let focusT = (t / 2.0).truncatingRemainder(dividingBy: 1.0)
+                    let isFocusBlink = focusT > 0.70 && focusT < 0.78
+
+                    if eyesClosed || isFocusBlink {
+                        context.fill(Path(r(4, 8.5, 1, 0.35, dx: dx, dy: dy)), with: .color(eyeColor))
+                        context.fill(Path(r(10, 8.5, 1, 0.35, dx: dx, dy: dy)), with: .color(eyeColor))
+                    } else {
+                        context.fill(Path(r(4, 7, 1, 2, dx: dx, dy: dy)), with: .color(eyeColor))
+                        context.fill(Path(r(10, 7, 1, 2, dx: dx, dy: dy)), with: .color(eyeColor))
+                    }
+
+                    // Brain sparks (gold, rising)
+                    let sparkColor = Color(red: 1, green: 0.84, blue: 0) // #FFD700
+                    for i in 0..<4 {
+                        let spT = (t * 1.0 + Double(i) * 0.3).truncatingRemainder(dividingBy: 1.2) / 1.2
+                        let spRise = spT * 12
+                        let alpha = spT < 0.15 ? spT / 0.15 : (spT > 0.6 ? (1.0 - spT) / 0.4 : 1.0)
+                        let spX: CGFloat = [10, 6, 3, 8][i]
+                        let spSize: CGFloat = 1.0 - CGFloat(spT) * 0.7
+                        context.fill(Path(r(spX, 2 - CGFloat(spRise), spSize, spSize, dx: dx)),
+                                     with: .color(sparkColor.opacity(alpha)))
+                    }
+
+                    // Steam puffs (grey, rising)
+                    for i in 0..<3 {
+                        let stT = (t + Double(i) * 0.7).truncatingRemainder(dividingBy: 2.0) / 2.0
+                        let stRise = stT * 10
+                        let alpha = stT < 0.2 ? stT * 3 : (stT > 0.7 ? (1.0 - stT) / 0.3 : 0.6)
+                        let stX: CGFloat = [5, 9, 7][i]
+                        let stSize: CGFloat = 1.5 + CGFloat(stT) * 1.0
+                        context.fill(Path(r(stX, 3 - CGFloat(stRise), stSize, stSize / 2, dx: dx)),
+                                     with: .color(.gray.opacity(alpha * 0.4)))
+                    }
+
+                    // Rainbow "ultrathink" text (pulsing letters)
+                    let colors: [Color] = [.red, .orange, .yellow, .green, .blue, .purple,
+                                           .red, .orange, .green, .blue]
+                    let letters = Array("ultrathink")
+                    for (i, ch) in letters.enumerated() {
+                        let charT = (t + Double(i) * 0.1).truncatingRemainder(dividingBy: 1.0)
+                        let alpha = 0.15 + sin(charT * .pi) * 0.85
+                        context.draw(
+                            Text(String(ch))
+                                .font(.system(size: 10, weight: .bold, design: .rounded))
+                                .foregroundColor(colors[i].opacity(alpha)),
+                            at: CGPoint(x: (CGFloat(i) * 1.4 + 1) * s, y: (-4 - yBase) * s + yOff)
+                        )
+                    }
+
+                // =====================================================
+                // MARK: Disconnected — body sway + question/exclamation marks
+                // =====================================================
+                case .disconnected:
+                    let bodyT = (t / 6.0).truncatingRemainder(dividingBy: 1.0)
+                    let bodyShiftX: CGFloat = {
+                        if bodyT >= 0.12 && bodyT <= 0.22 { return -1 }
+                        if bodyT >= 0.29 && bodyT <= 0.39 { return 1 }
+                        if bodyT >= 0.56 && bodyT <= 0.88 { return 1 }
+                        return 0
+                    }()
+                    let eyeShift: CGFloat = {
+                        if bodyT >= 0.12 && bodyT <= 0.22 { return -2 }
+                        if bodyT >= 0.29 && bodyT <= 0.39 { return 2 }
+                        if bodyT >= 0.56 && bodyT <= 0.88 { return 3 }
+                        return 0
+                    }()
+
+                    let dx = bodyShiftX
+
+                    context.fill(Path(r(3, 15, 9, 0.5, dx: dx)), with: .color(.black.opacity(0.12)))
+
+                    for lx: CGFloat in [3, 5, 9, 11] {
+                        context.fill(Path(r(lx, 12, 1, 3)), with: .color(bodyColor))
+                    }
+
+                    context.fill(Path(r(2, 6, 11, 7, dx: dx)), with: .color(bodyColor))
+                    context.fill(Path(r(0, 9, 2, 2, dx: dx)), with: .color(bodyColor))
+                    context.fill(Path(r(13, 9, 2, 2, dx: dx)), with: .color(bodyColor))
+
+                    // Blink cycle
+                    let blinkT = (t / 6.0).truncatingRemainder(dividingBy: 1.0)
+                    let isBlinkNow = (blinkT > 0.20 && blinkT < 0.24) || (blinkT > 0.60 && blinkT < 0.64) || (blinkT > 0.80 && blinkT < 0.84)
+
+                    if eyesClosed || isBlinkNow {
+                        context.fill(Path(r(4 + eyeShift, 9, 1, 0.35, dx: dx)), with: .color(eyeColor))
+                        context.fill(Path(r(10 + eyeShift, 9, 1, 0.35, dx: dx)), with: .color(eyeColor))
+                    } else {
+                        context.fill(Path(r(4 + eyeShift, 8, 1, 2, dx: dx)), with: .color(eyeColor))
+                        context.fill(Path(r(10 + eyeShift, 8, 1, 2, dx: dx)), with: .color(eyeColor))
+                    }
+
+                    // Question mark (first half of cycle)
+                    if bodyT < 0.50 {
+                        let qAlpha: Double = bodyT < 0.12 ? 0 : (bodyT < 0.46 ? 1 : (1.0 - (bodyT - 0.46) / 0.04))
+                        context.draw(
+                            Text("?")
+                                .font(.system(size: 14, weight: .bold, design: .monospaced))
+                                .foregroundColor(.white.opacity(qAlpha)),
+                            at: CGPoint(x: (-2 + dx) * s, y: (2 - yBase) * s + yOff)
+                        )
+                    }
+                    // Exclamation mark (second half, blue)
+                    if bodyT >= 0.50 {
+                        let eAlpha: Double = bodyT < 0.56 ? 0 : (bodyT < 0.85 ? 1 : (1.0 - (bodyT - 0.85) / 0.10))
+                        context.draw(
+                            Text("!")
+                                .font(.system(size: 14, weight: .bold, design: .monospaced))
+                                .foregroundColor(Color(red: 0, green: 0.51, blue: 0.99).opacity(eAlpha)),
+                            at: CGPoint(x: (16 + dx) * s, y: (0 - yBase) * s + yOff)
+                        )
+                    }
+
+                // =====================================================
+                // MARK: Error — splatted body + flashing ERROR text + smoke
+                // =====================================================
+                case .error:
+                    let breathPhase = sin(t / 2.5 * .pi * 2)
+                    let squashDy: CGFloat = 1.5 + breathPhase * 0.8
+
+                    context.fill(Path(r(-1, 15, 17, 0.5)), with: .color(.black.opacity(0.12)))
+
+                    // Sploot legs (short, at sides)
+                    for lx: CGFloat in [3, 5, 9, 11] {
+                        context.fill(Path(r(lx, 9, 1, 1)), with: .color(bodyColor))
+                    }
+
+                    // Splatted torso (wider, shorter)
+                    let tW: CGFloat = 13 + breathPhase * 0.5
+                    let tX: CGFloat = 1 + (13 - tW) / 2
+                    context.fill(Path(r(tX, 10, tW, 5, dy: squashDy)), with: .color(bodyColor))
+
+                    // Left arm
+                    context.fill(Path(r(-1, 13, 2, 2, dy: squashDy)), with: .color(bodyColor))
+
+                    // Right arm fanning
+                    let fanPhase = sin(t / 0.4 * .pi * 2)
+                    let fanArmY: CGFloat = 11 + fanPhase * 1.5
+                    context.fill(Path(r(13, fanArmY, 2, 2, dy: squashDy)), with: .color(bodyColor))
+
+                    // XX eyes
+                    let xColor = eyeColor
+                    for eyeX: CGFloat in [3, 10] {
+                        context.fill(Path(r(eyeX, 12, 2, 0.4, dy: squashDy)),
+                                     with: .color(xColor))
+                        context.fill(Path(r(eyeX + 0.8, 11.2, 0.4, 2, dy: squashDy)),
+                                     with: .color(xColor))
+                    }
+
+                    // Smoke puffs
+                    for i in 0..<3 {
+                        let smT = (t + Double(i) * 1.0).truncatingRemainder(dividingBy: 3.0) / 3.0
+                        let rise = smT * 15
+                        let alpha = smT < 0.2 ? smT * 3 : (smT > 0.6 ? (1.0 - smT) / 0.4 : 0.6)
+                        let smX: CGFloat = 5 + CGFloat(i) * 2 + sin(smT * .pi) * 2
+                        context.fill(Path(r(smX, 6 - CGFloat(rise), 2, 1)),
+                                     with: .color(.gray.opacity(alpha * 0.3)))
+                    }
+
+                    // Flashing "ERROR" text
+                    let flashAlpha = 0.15 + sin(t / 0.8 * .pi * 2) * 0.85
+                    context.draw(
+                        Text("ERROR")
+                            .font(.system(size: 12, weight: .bold, design: .rounded))
+                            .foregroundColor(Color.red.opacity(max(0, flashAlpha))),
+                        at: CGPoint(x: 7.5 * s, y: (0 - yBase) * s + yOff)
+                    )
                 }
             }
         }
     }
 
-    // MARK: - Mood
+    // MARK: - State Resolution
 
-    private enum Mood { case sleeping, idle, happy, excited }
+    enum ClawdState: Equatable {
+        case idleLiving
+        case idleLook
+        case idleDoze
+        case sleeping
+        case workingTyping
+        case workingThinking
+        case workingUltrathink
+        case disconnected
+        case error
+    }
 
-    private var mood: Mood {
+    private var clawdState: ClawdState {
+        // 0. Tap override (temporary animation)
+        if let override = tapOverrideState { return override }
+
+        // 1. Status overrides
+        if !viewModel.serverOnline { return .disconnected }
+        if viewModel.error != nil { return .error }
+
+        // 2. Syncing → typing animation
+        if viewModel.isSyncing { return .workingTyping }
+
+        // 3. Idle — token count only affects personality (quips), not animation
         if viewModel.todayTokens == 0 { return .sleeping }
-        if viewModel.todayTokens < 100_000 { return .idle }
-        if viewModel.todayTokens < 1_000_000 { return .happy }
-        return .excited
+        return idleVariant
+    }
+
+    // MARK: - Drawing Helpers
+
+    private var hoverLeanX: CGFloat {
+        switch hoverSide {
+        case .left: return -1.2
+        case .right: return 1.2
+        case .center, .none: return 0
+        }
+    }
+
+    private var hoverEyeShift: CGFloat {
+        switch hoverSide {
+        case .left: return -0.5
+        case .right: return 0.5
+        case .center, .none: return 0
+        }
+    }
+
+    /// Standard base character drawing (used by simpler states)
+    private func drawBaseCharacter(
+        context: GraphicsContext,
+        r: (CGFloat, CGFloat, CGFloat, CGFloat) -> CGRect,
+        bodyColor: Color, eyeColor: Color,
+        eyeShift: CGFloat, eyesClosed: Bool,
+        breathPhase: CGFloat, hoveringCharacter: Bool
+    ) {
+        // Shadow
+        context.fill(Path(r(3, 15, 9, 0.5)), with: .color(.black.opacity(0.12)))
+
+        // Legs
+        for lx: CGFloat in [3, 5, 9, 11] {
+            context.fill(Path(r(lx, 12, 1, 3)), with: .color(bodyColor))
+        }
+
+        // Torso
+        let tScaleX: CGFloat = 1.0 + breathPhase * 0.015
+        let tW = 11 * tScaleX, tH: CGFloat = 7
+        let tX = 2 + (11 - tW) / 2
+        context.fill(Path(r(tX, 6, tW, tH)), with: .color(bodyColor))
+
+        // Arms
+        context.fill(Path(r(0, 9, 2, 2)), with: .color(bodyColor))
+        context.fill(Path(r(13, 9, 2, 2)), with: .color(bodyColor))
+
+        // Eyes
+        if eyesClosed {
+            context.fill(Path(r(4 + eyeShift, 9, 1, 0.35)), with: .color(eyeColor))
+            context.fill(Path(r(10 + eyeShift, 9, 1, 0.35)), with: .color(eyeColor))
+        } else {
+            context.fill(Path(r(4 + eyeShift, 8, 1, 2)), with: .color(eyeColor))
+            context.fill(Path(r(10 + eyeShift, 8, 1, 2)), with: .color(eyeColor))
+        }
+
+        // Hover glow
+        if hoveringCharacter {
+            context.fill(Path(r(tX, 6, tW, tH)), with: .color(.white.opacity(0.06)))
+        }
     }
 
     // MARK: - Quip Pool (30+ English lines)
@@ -402,16 +827,30 @@ struct ClawdCompanionView: View {
         return pool
     }
 
-    // MARK: - Tap
+    // MARK: - Tap (cycles through fun animation states)
+
+    /// All the fun states to show temporarily on tap
+    private static let tapAnimations: [ClawdState] = [
+        .workingThinking,    // 思考 (摇摆+点下巴+泡泡)
+        .workingUltrathink,  // 超级思考 (震颤+火花+彩虹)
+        .workingTyping,      // 打字 (抖动+数据粒子)
+        .disconnected,       // 找东西 (问号/感叹号)
+        .idleLook,           // 四处张望
+        .idleDoze,           // 打瞌睡
+        .sleeping,           // 睡觉 (Zzz)
+        .error,              // 错误 (趴下+冒烟)
+    ]
+
+    @State private var tapAnimIndex = 0
 
     private func handleTap() {
         withAnimation(.easeInOut(duration: 0.25)) { quipIndex += 1 }
-        let actions: [CharacterAction] = [.jump, .wiggle, .flip, .multiBlink, .wave]
-        triggerAction(actions.randomElement() ?? .jump)
-    }
 
-    private func triggerAction(_ action: CharacterAction) {
+        // Physical reaction (jump/wiggle/flip via ActionModifier)
+        let physicalActions: [CharacterAction] = [.jump, .wiggle, .flip, .multiBlink, .wave]
+        let action = physicalActions.randomElement() ?? .jump
         currentAction = action
+
         switch action {
         case .wave:
             armWave = true
@@ -430,6 +869,28 @@ struct ClawdCompanionView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             if currentAction == action { currentAction = .none }
         }
+
+        // Canvas state override: cycle through all animation states
+        let anim = Self.tapAnimations[tapAnimIndex % Self.tapAnimations.count]
+        tapAnimIndex += 1
+        tapOverrideState = anim
+
+        // Hold the animation for 2.5s then return to normal
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+            if tapOverrideState == anim { tapOverrideState = nil }
+        }
+    }
+
+    // MARK: - Idle Variant Rotation
+
+    /// Periodically switches between idle animations for visual variety
+    private func startIdleVariantLoop() {
+        let delay = Double.random(in: 12...25)
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+            let variants: [ClawdState] = [.idleLiving, .idleLook, .idleLiving, .idleLiving, .idleLook]
+            idleVariant = variants.randomElement() ?? .idleLiving
+            startIdleVariantLoop()
+        }
     }
 
     // MARK: - Idle Blink
@@ -437,7 +898,10 @@ struct ClawdCompanionView: View {
     private func startBlinkLoop() {
         let delay = Double.random(in: 2.5...5.0)
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-            guard mood != .sleeping else { startBlinkLoop(); return }
+            guard clawdState != .sleeping && clawdState != .idleDoze else {
+                startBlinkLoop()
+                return
+            }
             eyesClosed = true
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
                 eyesClosed = false

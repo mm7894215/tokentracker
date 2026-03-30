@@ -53,6 +53,7 @@ export function DashboardView(props) {
     onCustomRangeOpenChange,
     summaryLabel,
     summaryValue,
+    summaryTotalTokensRaw,
     summaryCostValue,
     summaryConversationsValue,
     rollingUsage,
@@ -116,7 +117,7 @@ export function DashboardView(props) {
                     </div>
                   </div>
                 ) : null}
-                {isLocalMode ? <MacAppBanner /> : null}
+                {isLocalMode ? <MacAppBanner todayTokens={summaryTotalTokensRaw} isSyncing={usageLoadingState} /> : null}
 
                 <StatsPanel
                   title={copy("dashboard.identity.title")}

@@ -65,7 +65,23 @@ final class StatusBarController: NSObject {
         viewModel.$isSyncing
             .receive(on: RunLoop.main)
             .sink { [weak self] syncing in
-                self?.animator?.setState(syncing ? .syncing : .idle)
+                guard let self else { return }
+                if syncing {
+                    self.animator?.setState(.syncing)
+                } else if !self.viewModel.serverOnline {
+                    self.animator?.setState(.disconnected)
+                } else {
+                    self.animator?.setState(.idle)
+                }
+            }
+            .store(in: &cancellables)
+
+        // Observe server online status for disconnected icon
+        viewModel.$serverOnline
+            .receive(on: RunLoop.main)
+            .sink { [weak self] online in
+                guard let self, !self.viewModel.isSyncing else { return }
+                self.animator?.setState(online ? .idle : .disconnected)
             }
             .store(in: &cancellables)
 

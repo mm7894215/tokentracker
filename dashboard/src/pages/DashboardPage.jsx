@@ -1207,6 +1207,7 @@ export function DashboardPage({
       metricsRows={metricsRows}
       summaryLabel={summaryLabel}
       summaryValue={summaryValue}
+      summaryTotalTokensRaw={toFiniteNumber(summaryTotalTokens) || 0}
       summaryCostValue={summaryCostValue}
       summaryConversationsValue={summaryConversationsValue}
       rollingUsage={rolling}

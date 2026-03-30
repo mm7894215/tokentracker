@@ -262,21 +262,36 @@ export default async function (req: Request): Promise<Response> {
       }
     }
 
-    // --- Fetch existing snapshot display_name/avatar_url as fallback ---
-    const existingNames = new Map<string, { display_name: string | null; avatar_url: string | null }>();
+    // --- Fetch display_name/avatar_url from auth.users ---
+    const userProfiles = new Map<string, { display_name: string | null; avatar_url: string | null }>();
     for (let i = 0; i < userIds.length; i += 100) {
       const batch = userIds.slice(i, i + 100);
+      const { data: users } = await client.database
+        .from("tokentracker_user_profiles")
+        .select("user_id, display_name, avatar_url")
+        .in("user_id", batch);
+
+      if (users) {
+        for (const u of users as { user_id: string; display_name: string | null; avatar_url: string | null }[]) {
+          userProfiles.set(u.user_id, { display_name: u.display_name, avatar_url: u.avatar_url });
+        }
+      }
+    }
+
+    // Fallback: existing snapshots for users not in auth.users
+    for (let i = 0; i < userIds.length; i += 100) {
+      if ([...userIds.slice(i, i + 100)].every(id => userProfiles.has(id))) continue;
+      const missing = userIds.slice(i, i + 100).filter(id => !userProfiles.has(id));
+      if (missing.length === 0) continue;
       const { data: existing } = await client.database
         .from("tokentracker_leaderboard_snapshots")
         .select("user_id, display_name, avatar_url")
-        .in("user_id", batch)
+        .in("user_id", missing)
         .order("generated_at", { ascending: false });
-
       if (existing) {
         for (const e of existing as { user_id: string; display_name: string | null; avatar_url: string | null }[]) {
-          // Keep the first (most recent) per user
-          if (!existingNames.has(e.user_id)) {
-            existingNames.set(e.user_id, { display_name: e.display_name, avatar_url: e.avatar_url });
+          if (!userProfiles.has(e.user_id)) {
+            userProfiles.set(e.user_id, { display_name: e.display_name, avatar_url: e.avatar_url });
           }
         }
       }
@@ -290,9 +305,9 @@ export default async function (req: Request): Promise<Response> {
       const settings = settingsMap.get(userId);
       const isPublic = settings?.leaderboard_public ?? false;
       const isAnonymous = settings?.leaderboard_anonymous ?? false;
-      const prev = existingNames.get(userId);
-      const displayName = isAnonymous ? "Anonymous" : (prev?.display_name ?? "Anonymous");
-      const avatarUrl = isAnonymous ? null : (prev?.avatar_url ?? null);
+      const profile = userProfiles.get(userId);
+      const displayName = isAnonymous ? "Anonymous" : (profile?.display_name ?? "Anonymous");
+      const avatarUrl = isAnonymous ? null : (profile?.avatar_url ?? null);
 
       return {
         user_id: userId,

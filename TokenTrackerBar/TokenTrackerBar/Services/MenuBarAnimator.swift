@@ -12,6 +12,7 @@ final class MenuBarAnimator {
     enum State: Equatable {
         case idle
         case syncing
+        case disconnected
     }
 
     // MARK: - Properties
@@ -47,6 +48,7 @@ final class MenuBarAnimator {
     private lazy var idleFrame = buildFrame(eyesClosed: false, yShift: 0)
     private lazy var blinkFrame = buildFrame(eyesClosed: true, yShift: 0)
     private lazy var syncFrames = buildSyncFrames()
+    private lazy var disconnectedFrame = buildDisconnectedFrame()
 
     /// Whether pixel animation is enabled (persisted in UserDefaults)
     var isEnabled: Bool {
@@ -97,6 +99,8 @@ final class MenuBarAnimator {
             scheduleNextBlink()
         case .syncing:
             startAnimation(interval: 0.15)
+        case .disconnected:
+            setButtonImage(disconnectedFrame)
         }
     }
 
@@ -162,6 +166,39 @@ final class MenuBarAnimator {
             buildFrame(eyesClosed: false, yShift: 0),
             buildFrame(eyesClosed: false, yShift: -1),
         ]
+    }
+
+    // MARK: - Disconnected Frame (dimmed character with ?)
+
+    private func buildDisconnectedFrame() -> NSImage {
+        let img = NSImage(size: canvasSize, flipped: true) { [self] _ in
+            guard let ctx = NSGraphicsContext.current?.cgContext else { return false }
+
+            NSColor.black.withAlphaComponent(0.5).setFill()
+
+            svgRect(2, 6, 11, 7).fill()     // torso
+            svgRect(0, 9, 2, 2).fill()      // left arm
+            svgRect(13, 9, 2, 2).fill()     // right arm
+            svgRect(3, 13, 1, 2).fill()
+            svgRect(5, 13, 1, 2).fill()
+            svgRect(9, 13, 1, 2).fill()
+            svgRect(11, 13, 1, 2).fill()
+
+            // "?" mark above head
+            let font = NSFont.systemFont(ofSize: 7, weight: .bold)
+            let attrs: [NSAttributedString.Key: Any] = [
+                .font: font,
+                .foregroundColor: NSColor.black.withAlphaComponent(0.7),
+            ]
+            let str = NSAttributedString(string: "?", attributes: attrs)
+            let strSize = str.size()
+            let qx = (canvasSize.width - strSize.width) / 2
+            str.draw(at: NSPoint(x: qx, y: 0))
+
+            return true
+        }
+        img.isTemplate = true
+        return img
     }
 
     // MARK: - Frame Drawing (exact SVG geometry)

@@ -2,13 +2,15 @@ import AppKit
 import WebKit
 
 @MainActor
-final class DashboardWindowController: NSObject, NSWindowDelegate, WKNavigationDelegate, WKUIDelegate {
+final class DashboardWindowController: NSObject, NSWindowDelegate, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
 
     static let shared = DashboardWindowController()
 
     private var window: NSWindow?
     private var webView: WKWebView?
     private var loadingOverlay: NSView?
+    /// OAuth 流程进行中时放行所有导航，回到 localhost 后自动复位
+    private var oauthInProgress = false
 
     private override init() {
         super.init()
@@ -30,8 +32,12 @@ final class DashboardWindowController: NSObject, NSWindowDelegate, WKNavigationD
             return
         }
 
-        // Create WKWebView — transparent until loaded
-        let webView = WKWebView(frame: .zero, configuration: WKWebViewConfiguration())
+        // Create WKWebView — transparent until loaded; register JS→Native bridge for OAuth
+        let contentController = WKUserContentController()
+        contentController.add(self, name: "nativeOAuth")
+        let webConfig = WKWebViewConfiguration()
+        webConfig.userContentController = contentController
+        let webView = WKWebView(frame: .zero, configuration: webConfig)
         webView.navigationDelegate = self
         webView.uiDelegate = self
         webView.allowsBackForwardNavigationGestures = true
@@ -154,6 +160,8 @@ final class DashboardWindowController: NSObject, NSWindowDelegate, WKNavigationD
     // MARK: - NSWindowDelegate
 
     func windowWillClose(_ notification: Notification) {
+        webView?.configuration.userContentController.removeScriptMessageHandler(forName: "nativeOAuth")
+        oauthInProgress = false
         loadingOverlay = nil
         webView = nil
         window = nil
@@ -165,6 +173,27 @@ final class DashboardWindowController: NSObject, NSWindowDelegate, WKNavigationD
         }
     }
 
+    // MARK: - WKScriptMessageHandler
+
+    nonisolated func userContentController(
+        _ userContentController: WKUserContentController,
+        didReceive message: WKScriptMessage
+    ) {
+        let name = message.name
+        let body = message.body
+        Task { @MainActor [weak self] in
+            self?.handleScriptMessage(name: name, body: body)
+        }
+    }
+
+    private func handleScriptMessage(name: String, body: Any) {
+        guard name == "nativeOAuth",
+              let urlString = body as? String,
+              let url = URL(string: urlString) else { return }
+        oauthInProgress = true
+        webView?.load(URLRequest(url: url))
+    }
+
     // MARK: - WKUIDelegate
 
     func webView(
@@ -174,7 +203,12 @@ final class DashboardWindowController: NSObject, NSWindowDelegate, WKNavigationD
         windowFeatures: WKWindowFeatures
     ) -> WKWebView? {
         if let url = navigationAction.request.url {
-            NSWorkspace.shared.open(url)
+            if oauthInProgress {
+                // OAuth 流程中 target="_blank" 仍在当前 WebView 加载
+                webView.load(URLRequest(url: url))
+            } else {
+                NSWorkspace.shared.open(url)
+            }
         }
         return nil
     }
@@ -190,8 +224,14 @@ final class DashboardWindowController: NSObject, NSWindowDelegate, WKNavigationD
             decisionHandler(.allow)
             return
         }
-        // Allow local dashboard navigation
+        // Allow local dashboard navigation; OAuth 完成回到 localhost 时复位标记
         if url.host == "localhost" || url.host == "127.0.0.1" {
+            if oauthInProgress { oauthInProgress = false }
+            decisionHandler(.allow)
+            return
+        }
+        // OAuth 流程进行中 — 放行 OAuth 提供商的重定向链
+        if oauthInProgress {
             decisionHandler(.allow)
             return
         }
@@ -209,10 +249,10 @@ final class DashboardWindowController: NSObject, NSWindowDelegate, WKNavigationD
         let css = """
             * { -webkit-user-select: none !important; }
             input, textarea { -webkit-user-select: text !important; }
-            body { padding-top: 28px !important; }
+            .native-app header { padding-top: 36px !important; }
             ::-webkit-scrollbar { display: none !important; }
             """
-        let js = "var s=document.createElement('style');s.textContent='\(css.replacingOccurrences(of: "\n", with: " "))';document.head.appendChild(s);"
+        let js = "document.documentElement.classList.add('native-app');var s=document.createElement('style');s.textContent='\(css.replacingOccurrences(of: "\n", with: " "))';document.head.appendChild(s);"
         webView.evaluateJavaScript(js)
         // Page loaded — dismiss the loading overlay
         dismissLoadingOverlay()

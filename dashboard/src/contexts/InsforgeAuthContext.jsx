@@ -118,11 +118,18 @@ export function InsforgeAuthProvider({ children }) {
           : typeof window !== "undefined"
             ? `${window.location.origin}/dashboard`
             : undefined;
-      return client.auth.signInWithOAuth({
+      // 原生 macOS App WebView：拦截 OAuth URL 交由 Swift 在 WebView 内完成
+      const nativeBridge =
+        typeof window !== "undefined" && window.webkit?.messageHandlers?.nativeOAuth;
+      const result = await client.auth.signInWithOAuth({
         provider,
         redirectTo,
-        skipBrowserRedirect: false,
+        skipBrowserRedirect: Boolean(nativeBridge),
       });
+      if (nativeBridge && result.data?.url) {
+        nativeBridge.postMessage(result.data.url);
+      }
+      return result;
     },
     [client],
   );

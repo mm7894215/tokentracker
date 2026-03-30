@@ -1,7 +1,9 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { useLoginModal } from "../../../contexts/LoginModalContext.jsx";
 import { useInsforgeAuth } from "../../../contexts/InsforgeAuthContext.jsx";
+import { ClawdAnimated } from "../../foundation/ClawdAnimated.jsx";
+import { useClawdState } from "../../../hooks/useClawdState.js";
 
 const DISMISS_KEY = "macAppBannerDismissed";
 const LOGIN_DISMISS_KEY = "leaderboardBannerDismissed";
@@ -19,68 +21,6 @@ const isNativeApp = (() => {
   } catch { return false; }
 })();
 
-/**
- * Clawd pixel-art SVG component — the 15×16 character drawn as rects.
- * Matches clawd-static-base.svg from Clawd-on-Desk.
- */
-function ClawdPixel({ size = 48, className = "" }) {
-  const scale = size / 16;
-  const [eyesClosed, setEyesClosed] = useState(false);
-
-  useEffect(() => {
-    const blink = () => {
-      const delay = 2500 + Math.random() * 3000;
-      const timer = setTimeout(() => {
-        setEyesClosed(true);
-        setTimeout(() => {
-          setEyesClosed(false);
-          blink();
-        }, 120);
-      }, delay);
-      return timer;
-    };
-    const timer = blink();
-    return () => clearTimeout(timer);
-  }, []);
-
-  const bodyColor = "#DE886D";
-  const eyeColor = "#000000";
-
-  return (
-    <svg
-      width={15 * scale}
-      height={10 * scale}
-      viewBox="0 5.5 15 10"
-      className={className}
-      style={{ imageRendering: "pixelated" }}
-    >
-      {/* Torso */}
-      <rect x="2" y="6" width="11" height="7" fill={bodyColor} />
-      {/* Arms */}
-      <rect x="0" y="9" width="2" height="2" fill={bodyColor} />
-      <rect x="13" y="9" width="2" height="2" fill={bodyColor} />
-      {/* Legs */}
-      <rect x="3" y="13" width="1" height="2" fill={bodyColor} />
-      <rect x="5" y="13" width="1" height="2" fill={bodyColor} />
-      <rect x="9" y="13" width="1" height="2" fill={bodyColor} />
-      <rect x="11" y="13" width="1" height="2" fill={bodyColor} />
-      {/* Shadow */}
-      <rect x="3" y="15" width="9" height="1" fill="#000" opacity="0.12" />
-      {/* Eyes */}
-      {eyesClosed ? (
-        <>
-          <rect x="4" y="9" width="1" height="0.4" fill={eyeColor} />
-          <rect x="10" y="9" width="1" height="0.4" fill={eyeColor} />
-        </>
-      ) : (
-        <>
-          <rect x="4" y="8" width="1" height="2" fill={eyeColor} />
-          <rect x="10" y="8" width="1" height="2" fill={eyeColor} />
-        </>
-      )}
-    </svg>
-  );
-}
 
 /**
  * Context-aware banner:
@@ -88,9 +28,10 @@ function ClawdPixel({ size = 48, className = "" }) {
  * - Native app + not signed in → Login CTA
  * - Browser → Download App CTA
  */
-export function MacAppBanner() {
+export function MacAppBanner({ todayTokens = 0, isSyncing = false }) {
   const { openLoginModal } = useLoginModal();
   const { signedIn: cloudSignedIn } = useInsforgeAuth();
+  const clawdState = useClawdState({ todayTokens, isSyncing });
   const dismissKey = isNativeApp ? LOGIN_DISMISS_KEY : DISMISS_KEY;
 
   const [dismissed, setDismissed] = useState(() => {
@@ -161,13 +102,9 @@ export function MacAppBanner() {
         className="rounded-xl border border-oai-gray-200 dark:border-oai-gray-800 bg-white dark:bg-oai-gray-900 p-4"
       >
         <div className="flex items-center gap-3">
-          <motion.div
-            animate={{ y: [0, -2, 0] }}
-            transition={{ duration: 3.2, repeat: Infinity, ease: "easeInOut" }}
-            className="flex-shrink-0"
-          >
-            <ClawdPixel size={44} />
-          </motion.div>
+          <div className="flex-shrink-0">
+            <ClawdAnimated state={clawdState} size={44} />
+          </div>
 
           <div className="flex-1 min-w-0">
             <div className="text-sm font-medium text-oai-gray-900 dark:text-oai-white">
