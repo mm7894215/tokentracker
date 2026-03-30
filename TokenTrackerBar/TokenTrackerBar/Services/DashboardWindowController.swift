@@ -266,8 +266,9 @@ final class DashboardWindowController: NSObject, NSWindowDelegate, WKNavigationD
             decisionHandler(.allow)
             return
         }
-        // External links → open in system browser
-        if url.scheme == "http" || url.scheme == "https" {
+        // External links → open in system browser (only user-initiated clicks, not resource loads)
+        if (url.scheme == "http" || url.scheme == "https"),
+           navigationAction.navigationType == .linkActivated {
             NSWorkspace.shared.open(url)
             decisionHandler(.cancel)
             return
