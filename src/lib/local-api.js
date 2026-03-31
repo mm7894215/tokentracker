@@ -91,6 +91,7 @@ function getModelPricing(model) {
   if (lower.includes("gemini-2.5")) return MODEL_PRICING["gemini-2.5-pro"];
   if (lower.includes("kimi")) return MODEL_PRICING["kimi-k2.5"];
   if (lower.includes("composer")) return MODEL_PRICING["composer-1"];
+  if (lower === "auto") return MODEL_PRICING["composer-1"];
   return ZERO_PRICING;
 }
 
@@ -459,18 +460,37 @@ function createLocalApiHandler({ queuePath }) {
 
   // Server-side cookie relay: captures auth cookies from InsForge cloud responses
   // so that both browser and WKWebView share the same login session via the proxy.
+  // Persisted to disk so cookies survive server restarts.
   const relayCookies = new Map();
+  const cookiePath = path.join(os.homedir(), ".tokentracker", "tracker", "relay-cookies.json");
+
+  // Load persisted cookies on startup
+  try {
+    const saved = JSON.parse(fs.readFileSync(cookiePath, "utf8"));
+    if (saved && typeof saved === "object") {
+      for (const [k, v] of Object.entries(saved)) relayCookies.set(k, v);
+    }
+  } catch { /* no saved cookies yet */ }
+
+  function persistRelayCookies() {
+    try {
+      fs.writeFileSync(cookiePath, JSON.stringify(Object.fromEntries(relayCookies)), { encoding: "utf8", mode: 0o600 });
+    } catch { /* ignore write errors */ }
+  }
 
   function captureSetCookies(headerValue) {
     if (!headerValue) return;
     const parts = headerValue.split(/,(?=\s*\w+=)/);
+    let changed = false;
     for (const raw of parts) {
       const eqIdx = raw.indexOf("=");
       if (eqIdx < 1) continue;
       const name = raw.substring(0, eqIdx).trim();
       if (!name) continue;
       relayCookies.set(name, raw.trim());
+      changed = true;
     }
+    if (changed) persistRelayCookies();
   }
 
   function buildRelayCookieHeader(clientCookieHeader) {
