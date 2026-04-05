@@ -1,0 +1,56 @@
+name: npm publish
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: npm-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+
+      # Skip if this version is already published
+      - name: Check if version exists on npm
+        id: version-check
+        run: |
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+          echo "version=$PACKAGE_VERSION" >> "$GITHUB_OUTPUT"
+          if npm view tokentracker-cli@"$PACKAGE_VERSION" version 2>/dev/null; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install root dependencies
+        if: steps.version-check.outputs.exists == 'false'
+        run: npm ci
+
+      - name: Install dashboard dependencies
+        if: steps.version-check.outputs.exists == 'false'
+        run: npm ci --prefix dashboard
+
+      - name: Build dashboard
+        if: steps.version-check.outputs.exists == 'false'
+        run: npm run dashboard:build
+
+      - name: Publish to npm
+        if: steps.version-check.outputs.exists == 'false'
+        run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Skip notice
+        if: steps.version-check.outputs.exists == 'true'
+        run: echo "v${{ steps.version-check.outputs.version }} already published, skipping."
