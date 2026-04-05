@@ -4,6 +4,7 @@ set -euo pipefail
 # =============================================================================
 # create-dmg.sh — Create a professional DMG installer for TokenTrackerBar
 # Usage: ./create-dmg.sh [path/to/TokenTrackerBar.app]
+# Set CI=true to skip Finder/AppleScript customization (headless mode)
 # =============================================================================
 
 APP_NAME="TokenTrackerBar"
@@ -114,17 +115,23 @@ MOUNT_DEV=$(echo "$MOUNT_OUTPUT" | head -1 | awk '{print $1}')
 echo "==> Mounted at: $MOUNT_DIR"
 
 # Apply Finder customizations via AppleScript
-if $HAS_BG; then
-    BG_CLAUSE='set background picture of viewOptions to POSIX file "'$MOUNT_DIR'/.background/background.png"'
+# --- Customize DMG window (skip on headless CI) ---
+if [[ "${CI:-}" == "true" ]]; then
+    echo "==> CI mode: skipping Finder customization"
+    hdiutil detach "$MOUNT_DEV" -quiet 2>/dev/null || hdiutil detach "$MOUNT_DIR" -quiet 2>/dev/null || true
+    sleep 1
 else
-    BG_CLAUSE=""
-fi
+    if $HAS_BG; then
+        BG_CLAUSE='set background picture of viewOptions to POSIX file "'$MOUNT_DIR'/.background/background.png"'
+    else
+        BG_CLAUSE=""
+    fi
 
-# Extract the actual volume name from mount path
-ACTUAL_VOL_NAME=$(basename "$MOUNT_DIR")
+    # Extract the actual volume name from mount path
+    ACTUAL_VOL_NAME=$(basename "$MOUNT_DIR")
 
-echo "==> Applying Finder settings..."
-osascript <<APPLESCRIPT
+    echo "==> Applying Finder settings..."
+    osascript <<APPLESCRIPT
 tell application "Finder"
     tell disk "$ACTUAL_VOL_NAME"
         open
@@ -147,12 +154,13 @@ tell application "Finder"
 end tell
 APPLESCRIPT
 
-sync
+    sync
 
-# --- Unmount ---
-echo "==> Unmounting..."
-hdiutil detach "$MOUNT_DEV" -quiet 2>/dev/null || hdiutil detach "$MOUNT_DIR" -quiet 2>/dev/null || true
-sleep 1
+    # --- Unmount ---
+    echo "==> Unmounting..."
+    hdiutil detach "$MOUNT_DEV" -quiet 2>/dev/null || hdiutil detach "$MOUNT_DIR" -quiet 2>/dev/null || true
+    sleep 1
+fi
 
 # --- Convert to compressed read-only ---
 echo "==> Compressing to final DMG..."

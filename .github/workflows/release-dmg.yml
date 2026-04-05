@@ -1,0 +1,87 @@
+name: release DMG
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release (e.g. 0.5.25)"
+        required: true
+
+concurrency:
+  group: release-dmg
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: macos-15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # Verify version matches package.json
+      - name: Verify version
+        run: |
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          if [[ "$PKG_VERSION" != "${{ inputs.version }}" ]]; then
+            echo "::error::package.json version ($PKG_VERSION) does not match input (${{ inputs.version }})"
+            exit 1
+          fi
+
+      # 1. Build dashboard
+      - name: Install dashboard dependencies
+        run: npm ci --prefix dashboard
+
+      - name: Build dashboard
+        run: npm run dashboard:build
+
+      # 2. Bundle EmbeddedServer (Node.js + tokentracker source)
+      - name: Bundle EmbeddedServer
+        run: bash TokenTrackerBar/scripts/bundle-node.sh
+
+      # 3. Generate Xcode project
+      - name: Install xcodegen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        working-directory: TokenTrackerBar
+        run: xcodegen generate
+
+      - name: Patch pbxproj for icon
+        working-directory: TokenTrackerBar
+        run: ruby scripts/patch-pbxproj-icon.rb
+
+      # 4. Build app
+      - name: Build TokenTrackerBar
+        working-directory: TokenTrackerBar
+        run: |
+          xcodebuild \
+            -scheme TokenTrackerBar \
+            -configuration Release \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            clean build
+
+      # 5. Create DMG
+      - name: Create DMG
+        working-directory: TokenTrackerBar
+        run: |
+          APP_PATH="$(find build/DerivedData/Build/Products/Release -name 'TokenTrackerBar.app' -maxdepth 1)"
+          echo "App path: $APP_PATH"
+          bash scripts/create-dmg.sh "$APP_PATH"
+
+      # 6. Create GitHub Release with DMG
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "v${{ inputs.version }}" \
+            TokenTrackerBar/build/TokenTrackerBar.dmg \
+            --title "v${{ inputs.version }}" \
+            --generate-notes
