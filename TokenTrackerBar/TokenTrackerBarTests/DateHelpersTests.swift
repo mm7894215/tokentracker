@@ -3,9 +3,21 @@ import XCTest
 final class DateHelpersTests: XCTestCase {
 
     func testDayRangeEndsAtProvidedCaptureDate() {
+        let range = DateHelpers.dayRange(daysBack: 6, endingAt: makeCaptureDate())
+
+        XCTAssertEqual("\(range.from)...\(range.to)", "2026-08-04...2026-08-10")
+    }
+
+    func testPeriodRangeUsesProvidedCaptureDate() {
+        let range = DateHelpers.rangeForPeriod(.day, referenceDate: makeCaptureDate())
+
+        XCTAssertEqual("\(range.from)...\(range.to)", "2026-08-10...2026-08-10")
+    }
+
+    private func makeCaptureDate() -> Date {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = .current
-        let capturedAt = calendar.date(
+        return calendar.date(
             from: DateComponents(
                 year: 2026,
                 month: 8,
@@ -15,9 +27,5 @@ final class DateHelpersTests: XCTestCase {
                 second: 59
             )
         )!
-
-        let range = DateHelpers.dayRange(daysBack: 6, endingAt: capturedAt)
-
-        XCTAssertEqual("\(range.from)...\(range.to)", "2026-08-04...2026-08-10")
     }
 }

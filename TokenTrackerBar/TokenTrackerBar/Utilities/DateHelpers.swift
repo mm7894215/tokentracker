@@ -81,8 +81,11 @@ enum DateHelpers {
     }
 
     /// Returns (from, to) date strings for a given period.
-    static func rangeForPeriod(_ period: Period) -> (from: String, to: String) {
-        let now = Date()
+    static func rangeForPeriod(
+        _ period: Period,
+        referenceDate: Date = Date()
+    ) -> (from: String, to: String) {
+        let now = referenceDate
         let today = localDayFormatter.string(from: now)
 
         switch period {
@@ -113,7 +116,7 @@ enum DateHelpers {
             // Last 24 months
             let start = localCalendar.date(byAdding: .month, value: -24, to: now) ?? now
             guard let monthStart = localCalendar.date(from: localCalendar.dateComponents([.year, .month], from: start)) else {
-                return (from: monthsAgoString(24), to: today)
+                return (from: localDayFormatter.string(from: start), to: today)
             }
             return (from: localDayFormatter.string(from: monthStart), to: today)
         }
