@@ -84,8 +84,8 @@ enum WidgetSnapshotWriter {
         // (the /tokentracker-usage-summary endpoint omits it from
         // `rolling.*`). Fire two extra parallel summary calls scoped to
         // 7-day and 30-day ranges so the widget can show real cost numbers.
-        async let last7dCost = fetchRangeCost(daysBack: 6)
-        async let last30dCost = fetchRangeCost(daysBack: 29)
+        async let last7dCost = fetchRangeCost(daysBack: 6, endingAt: inputs.capturedAt)
+        async let last30dCost = fetchRangeCost(daysBack: 29, endingAt: inputs.capturedAt)
         let (cost7d, cost30d) = await (last7dCost, last30dCost)
 
         // Superseded while awaiting the cost fetches — drop this stale write.
@@ -114,14 +114,13 @@ enum WidgetSnapshotWriter {
     /// Bumped at the start of every `update`; stale calls bail before writing.
     private static var updateGeneration = 0
 
-    /// Fetches a `UsageSummaryResponse` for `[N days ago, today]` and pulls
+    /// Fetches a `UsageSummaryResponse` for `[N days ago, captured day]` and pulls
     /// out the top-level `total_cost_usd`. Returns 0 on any failure so the
     /// widget keeps rendering rather than getting stuck on an error path.
-    private static func fetchRangeCost(daysBack: Int) async -> Double {
-        let from = DateHelpers.daysAgoString(daysBack)
-        let to = DateHelpers.todayString()
+    private static func fetchRangeCost(daysBack: Int, endingAt date: Date) async -> Double {
+        let range = DateHelpers.dayRange(daysBack: daysBack, endingAt: date)
         do {
-            let resp = try await APIClient.shared.fetchSummary(from: from, to: to)
+            let resp = try await APIClient.shared.fetchSummary(from: range.from, to: range.to)
             return parseCost(resp.totals.totalCostUsd)
         } catch {
             logger.warning("widget cost fetch \(daysBack)d failed: \(error.localizedDescription)")
