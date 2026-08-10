@@ -21,6 +21,7 @@ enum WidgetSnapshotWriter {
     /// the cost fetches can't smear two refreshes together in one widget
     /// snapshot.
     private struct VMInputs {
+        let capturedAt: Date
         let serverOnline: Bool
         let todaySummary: UsageSummaryResponse?
         let summary: UsageSummaryResponse?
@@ -64,7 +65,9 @@ enum WidgetSnapshotWriter {
         // race where a second loadAll() could mutate the view model while
         // we're awaiting the cost fetches below, producing a snapshot that
         // mixed two different refreshes.
+        let capturedAt = Date()
         let inputs = VMInputs(
+            capturedAt: capturedAt,
             serverOnline: vm.serverOnline,
             todaySummary: vm.todaySummary,
             summary: vm.summary,
@@ -144,7 +147,7 @@ enum WidgetSnapshotWriter {
         total.activeDays = inputs.heatmap?.activeDays ?? total.activeDays
 
         return WidgetSnapshot(
-            generatedAt: Date(),
+            generatedAt: inputs.capturedAt,
             serverOnline: inputs.serverOnline,
             today: periodTotals(from: inputs.todaySummary),
             last7d: last7d,
