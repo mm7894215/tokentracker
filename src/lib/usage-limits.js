@@ -28,6 +28,7 @@ const { fetchGrokLimits } = require("./grok-limits");
 const { fetchZcodeLimits } = require("./zcode-limits");
 const { fetchOpencodeGoLimits } = require("./opencode-go-limits");
 const { fetchQoderLimits, fetchQoderCnLimits } = require("./qoder-limits");
+const { fetchArkCodingPlanLimits } = require("./ark-coding-plan-limits");
 const { fetchProviderServiceStatus } = require("./provider-status");
 const { readSqliteJsonRows, readSqliteJsonRowsAsync } = require("./sqlite-reader");
 
@@ -3165,7 +3166,7 @@ async function fetchUsageLimitsUncached({
     : null;
 
   const providerFetch = withFetchTimeout(fetchImpl, providerTimeoutMs);
-  const [claudeResult, codexResult, cursor, kimi, gemini, kiro, antigravity, copilot, grok, zcode, opencodeGo, qoder, qoderCn, claudeServiceStatus] = await Promise.all([
+  const [claudeResult, codexResult, cursor, kimi, gemini, kiro, antigravity, copilot, grok, zcode, opencodeGo, qoder, qoderCn, codingPlan, claudeServiceStatus] = await Promise.all([
     claudeToken && !freshClaudeCache && !claudeRetryAtMs
       ? withProviderTimeout(fetchClaudeUsageLimits(claudeToken, { fetchImpl: providerFetch, maxAttempts: 1 }), "Claude", providerTimeoutMs).then(
           (value) => ({ status: "fulfilled", value }),
@@ -3219,6 +3220,18 @@ async function fetchUsageLimitsUncached({
         fetchImpl: providerFetch,
       }),
       "Qoder CN",
+      providerTimeoutMs,
+    ).catch((reason) => ({ configured: true, error: reason?.message || "Unknown error" })),
+    // Ark Coding Plan (火山方舟): subscription quota via the user's own
+    // arkcli binary. No token-consumption source — consumption for the
+    // compatible CLIs is already counted from their local files; this only
+    // surfaces the 5h/week/month quota percentages.
+    withProviderTimeout(
+      fetchArkCodingPlanLimits({
+        commandRunner,
+        home,
+      }),
+      "Ark Coding Plan",
       providerTimeoutMs,
     ).catch((reason) => ({ configured: true, error: reason?.message || "Unknown error" })),
     // Public status-page probe (fail-soft, own 5-min cache in provider-status.js).
@@ -3371,6 +3384,7 @@ async function fetchUsageLimitsUncached({
     opencodeGo: withPlanLabel(opencodeGo, opencodeGo?.plan_label, "OpenCode Go"),
     qoder: withPlanLabel(qoder, qoder?.plan_label, "Qoder"),
     qoderCn: withPlanLabel(qoderCn, qoderCn?.plan_label, "Qoder CN"),
+    codingPlan: withPlanLabel(codingPlan, codingPlan?.plan_label, "Ark Coding Plan"),
   };
 
   for (const [providerName, provider] of Object.entries(data)) {
