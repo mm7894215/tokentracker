@@ -288,7 +288,7 @@ describe("fetchOpencodeGoLimits", () => {
       env: apiCfg,
       fetchImpl: async () => jsonResponse(401, { type: "error" }),
     });
-    assert.match(unauthorized.error, /invalid or expired/);
+    assert.match(unauthorized.error, /not entitled to an OpenCode Go subscription/);
 
     const forbidden = await fetchOpencodeGoLimits({
       env: apiCfg,
@@ -309,7 +309,7 @@ describe("fetchOpencodeGoLimits", () => {
     });
 
     assert.equal(requests, 1);
-    assert.match(out.error, /invalid or expired/);
+    assert.match(out.error, /not entitled to an OpenCode Go subscription/);
   });
 
   it("falls back to the legacy dashboard scrape when the official API is temporarily unavailable", async () => {

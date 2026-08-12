@@ -516,7 +516,11 @@ async function fetchOpencodeGoApiLimits({ apiKey, fetchImpl, nowMs, timeoutMs })
   }
 
   if (response.status === 401) {
-    return { configured: true, error: "OpenCode Go API key is invalid or expired.", auth_error: true };
+    return {
+      configured: true,
+      error: "OpenCode Go API key is missing, invalid, expired, or not entitled to an OpenCode Go subscription.",
+      auth_error: true,
+    };
   }
   if (response.status === 403) {
     return {

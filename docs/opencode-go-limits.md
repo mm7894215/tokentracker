@@ -56,7 +56,7 @@ A successful response contains `rollingUsage`, `weeklyUsage`, and `monthlyUsage`
 }
 ```
 
-The endpoint returns `401` when the key is absent, invalid, or expired, and `403` when the key does not have an OpenCode Go subscription entitlement. Both cases are surfaced with actionable provider errors.
+The endpoint returns `401` when the key is absent, invalid, expired, or not entitled to an OpenCode Go subscription; early upstream versions used `401` for both authentication and entitlement failures. Newer upstream versions may return `403` for a missing Go subscription, so TokenTracker handles that response defensively as well. Both cases are surfaced with actionable provider errors.
 
 ## Implementation boundaries
 
