@@ -74,6 +74,27 @@ async function writeClaudeSession(home, date, sessionId, totalTokens) {
   return filePath;
 }
 
+async function writeReasonixTelemetry(home, sessionId, totalTokens) {
+  const dir = path.join(home, ".reasonix", "projects", "sample", "sessions");
+  await fs.mkdir(dir, { recursive: true });
+  const basePath = path.join(dir, `${sessionId}.jsonl`);
+  await fs.writeFile(`${basePath}.telemetry.json`, JSON.stringify({
+    version: 2,
+    usage: {
+      promptTokens: totalTokens,
+      cacheMissTokens: totalTokens,
+      completionTokens: 0,
+      reasoningTokens: 0,
+      requestCount: 1,
+    },
+  }));
+  await fs.writeFile(`${basePath}.meta`, JSON.stringify({
+    id: sessionId,
+    model: "deepseek/deepseek-reasoner",
+    updated_at: "2026-06-30T00:00:00.000Z",
+  }));
+}
+
 async function withTempSyncEnv(fn) {
   const home = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-background-"));
   const saved = {
@@ -339,6 +360,18 @@ test("all-local background sync includes Claude while preserving lightweight beh
       fs.stat(path.join(home, ".tokentracker", "tracker", "queue.state.json")),
       { code: "ENOENT" },
     );
+  });
+});
+
+test("all-local background sync includes Reasonix telemetry", async () => {
+  await withTempSyncEnv(async (home) => {
+    await writeReasonixTelemetry(home, "reasonix-all-local", 61);
+
+    await cmdSync(["--auto", "--background", "--all-local-sources"]);
+
+    const queue = await readQueue(home);
+    assert.match(queue, /"source":"reasonix"/);
+    assert.match(queue, /"total_tokens":61/);
   });
 });
 
