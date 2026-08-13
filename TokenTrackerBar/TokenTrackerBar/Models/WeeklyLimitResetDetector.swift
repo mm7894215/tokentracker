@@ -245,6 +245,12 @@ extension UsageLimitsResponse {
                 ("secondary", "Ultimate Free Calls", qoder.secondaryWindow),
             ])
         }
+        if let qoderCn {
+            addGeneric("qoderCn", qoderCn.configured, qoderCn.error, [
+                ("primary", "Credits", qoderCn.primaryWindow),
+                ("secondary", "Ultimate Free Calls", qoderCn.secondaryWindow),
+            ])
+        }
 
         return out
     }
