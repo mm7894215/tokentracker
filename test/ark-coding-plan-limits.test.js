@@ -14,6 +14,8 @@ const {
   runCommand,
 } = require("../src/lib/ark-coding-plan-limits");
 
+const PROFILE_JSON = JSON.stringify({ profile: "coding-plan_test_region_personal", user_id: "test-user-001" });
+
 const USAGE_JSON = JSON.stringify({
   viewer: {
     auth_method: "sso",
@@ -96,6 +98,9 @@ function mockRunner({
           stderr: usageError ? "boom" : "",
           ...(usageError ? { error: usageError } : {}),
         };
+      }
+      if (args[0] === "profile") {
+        return { status: 0, stdout: PROFILE_JSON, stderr: "" };
       }
     }
     return { status: 1, stdout: "", stderr: "unknown command" };
@@ -228,6 +233,16 @@ test("fetchArkCodingPlanLimits discovers arkcli via where.exe on Windows", async
   assert.deepEqual(calls.find(({ command }) => command === "where")?.args, ["arkcli"]);
 });
 
+test("fetchArkCodingPlanLimits executes Ark commands through the Windows shell", async (t) => {
+  const options = [];
+  const runner = (command, args, commandOptions) => {
+    options.push({ command, commandOptions });
+    return mockRunner()(command, args);
+  };
+  await fetchArkCodingPlanLimits({ commandRunner: runner, home: tmpHome(t), platform: "win32" });
+  assert.ok(options.every(({ command, commandOptions }) => command === "where" || commandOptions.platform === "win32"));
+});
+
 test("fetchArkCodingPlanLimits does not serve cache windows past their reset_at", async (t) => {
   const home = tmpHome(t);
   const nowMs = Date.now();
@@ -238,6 +253,7 @@ test("fetchArkCodingPlanLimits does not serve cache windows past their reset_at"
     configured: true,
     error: null,
     plan_label: "Lite",
+    profile_identity: "coding-plan_test_region_personal:test-user-001",
     primary_window: { used_percent: 100, reset_at: expired, unit: "calls" },
     secondary_window: { used_percent: 50, reset_at: expired, unit: "calls" },
     tertiary_window: { used_percent: 10, reset_at: expired, unit: "calls" },
@@ -263,6 +279,7 @@ test("fetchArkCodingPlanLimits keeps only cache windows that have not reset", as
     configured: true,
     error: null,
     plan_label: "Lite",
+    profile_identity: "coding-plan_test_region_personal:test-user-001",
     primary_window: { used_percent: 100, reset_at: expired, unit: "calls" },
     secondary_window: { used_percent: 50, reset_at: future, unit: "calls" },
     tertiary_window: { used_percent: 10, reset_at: expired, unit: "calls" },
@@ -279,6 +296,20 @@ test("fetchArkCodingPlanLimits keeps only cache windows that have not reset", as
   assert.equal(result.primary_window, null);
   assert.equal(result.secondary_window.used_percent, 50);
   assert.equal(result.tertiary_window, null);
+});
+
+test("readArkCodingPlanLimitsCache expires an undated window even with a dated sibling", async (t) => {
+  const home = tmpHome(t);
+  const nowMs = Date.now();
+  writeArkCodingPlanLimitsCache({
+    configured: true,
+    primary_window: { used_percent: 90, reset_at: null, unit: "calls" },
+    secondary_window: { used_percent: 20, reset_at: new Date(nowMs + 86400_000).toISOString(), unit: "calls" },
+  }, { home, nowMs: nowMs - 13 * 3600_000 });
+
+  const result = require("../src/lib/ark-coding-plan-limits").readArkCodingPlanLimitsCache({ home, nowMs });
+  assert.equal(result.primary_window, null);
+  assert.equal(result.secondary_window.used_percent, 20);
 });
 
 test("fetchArkCodingPlanLimits runs the optional plan lookup alongside quota retrieval", async (t) => {
@@ -317,6 +348,24 @@ test("fetchArkCodingPlanLimits passes its cancellation signal to every Ark comma
     signal: controller.signal,
   });
   assert.equal(result.configured, true);
-  assert.equal(signals.length, 3);
+  assert.equal(signals.length, 4);
   assert.ok(signals.every(({ signal }) => signal === controller.signal));
+});
+
+test("fetchArkCodingPlanLimits refuses a cache from another profile", async (t) => {
+  const home = tmpHome(t);
+  const nowMs = Date.now();
+  writeArkCodingPlanLimitsCache({
+    configured: true,
+    profile_identity: "profile-a:user-a",
+    primary_window: { used_percent: 42, reset_at: new Date(nowMs + 3600_000).toISOString(), unit: "calls" },
+  }, { home, nowMs });
+  const runner = (command, args) => {
+    if (command === "which") return { status: 0, stdout: "/usr/local/bin/arkcli\n", stderr: "" };
+    if (args[0] === "profile") return { status: 0, stdout: JSON.stringify({ profile: "profile-b", user_id: "user-b" }), stderr: "" };
+    return { status: null, stdout: "", stderr: "", error: new Error("ETIMEDOUT") };
+  };
+  const result = await fetchArkCodingPlanLimits({ commandRunner: runner, home, nowMs });
+  assert.equal(result.stale, undefined);
+  assert.match(result.error, /ETIMEDOUT/);
 });

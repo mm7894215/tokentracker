@@ -28,7 +28,7 @@ const { fetchGrokLimits } = require("./grok-limits");
 const { fetchZcodeLimits } = require("./zcode-limits");
 const { fetchOpencodeGoLimits } = require("./opencode-go-limits");
 const { fetchQoderLimits, fetchQoderCnLimits } = require("./qoder-limits");
-const { fetchArkCodingPlanLimits, readArkCodingPlanLimitsCache } = require("./ark-coding-plan-limits");
+const { fetchArkCodingPlanLimits } = require("./ark-coding-plan-limits");
 const { fetchProviderServiceStatus } = require("./provider-status");
 const { readSqliteJsonRows, readSqliteJsonRowsAsync } = require("./sqlite-reader");
 
@@ -3247,8 +3247,7 @@ async function fetchUsageLimitsUncached({
       }),
       "Ark Coding Plan",
       providerTimeoutMs,
-    ).catch((reason) => readArkCodingPlanLimitsCache({ home, nowMs })
-      || { configured: true, error: reason?.message || "Unknown error" }),
+    ).catch((reason) => ({ configured: true, error: reason?.message || "Unknown error" })),
     // Public status-page probe (fail-soft, own 5-min cache in provider-status.js).
     // Only probed for configured accounts — without a token the Claude section
     // never renders, so the reading would have nowhere to go.

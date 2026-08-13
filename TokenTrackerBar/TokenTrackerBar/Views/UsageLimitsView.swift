@@ -111,6 +111,10 @@ struct UsageLimitsView: View {
                 if let qoder = limits.qoder, qoder.configured, qoder.error == nil {
                     groups.append(AnyView(toolSection(id: id, title: planTitle("Qoder", qoder.planLabel), assetName: "QoderLogo", toolName: "Qoder", specs: qoderSpecs(qoder), updatedAtISO: qoder.cachedAt, isStale: qoder.stale ?? false)))
                 }
+            case "codingPlan":
+                if let codingPlan = limits.codingPlan, codingPlan.configured, codingPlan.error == nil {
+                    groups.append(AnyView(toolSection(id: id, title: planTitle("Ark Coding Plan", codingPlan.planLabel), assetName: nil, toolName: "Ark Coding Plan", specs: codingPlanSpecs(codingPlan), updatedAtISO: codingPlan.cachedAt, isStale: codingPlan.stale ?? false)))
+                }
             default:
                 break
             }
@@ -357,6 +361,14 @@ struct UsageLimitsView: View {
         if let window = q.secondaryWindow {
             specs.append(makeSpec("Bonus", window.usedPercent, iso: window.resetAt))
         }
+        return specs
+    }
+
+    private func codingPlanSpecs(_ c: CodingPlanLimits) -> [LimitWindowSpec] {
+        var specs: [LimitWindowSpec] = []
+        if let w = c.primaryWindow { specs.append(makeSpec("5h", w.usedPercent, windowSeconds: 5 * 3600, iso: w.resetAt)) }
+        if let w = c.secondaryWindow { specs.append(makeSpec("Weekly", w.usedPercent, windowSeconds: 7 * 86400, iso: w.resetAt)) }
+        if let w = c.tertiaryWindow { specs.append(makeSpec("Monthly", w.usedPercent, iso: w.resetAt)) }
         return specs
     }
 

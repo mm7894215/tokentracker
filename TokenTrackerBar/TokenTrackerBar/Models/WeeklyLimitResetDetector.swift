@@ -245,6 +245,13 @@ extension UsageLimitsResponse {
                 ("secondary", "Ultimate Free Calls", qoder.secondaryWindow),
             ])
         }
+        if let codingPlan {
+            addGeneric("codingPlan", codingPlan.configured, codingPlan.error, [
+                ("primary", "5h", codingPlan.primaryWindow),
+                ("secondary", "Weekly", codingPlan.secondaryWindow),
+                ("tertiary", "Monthly", codingPlan.tertiaryWindow),
+            ])
+        }
 
         return out
     }

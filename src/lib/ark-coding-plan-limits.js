@@ -75,6 +75,16 @@ function normalizeArkPlansResponse(body) {
   return plan?.tier ? String(plan.tier) : null;
 }
 
+function arkProfileIdentity(body) {
+  const profile = body?.profile && typeof body.profile === "object" ? body.profile : body;
+  const name = typeof body?.profile === "string"
+    ? body.profile
+    : profile?.name || profile?.profile || profile?.profile_name;
+  const userId = profile?.user_id || profile?.userId || body?.user_id || body?.userId;
+  const identity = [name, userId].filter(Boolean).join(":");
+  return identity || null;
+}
+
 /**
  * Normalize the JSON payload returned by `arkcli usage plan --format json`.
  * Returns `null` when the account has no active Coding Plan subscription
@@ -114,6 +124,7 @@ function normalizeArkCodingPlanResponse(body) {
     secondary_window: windows.secondary_window || null,
     tertiary_window: windows.tertiary_window || null,
     source: "provider-api",
+    profile_identity: arkProfileIdentity(body.viewer),
   };
 }
 
@@ -121,9 +132,10 @@ function arkCodingPlanCachePath({ home = os.homedir() } = {}) {
   return path.join(home, ".tokentracker", "tracker", ARK_LIMITS_CACHE_FILE);
 }
 
-function readArkCodingPlanLimitsCache({ home = os.homedir(), nowMs = Date.now() } = {}) {
+function readArkCodingPlanLimitsCache({ home = os.homedir(), nowMs = Date.now(), profileIdentity } = {}) {
   try {
     const parsed = JSON.parse(fs.readFileSync(arkCodingPlanCachePath({ home }), "utf8"));
+    if (profileIdentity && parsed?.profile_identity !== profileIdentity) return null;
     const cachedAtMs = Date.parse(parsed?.cached_at || "");
     if (!Number.isFinite(cachedAtMs) || cachedAtMs > nowMs + 60_000) return null;
     // A window whose reset_at has passed is stale — the quota has already
@@ -136,17 +148,23 @@ function readArkCodingPlanLimitsCache({ home = os.homedir(), nowMs = Date.now() 
       return window;
     });
     if (surviving.every((window) => !window)) return null;
-    // Undated windows can't be checked against their reset — bound them by
-    // the cache write time instead.
-    const hasDated = surviving.some((window) => Number.isFinite(Date.parse(window?.reset_at || "")));
-    if (!hasDated && nowMs - cachedAtMs > ARK_LIMITS_CACHE_UNKNOWN_RESET_TTL_MS) return null;
+    // Undated windows can't be checked against a reset, so drop each one when
+    // the snapshot is too old. A future-dated sibling must not keep it alive.
+    const bounded = surviving.map((window) => {
+      if (!window) return null;
+      return Number.isFinite(Date.parse(window.reset_at || ""))
+        || nowMs - cachedAtMs <= ARK_LIMITS_CACHE_UNKNOWN_RESET_TTL_MS
+        ? window
+        : null;
+    });
+    if (bounded.every((window) => !window)) return null;
     return {
       configured: true,
       error: null,
       plan_label: typeof parsed?.plan_label === "string" ? parsed.plan_label : null,
-      primary_window: surviving[0],
-      secondary_window: surviving[1],
-      tertiary_window: surviving[2],
+      primary_window: bounded[0],
+      secondary_window: bounded[1],
+      tertiary_window: bounded[2],
       cached: true,
       stale: true,
       cached_at: parsed.cached_at,
@@ -162,6 +180,7 @@ function writeArkCodingPlanLimitsCache(limits, { home = os.homedir(), nowMs = Da
   const cachePath = arkCodingPlanCachePath({ home });
   const payload = {
     plan_label: limits.plan_label || null,
+    profile_identity: limits.profile_identity || null,
     primary_window: limits.primary_window || null,
     secondary_window: limits.secondary_window || null,
     tertiary_window: limits.tertiary_window || null,
@@ -192,6 +211,7 @@ function runCommand(commandRunner, command, args, options = {}) {
     timeout,
     maxBuffer,
     killProcessGroup = false,
+    platform = process.platform,
     signal,
     ...spawnOptions
   } = merged;
@@ -203,12 +223,15 @@ function runCommand(commandRunner, command, args, options = {}) {
       return;
     }
 
-    const useProcessGroup = killProcessGroup && process.platform !== "win32";
+    const useProcessGroup = killProcessGroup && platform !== "win32";
     let child;
     try {
       child = cp.spawn(command, args, {
         ...spawnOptions,
         detached: useProcessGroup || spawnOptions.detached,
+        // npm installs CLI entrypoints as .cmd shims on Windows. Node's spawn
+        // cannot execute those shims directly, whereas shell execution can.
+        shell: platform === "win32",
         stdio: ["ignore", "pipe", "pipe"],
       });
     } catch (error) {
@@ -307,6 +330,7 @@ async function whichBinary(binary, { commandRunner, platform = process.platform,
   const result = await runCommand(commandRunner, probe, [binary], {
     timeout: 2000,
     signal,
+    platform,
     killProcessGroup: true,
   });
   if (result?.error || result?.status !== 0) return null;
@@ -358,8 +382,9 @@ async function fetchArkCodingPlanLimits({
     timeout: ARK_USAGE_PLAN_TIMEOUT_MS,
     signal,
     killProcessGroup: true,
+    platform,
   };
-  const [plansResult, result] = await Promise.all([
+  const [plansResult, result, profileResult] = await Promise.all([
     runCommand(
       commandRunner,
       "arkcli",
@@ -372,7 +397,18 @@ async function fetchArkCodingPlanLimits({
       ["usage", "plan", "--format", "json"],
       commandOptions,
     ),
+    runCommand(
+      commandRunner,
+      "arkcli",
+      ["profile", "show", "--format", "json"],
+      commandOptions,
+    ),
   ]);
+
+  let profileIdentity = null;
+  if (!profileResult?.error && profileResult?.status === 0) {
+    try { profileIdentity = arkProfileIdentity(JSON.parse(String(profileResult.stdout || ""))); } catch (_error) {}
+  }
 
   let tier = null;
   if (!plansResult?.error && plansResult?.status === 0) {
@@ -382,7 +418,7 @@ async function fetchArkCodingPlanLimits({
   }
 
   const failWithCache = (message) => {
-    const cached = readArkCodingPlanLimitsCache({ home, nowMs });
+    const cached = readArkCodingPlanLimitsCache({ home, nowMs, profileIdentity });
     if (cached) return cached;
     return { configured: true, error: message };
   };
@@ -412,6 +448,7 @@ async function fetchArkCodingPlanLimits({
   if (!limits) return { configured: false };
 
   if (tier && !limits.plan_label) limits.plan_label = planLabelForTier(tier);
+  limits.profile_identity = profileIdentity || limits.profile_identity;
 
   writeArkCodingPlanLimitsCache(limits, { home, nowMs });
   return limits;
@@ -420,6 +457,7 @@ async function fetchArkCodingPlanLimits({
 module.exports = {
   ARK_PERIOD_WINDOW,
   normalizeArkPlansResponse,
+  arkProfileIdentity,
   normalizeArkCodingPlanResponse,
   readArkCodingPlanLimitsCache,
   writeArkCodingPlanLimitsCache,

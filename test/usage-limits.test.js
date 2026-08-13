@@ -3485,7 +3485,7 @@ describe("getUsageLimits plan_label", () => {
 });
 
 describe("getUsageLimits Ark timeout fallback", () => {
-  it("returns a cached Ark snapshot on timeout and forwards the requested platform", async () => {
+  it("does not return an unverified Ark cache after timeout and forwards the requested platform", async () => {
     resetUsageLimitsCache();
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tokentracker-limits-ark-timeout-"));
     try {
@@ -3524,9 +3524,8 @@ describe("getUsageLimits Ark timeout fallback", () => {
 
       assert.deepEqual(calls.find(({ command }) => command === "where")?.args, ["arkcli"]);
       assert.equal(result.codingPlan.configured, true);
-      assert.equal(result.codingPlan.stale, true);
-      assert.equal(result.codingPlan.source, "disk-cache");
-      assert.equal(result.codingPlan.primary_window.used_percent, 42);
+      assert.equal(result.codingPlan.stale, undefined);
+      assert.match(result.codingPlan.error, /timed out/i);
     } finally {
       resetUsageLimitsCache();
       fs.rmSync(tmp, { recursive: true, force: true });
