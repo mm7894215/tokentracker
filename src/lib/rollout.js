@@ -16378,6 +16378,266 @@ function readTraeEntitlementFromStorage(storagePath) {
   };
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// DeepSeek Harness (dsh) — passive reader of the harness's session logs.
+//
+// The DeepSeek Harness SDK persists each agent session as an append-only JSONL
+// log under `<harness-home>/sessions/<project-key>/<session-id>/session.jsonl[.zstd]`
+// (default `~/.dsh/sessions`; `$DSH_HOME` / TOKENTRACKER_DSH_HOME override). The first line is a `type: "session"` header;
+// every following line is a `SessionEvent` carrying `type`, `seq`, `time`
+// (epoch ms), and `data`. Token accounting rides on `assistant/message` events
+// (`data.usage`), and the model on the same event's `data.message.source.model`
+// (falling back to the most recent `request/header` config). Usage counts are
+// DISJOINT — `inputTokens` is uncached input only, cache reads/writes and
+// reasoning travel separately — so the mapping to our queue columns is direct
+// (no cache subtraction, unlike Codex).
+//
+// Zstd artifacts are a concatenated-frame container: Node's
+// `zlib.zstdDecompressSync` decodes only the first frame (silently dropping
+// every event line), so we use `@mongodb-js/zstd`'s streaming `decompress()`,
+// which reassembles all frames. Dedup is a per-file `lastSeq` watermark — seq
+// is monotonic within a session log, so an append-only grow re-reads the file
+// and skips everything at or below the watermark; a torn-tail repair or full
+// rewrite re-reads the same seqs and is therefore idempotent.
+const DSH_SESSION_LOG_MAX_BYTES = 64 * 1024 * 1024;
+const DSH_SOURCE = "dsh";
+
+// Precedence mirrors the harness's own resolveDshHome: an explicit
+// TokenTracker override, then the harness's $DSH_HOME, then `~/.dsh`. Tests
+// isolate $DSH_HOME via the `withHome` helper, so honoring it here cannot leak
+// the real home past test isolation.
+function resolveDshHome(env = process.env) {
+  const explicit =
+    (typeof env?.TOKENTRACKER_DSH_HOME === "string" && env.TOKENTRACKER_DSH_HOME.trim()) ||
+    (typeof env?.DSH_HOME === "string" && env.DSH_HOME.trim()) ||
+    "";
+  if (explicit) return path.resolve(explicit);
+  return path.join(os.homedir(), ".dsh");
+}
+
+function isDshSessionLogName(name) {
+  return name === "session.jsonl" || name === "session.jsonl.zstd";
+}
+
+// Walk the harness sessions root for per-session log artifacts. The tree is
+// `<sessions-root>/<project-key>/<session-id>/session.jsonl[.zstd]`; only the
+// exact leaf names are collected so unrelated harness files are ignored.
+async function resolveDshSessionFiles(env = process.env) {
+  const sessionsRoot = path.join(resolveDshHome(env), "sessions");
+  const out = [];
+  const walk = async (dir, depth) => {
+    if (depth > 4) return;
+    const entries = await safeReadDir(dir);
+    for (const entry of entries) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        await walk(full, depth + 1);
+      } else if (entry.isFile() && isDshSessionLogName(entry.name)) {
+        out.push(full);
+      }
+    }
+  };
+  await walk(sessionsRoot, 0);
+  out.sort((a, b) => a.localeCompare(b));
+  return out;
+}
+
+// Decode a concatenated-frame Zstandard container. Must use the streaming
+// @mongodb-js/zstd decoder — see the section comment above.
+async function decodeDshZstd(data) {
+  return Buffer.from(await require("@mongodb-js/zstd").decompress(data));
+}
+
+// Read one session log to plaintext, decompressing zstd artifacts. Returns
+// null for a missing/non-file path so callers treat it as a no-op.
+async function readDshSessionText(filePath) {
+  const st = await fs.stat(filePath).catch(() => null);
+  if (!st || !st.isFile()) return null;
+  if (st.size > DSH_SESSION_LOG_MAX_BYTES) {
+    throw new Error(`DeepSeek Harness session log exceeds ${DSH_SESSION_LOG_MAX_BYTES} bytes`);
+  }
+  if (filePath.endsWith(".zstd")) {
+    const data = await fs.readFile(filePath);
+    if (data.length === 0) return "";
+    return (await decodeDshZstd(data)).toString("utf8");
+  }
+  return fs.readFile(filePath, "utf8");
+}
+
+// Drop a provider-qualified model id prefix ("deepseek/deepseek-v4-pro" →
+// "deepseek-v4-pro"). The harness emits a bare id today, but the source
+// vocabulary is provider-qualified elsewhere; keep the mapping cheap.
+function normalizeDshModelName(value) {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const slash = trimmed.lastIndexOf("/");
+  const name = slash >= 0 ? trimmed.slice(slash + 1) : trimmed;
+  return name ? name : null;
+}
+
+// Convert a harness `TokenUsage` object into our queue `totals` delta. Counts
+// are disjoint, so every column maps 1:1; returns null for an all-zero usage.
+function dshUsageToTotals(usage) {
+  if (!usage || typeof usage !== "object") return null;
+  const input = toNonNegativeInt(usage.inputTokens);
+  const output = toNonNegativeInt(usage.outputTokens);
+  const cacheRead = toNonNegativeInt(usage.cacheReadTokens);
+  const cacheWrite = toNonNegativeInt(usage.cacheWriteTokens);
+  const reasoning = toNonNegativeInt(usage.reasoningTokens);
+  if (input === 0 && output === 0 && cacheRead === 0 && cacheWrite === 0 && reasoning === 0) {
+    return null;
+  }
+  return {
+    input_tokens: input,
+    cached_input_tokens: cacheRead,
+    cache_creation_input_tokens: cacheWrite,
+    output_tokens: output,
+    reasoning_output_tokens: reasoning,
+    total_tokens: input + output + cacheRead + cacheWrite + reasoning,
+    conversation_count: 1,
+  };
+}
+
+// Parse one session log's plaintext into usage deltas, skipping events whose
+// seq is at or below the watermark. Returns the deltas (each carrying the
+// model and epoch-ms timestamp), the highest seq seen, and the session id.
+function extractDshSessionUsage(text, lastSeq = -1) {
+  const deltas = [];
+  const watermark = Number.isFinite(lastSeq) ? lastSeq : -1;
+  let maxSeq = watermark;
+  let sessionId = null;
+  let headerModel = null;
+
+  const lines = String(text || "").split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (!line || !line.trim()) continue;
+    let event;
+    try {
+      event = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (!event || typeof event !== "object") continue;
+
+    if (event.type === "session") {
+      if (typeof event.id === "string" && event.id) sessionId = event.id;
+      continue;
+    }
+
+    const seq = Number(event.seq);
+    const seqKnown = Number.isFinite(seq) && seq >= 0;
+    if (seqKnown && seq > maxSeq) maxSeq = seq;
+
+    const data = event.data && typeof event.data === "object" ? event.data : null;
+    if (!data) continue;
+
+    if (event.type === "request/header") {
+      const model = data.header?.config?.model;
+      const normalized = normalizeDshModelName(model);
+      if (normalized) headerModel = normalized;
+      continue;
+    }
+
+    if (event.type !== "assistant/message") continue;
+    if (seqKnown && seq <= watermark) continue;
+
+    const model = normalizeDshModelName(data.message?.source?.model) || headerModel;
+    const totals = dshUsageToTotals(data.usage);
+    if (!model || !totals) continue;
+
+    const timeMs = Number(event.time);
+    if (!Number.isFinite(timeMs) || timeMs <= 0) continue;
+
+    deltas.push({ model, timeMs, totals });
+  }
+
+  return { deltas, maxSeq, sessionId };
+}
+
+// Incremental parser entrypoint. Mirrors the other passive JSONL readers:
+// identity-check each file (inode/size/mtime), re-read + re-parse only when it
+// changed, dedup via the per-file seq watermark, accumulate into hourly
+// buckets, then flush touched buckets to the queue.
+async function parseDshIncremental({ sessionFiles, cursors, queuePath, onProgress }) {
+  await ensureDir(path.dirname(queuePath));
+  if (!cursors || typeof cursors !== "object") cursors = {};
+  if (!cursors.dsh || typeof cursors.dsh !== "object") cursors.dsh = {};
+  const dshState = cursors.dsh;
+  const fileState =
+    dshState.files && typeof dshState.files === "object" ? dshState.files : {};
+
+  const hourlyState = normalizeHourlyState(cursors?.hourly);
+  const touchedBuckets = new Set();
+  const cb = typeof onProgress === "function" ? onProgress : null;
+
+  const files = Array.isArray(sessionFiles) ? sessionFiles : [];
+  const total = files.length;
+  let recordsProcessed = 0;
+  let eventsAggregated = 0;
+
+  for (let idx = 0; idx < files.length; idx++) {
+    const filePath = files[idx];
+    const st = await fs.stat(filePath).catch(() => null);
+    if (!st || !st.isFile()) continue;
+
+    const prev = fileState[filePath] || null;
+    const inode = st.ino || 0;
+    const size = Number.isFinite(st.size) ? st.size : 0;
+    const mtimeMs = Number.isFinite(st.mtimeMs) ? st.mtimeMs : 0;
+    const unchanged =
+      prev &&
+      prev.inode === inode &&
+      prev.size === size &&
+      prev.mtimeMs === mtimeMs;
+    if (unchanged) {
+      if (cb) {
+        cb({ index: idx + 1, total, recordsProcessed, eventsAggregated, bucketsQueued: touchedBuckets.size });
+      }
+      continue;
+    }
+
+    const text = await readDshSessionText(filePath);
+    if (text == null) continue;
+
+    const lastSeq = Number.isFinite(prev?.lastSeq) ? prev.lastSeq : -1;
+    const parsed = extractDshSessionUsage(text, lastSeq);
+
+    for (const delta of parsed.deltas) {
+      const bucketStart = toUtcHalfHourStart(delta.timeMs);
+      if (!bucketStart) continue;
+      const bucket = getHourlyBucket(hourlyState, DSH_SOURCE, delta.model, bucketStart);
+      addTotals(bucket.totals, delta.totals);
+      touchedBuckets.add(bucketKey(DSH_SOURCE, delta.model, bucketStart));
+      eventsAggregated += 1;
+    }
+
+    fileState[filePath] = {
+      inode,
+      size,
+      mtimeMs,
+      sessionId: parsed.sessionId || null,
+      lastSeq: parsed.maxSeq,
+      updatedAt: new Date().toISOString(),
+    };
+    recordsProcessed += 1;
+
+    if (cb) {
+      cb({ index: idx + 1, total, recordsProcessed, eventsAggregated, bucketsQueued: touchedBuckets.size });
+    }
+  }
+
+  const bucketsQueued = await enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets });
+  hourlyState.updatedAt = new Date().toISOString();
+  cursors.hourly = hourlyState;
+  dshState.files = fileState;
+  dshState.updatedAt = new Date().toISOString();
+
+  return { recordsProcessed, eventsAggregated, bucketsQueued };
+}
+
+
 module.exports = {
   listRolloutFiles,
   listRolloutFilesDeep,
@@ -16553,4 +16813,13 @@ module.exports = {
   resolveTraePath,
   resolveTraeStoragePath,
   readTraeEntitlementFromStorage,
+  // DeepSeek Harness (dsh) — passive session-log reader
+  resolveDshHome,
+  resolveDshSessionFiles,
+  readDshSessionText,
+  decodeDshZstd,
+  normalizeDshModelName,
+  dshUsageToTotals,
+  extractDshSessionUsage,
+  parseDshIncremental,
 };

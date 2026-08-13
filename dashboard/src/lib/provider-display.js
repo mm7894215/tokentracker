@@ -3,6 +3,7 @@ import { copy } from "./copy";
 const SPECIAL_PROVIDER_NAMES = {
   anythingllm: "AnythingLLM",
   claudescience: "Claude Science",
+  dsh: "DeepSeek Harness",
   pianthropic: "Pi · Anthropic",
   pigithubcopilot: "Pi · GitHub Copilot",
   picopilot: "Pi · Copilot",

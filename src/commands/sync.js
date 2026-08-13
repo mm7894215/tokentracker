@@ -108,6 +108,8 @@ const {
   parseDroidIncremental,
   droidSessionIdFromPath,
   resolveDroidModel,
+  resolveDshSessionFiles,
+  parseDshIncremental,
   bucketKey,
   toUtcHalfHourStart,
   totalsKey,
@@ -265,6 +267,7 @@ const AUTO_SYNC_SOURCES = new Set([
   "craft",
   "cursor",
   "droid",
+  "dsh",
   "every-code",
   "gemini",
   "goose",
@@ -1397,6 +1400,31 @@ async function cmdSync(argv, context = {}) {
           `Parsing ${label} ${renderBar(pct)} ${formatNumber(p.index)}/${formatNumber(p.total)} records | buckets ${formatNumber(p.bucketsQueued)}`,
         );
       };
+    }
+
+    // ── DeepSeek Harness — passive read of ~/.dsh/sessions session logs ──
+    let dshResult = { recordsProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
+    if (sourceAllowed("dsh")) {
+      const dshSessionFiles = await resolveDshSessionFiles(process.env);
+      if (dshSessionFiles.length > 0) {
+        if (progress?.enabled) {
+          progress.start(
+            `Parsing DeepSeek Harness ${renderBar(0)} 0/${formatNumber(
+              dshSessionFiles.length,
+            )} sessions | buckets 0`,
+          );
+        }
+        try {
+          dshResult = await parseDshIncremental({
+            sessionFiles: dshSessionFiles,
+            cursors,
+            queuePath,
+            onProgress: makeProviderProgress("DeepSeek Harness"),
+          });
+        } catch (err) {
+          warnProviderParseFailure("DeepSeek Harness", err, opts);
+        }
+      }
     }
 
     // ── AnythingLLM Desktop (workspace_chats.response.metrics) ──
@@ -2544,6 +2572,7 @@ async function cmdSync(argv, context = {}) {
       roocodeResult.recordsProcessed +
       zedResult.recordsProcessed +
       gooseResult.recordsProcessed +
+      dshResult.recordsProcessed +
       droidResult.recordsProcessed;
     const totalBuckets =
       parseResult.bucketsQueued +
@@ -2577,6 +2606,7 @@ async function cmdSync(argv, context = {}) {
       roocodeResult.bucketsQueued +
       zedResult.bucketsQueued +
       gooseResult.bucketsQueued +
+      dshResult.bucketsQueued +
       droidResult.bucketsQueued;
     const skipNoOpCursorCommit =
       opts.auto &&
