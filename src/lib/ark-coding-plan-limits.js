@@ -175,10 +175,9 @@ function writeArkCodingPlanLimitsCache(limits, { home = os.homedir(), nowMs = Da
   } catch (_error) {}
 }
 
-// Minimal spawn wrapper in the same shape as usage-limits.runCommand:
-// resolves a spawnSync-shaped { status, stdout, stderr, error? } so tests can
-// inject a synchronous `commandRunner` function. Self-contained to keep this
-// module free of a circular dependency on usage-limits.js.
+// Async command runner in the same shape as usage-limits.runCommand. It
+// intentionally owns its child-process lifecycle so the provider-level abort
+// signal can stop spawned CLI processes instead of merely racing their result.
 function runCommand(commandRunner, command, args, options = {}) {
   const merged = {
     encoding: "utf8",
@@ -188,41 +187,95 @@ function runCommand(commandRunner, command, args, options = {}) {
   if (typeof commandRunner === "function") {
     return Promise.resolve(commandRunner(command, args, merged));
   }
-  const { timeout, ...spawnOptions } = merged;
+
+  const {
+    timeout,
+    killProcessGroup = false,
+    signal,
+    ...spawnOptions
+  } = merged;
   return new Promise((resolve) => {
+    if (signal?.aborted) {
+      const error = new Error(`spawn ${command} aborted`);
+      error.name = "AbortError";
+      resolve({ status: null, stdout: "", stderr: "", error });
+      return;
+    }
+
+    const useProcessGroup = killProcessGroup && process.platform !== "win32";
     let child;
     try {
       child = cp.spawn(command, args, {
         ...spawnOptions,
+        detached: useProcessGroup || spawnOptions.detached,
         stdio: ["ignore", "pipe", "pipe"],
       });
     } catch (error) {
       resolve({ status: null, stdout: "", stderr: "", error });
       return;
     }
+
     let stdout = "";
     let stderr = "";
     let settled = false;
+    let timedOut = false;
     let timer = null;
-    const settle = (result) => {
+    let hardTimer = null;
+    let abortListener = null;
+
+    const settle = ({ status = null, error = null } = {}) => {
       if (settled) return;
       settled = true;
       if (timer) clearTimeout(timer);
+      if (hardTimer) clearTimeout(hardTimer);
+      if (abortListener) signal?.removeEventListener("abort", abortListener);
+      let finalError = error;
+      if (!finalError && timedOut) {
+        finalError = new Error(`spawn ${command} ETIMEDOUT`);
+        finalError.code = "ETIMEDOUT";
+      }
+      const result = { status, stdout, stderr };
+      if (finalError) result.error = finalError;
       resolve(result);
     };
+
+    const signalChild = (killSignal) => {
+      try {
+        if (useProcessGroup && Number.isInteger(child.pid)) {
+          process.kill(-child.pid, killSignal);
+        } else {
+          child.kill(killSignal);
+        }
+      } catch (_error) {}
+    };
+
+    const stopChild = ({ timeoutExpired = false } = {}) => {
+      if (settled) return;
+      if (timeoutExpired) timedOut = true;
+      signalChild("SIGTERM");
+      // A CLI may leave descendants or inherited stdio alive after SIGTERM.
+      // Escalate after a short grace period and settle even if close never fires.
+      hardTimer = setTimeout(() => {
+        signalChild("SIGKILL");
+        settle({ status: null });
+      }, 1000);
+      if (typeof hardTimer.unref === "function") hardTimer.unref();
+    };
+
     child.stdout?.setEncoding("utf8");
     child.stderr?.setEncoding("utf8");
     child.stdout?.on("data", (chunk) => { stdout += chunk; });
     child.stderr?.on("data", (chunk) => { stderr += chunk; });
-    child.on("error", (error) => settle({ status: null, stdout, stderr, error }));
-    child.on("close", (code) => settle({ status: code, stdout, stderr }));
+    child.on("error", (error) => settle({ status: null, error }));
+    child.on("close", (code) => settle({ status: timedOut ? null : code }));
+
+    if (signal) {
+      abortListener = () => stopChild();
+      signal.addEventListener("abort", abortListener, { once: true });
+      if (signal.aborted) abortListener();
+    }
     if (Number.isFinite(timeout) && timeout > 0) {
-      timer = setTimeout(() => {
-        try { child.kill("SIGTERM"); } catch (_error) {}
-        const error = new Error(`spawn ${command} ETIMEDOUT`);
-        error.code = "ETIMEDOUT";
-        settle({ status: null, stdout, stderr, error });
-      }, timeout);
+      timer = setTimeout(() => stopChild({ timeoutExpired: true }), timeout);
     }
   });
 }
@@ -231,16 +284,20 @@ function runCommand(commandRunner, command, args, options = {}) {
 // (it has `where.exe` instead), so blindly spawning `which` there returns
 // ENOENT and every provider would report itself unconfigured even when the
 // binary is installed and signed in.
-async function whichBinary(binary, { commandRunner, platform = process.platform } = {}) {
+async function whichBinary(binary, { commandRunner, platform = process.platform, signal } = {}) {
   const probe = platform === "win32" ? "where" : "which";
-  const result = await runCommand(commandRunner, probe, [binary], { timeout: 2000 });
+  const result = await runCommand(commandRunner, probe, [binary], {
+    timeout: 2000,
+    signal,
+    killProcessGroup: true,
+  });
   if (result?.error || result?.status !== 0) return null;
   const stdout = typeof result?.stdout === "string" ? result.stdout.trim() : "";
   return stdout ? stdout.split("\n")[0] : null;
 }
 
-async function isBinaryAvailable(binary, { commandRunner, platform } = {}) {
-  return (await whichBinary(binary, { commandRunner, platform })) !== null;
+async function isBinaryAvailable(binary, { commandRunner, platform, signal } = {}) {
+  return (await whichBinary(binary, { commandRunner, platform, signal })) !== null;
 }
 
 function trimStderr(stderr) {
@@ -266,36 +323,45 @@ async function fetchArkCodingPlanLimits({
   home = os.homedir(),
   nowMs = Date.now(),
   platform = process.platform,
+  signal,
 } = {}) {
   let available;
   try {
-    available = await isBinaryAvailable("arkcli", { commandRunner, platform });
+    available = await isBinaryAvailable("arkcli", { commandRunner, platform, signal });
   } catch (_error) {
     available = false;
   }
   if (!available) return { configured: false };
 
-  // The tier lives on `plans get`; the quota windows on `usage plan`. Resolve
-  // the tier first, non-fatally — a failure only costs the plan label.
+  // `usage plan` is essential; `plans get` supplies only a fallback tier label.
+  // Run both requests together so a slow optional lookup cannot consume the
+  // provider's deadline before the quota response is available.
+  const commandOptions = {
+    timeout: ARK_USAGE_PLAN_TIMEOUT_MS,
+    signal,
+    killProcessGroup: true,
+  };
+  const [plansResult, result] = await Promise.all([
+    runCommand(
+      commandRunner,
+      "arkcli",
+      ["plans", "get", "--format", "json"],
+      commandOptions,
+    ),
+    runCommand(
+      commandRunner,
+      "arkcli",
+      ["usage", "plan", "--format", "json"],
+      commandOptions,
+    ),
+  ]);
+
   let tier = null;
-  const plansResult = await runCommand(
-    commandRunner,
-    "arkcli",
-    ["plans", "get", "--format", "json"],
-    { timeout: ARK_USAGE_PLAN_TIMEOUT_MS },
-  );
   if (!plansResult?.error && plansResult?.status === 0) {
     try {
       tier = normalizeArkPlansResponse(JSON.parse(String(plansResult.stdout || "")));
     } catch (_error) {}
   }
-
-  const result = await runCommand(
-    commandRunner,
-    "arkcli",
-    ["usage", "plan", "--format", "json"],
-    { timeout: ARK_USAGE_PLAN_TIMEOUT_MS },
-  );
 
   const failWithCache = (message) => {
     const cached = readArkCodingPlanLimitsCache({ home, nowMs });

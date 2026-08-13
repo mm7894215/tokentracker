@@ -143,6 +143,17 @@ function withProviderTimeout(promise, label, timeoutMs) {
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
+// Provider timeouts normally race a promise so that an uncooperative remote
+// request cannot block all limit reads. Local CLI providers also need an abort
+// signal: without it, their spawned commands may continue after the caller has
+// already received a timeout result.
+function withAbortableProviderTimeout(start, label, timeoutMs) {
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) return start(undefined);
+  const controller = new AbortController();
+  return withProviderTimeout(start(controller.signal), label, timeoutMs)
+    .finally(() => controller.abort());
+}
+
 function parseRetryAfterSeconds(headers) {
   const ra = headers?.get ? headers.get("retry-after") : null;
   const sec = ra ? Number.parseInt(ra, 10) : NaN;
@@ -3226,11 +3237,12 @@ async function fetchUsageLimitsUncached({
     // arkcli binary. No token-consumption source — consumption for the
     // compatible CLIs is already counted from their local files; this only
     // surfaces the 5h/week/month quota percentages.
-    withProviderTimeout(
-      fetchArkCodingPlanLimits({
+    withAbortableProviderTimeout(
+      (signal) => fetchArkCodingPlanLimits({
         commandRunner,
         home,
         nowMs,
+        signal,
       }),
       "Ark Coding Plan",
       providerTimeoutMs,

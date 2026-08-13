@@ -16,8 +16,8 @@ const {
 const USAGE_JSON = JSON.stringify({
   viewer: {
     auth_method: "sso",
-    user_id: "2126262990",
-    profile: "coding-plan_cn-beijing_personal",
+    user_id: "test-user-001",
+    profile: "coding-plan_test_region_personal",
   },
   items: [
     {
@@ -197,7 +197,7 @@ test("fetchArkCodingPlanLimits surfaces an error when nothing is usable", async 
 test("fetchArkCodingPlanLimits discovers arkcli via where.exe on Windows", async (t) => {
   const calls = [];
   const runner = (command, args) => {
-    calls.push(command);
+    calls.push({ command, args });
     return mockRunner()(command, args);
   };
   const result = await fetchArkCodingPlanLimits({
@@ -210,8 +210,10 @@ test("fetchArkCodingPlanLimits discovers arkcli via where.exe on Windows", async
   // Native Windows discovery must use `where`, never the Unix `which` — on
   // Windows `which` does not exist, so spawning it returns ENOENT and every
   // provider would look unconfigured even when arkcli is installed.
-  assert.ok(calls.includes("where"), `expected where.exe probe, got calls: ${calls.join(", ")}`);
-  assert.ok(!calls.includes("which"), `must not use which on win32, got calls: ${calls.join(", ")}`);
+  const commands = calls.map(({ command }) => command);
+  assert.ok(commands.includes("where"), `expected where.exe probe, got calls: ${commands.join(", ")}`);
+  assert.ok(!commands.includes("which"), `must not use which on win32, got calls: ${commands.join(", ")}`);
+  assert.deepEqual(calls.find(({ command }) => command === "where")?.args, ["arkcli"]);
 });
 
 test("fetchArkCodingPlanLimits does not serve cache windows past their reset_at", async (t) => {
@@ -238,4 +240,71 @@ test("fetchArkCodingPlanLimits does not serve cache windows past their reset_at"
   assert.equal(result.stale, undefined, "expired cache must not be served as stale data");
   assert.equal(result.source, undefined);
   assert.match(result.error, /ETIMEDOUT/);
+});
+
+test("fetchArkCodingPlanLimits keeps only cache windows that have not reset", async (t) => {
+  const home = tmpHome(t);
+  const nowMs = Date.now();
+  const expired = new Date(nowMs - 60_000).toISOString();
+  const future = new Date(nowMs + 60_000).toISOString();
+  writeArkCodingPlanLimitsCache({
+    configured: true,
+    error: null,
+    plan_label: "Lite",
+    primary_window: { used_percent: 100, reset_at: expired, unit: "calls" },
+    secondary_window: { used_percent: 50, reset_at: future, unit: "calls" },
+    tertiary_window: { used_percent: 10, reset_at: expired, unit: "calls" },
+  }, { home, nowMs });
+
+  const result = await fetchArkCodingPlanLimits({
+    commandRunner: mockRunner({ usageError: new Error("ETIMEDOUT"), usageStatus: null }),
+    home,
+    nowMs,
+  });
+  assert.equal(result.configured, true);
+  assert.equal(result.stale, true);
+  assert.equal(result.source, "disk-cache");
+  assert.equal(result.primary_window, null);
+  assert.equal(result.secondary_window.used_percent, 50);
+  assert.equal(result.tertiary_window, null);
+});
+
+test("fetchArkCodingPlanLimits runs the optional plan lookup alongside quota retrieval", async (t) => {
+  let usageStarted = false;
+  const runner = (command, args) => {
+    if (command === "which") return { status: 0, stdout: "/usr/local/bin/arkcli\n", stderr: "" };
+    if (command === "arkcli" && args[0] === "plans") {
+      return new Promise((resolve) => setTimeout(() => {
+        assert.equal(usageStarted, true, "usage plan should begin before plans get finishes");
+        resolve({ status: 0, stdout: PLANS_JSON, stderr: "" });
+      }, 10));
+    }
+    if (command === "arkcli" && args[0] === "usage") {
+      usageStarted = true;
+      return { status: 0, stdout: usageJsonFor(), stderr: "" };
+    }
+    return { status: 1, stdout: "", stderr: "unknown command" };
+  };
+
+  const result = await fetchArkCodingPlanLimits({ commandRunner: runner, home: tmpHome(t) });
+  assert.equal(result.configured, true);
+  assert.equal(result.plan_label, "Lite");
+});
+
+test("fetchArkCodingPlanLimits passes its cancellation signal to every Ark command", async (t) => {
+  const controller = new AbortController();
+  const signals = [];
+  const runner = (command, args, options) => {
+    signals.push({ command, signal: options?.signal });
+    return mockRunner()(command, args);
+  };
+
+  const result = await fetchArkCodingPlanLimits({
+    commandRunner: runner,
+    home: tmpHome(t),
+    signal: controller.signal,
+  });
+  assert.equal(result.configured, true);
+  assert.equal(signals.length, 3);
+  assert.ok(signals.every(({ signal }) => signal === controller.signal));
 });
