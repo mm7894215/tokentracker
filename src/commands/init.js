@@ -66,6 +66,7 @@ const {
   resolvePiAgentDir,
   piAgentDirCollidesWithOmp,
   resolveAnythingllmDbPath,
+  resolveReasonixHome,
   resolveTraeStoragePath,
 } = require("../lib/rollout");
 const { resolveRuntimeConfig, DEFAULT_BASE_URL } = require("../lib/runtime-config");
@@ -720,8 +721,7 @@ async function applyIntegrationSetup({
 
   // Reasonix: passive reader of content-free *.jsonl.telemetry.json sidecars.
   {
-    const reasonixHome = process.env.TOKENTRACKER_REASONIX_HOME ||
-      process.env.REASONIX_STATE_HOME || path.join(home, ".reasonix");
+    const reasonixHome = resolveReasonixHome(process.env);
     if (fssync.existsSync(reasonixHome)) {
       summary.push({ label: "Reasonix", status: "detected", detail: "Passive telemetry reader (no hook needed)" });
     }

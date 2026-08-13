@@ -57,6 +57,7 @@ test("parseReasonixIncremental maps cache and reasoning without double-counting"
       promptTokens: 1_000,
       cacheHitTokens: 800,
       cacheMissTokens: 200,
+      cacheWriteTokens: 60,
       completionTokens: 300,
       reasoningTokens: 120,
       requestCount: 2,
@@ -66,8 +67,9 @@ test("parseReasonixIncremental maps cache and reasoning without double-counting"
     assert.deepEqual(first, { recordsProcessed: 1, eventsAggregated: 1, bucketsQueued: 1 });
     assert.equal(row.source, "reasonix");
     assert.equal(row.model, "deepseek-reasoner");
-    assert.equal(row.input_tokens, 200);
+    assert.equal(row.input_tokens, 140);
     assert.equal(row.cached_input_tokens, 800);
+    assert.equal(row.cache_creation_input_tokens, 60);
     assert.equal(row.output_tokens, 180);
     assert.equal(row.reasoning_output_tokens, 120);
     assert.equal(row.total_tokens, 1_300);
@@ -111,6 +113,34 @@ test("parseReasonixIncremental emits only cumulative growth", async () => {
     assert.equal(latest.reasoning_output_tokens, 8);
     assert.equal(latest.total_tokens, 137);
     assert.equal(latest.conversation_count, 2);
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("parseReasonixIncremental preserves request-only cumulative growth", async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "tt-reasonix-requests-"));
+  const queuePath = path.join(home, "queue.jsonl");
+  const cursors = {};
+  try {
+    const usage = {
+      promptTokens: 10,
+      cacheMissTokens: 10,
+      completionTokens: 2,
+      reasoningTokens: 1,
+      requestCount: 1,
+    };
+    const telemetryPath = writeSession(home, "session-1", usage);
+    await parseReasonixIncremental({ telemetryFiles: [telemetryPath], cursors, queuePath });
+
+    writeSession(home, "session-1", { ...usage, requestCount: 2 });
+    const second = await parseReasonixIncremental({ telemetryFiles: [telemetryPath], cursors, queuePath });
+    assert.deepEqual(second, { recordsProcessed: 1, eventsAggregated: 1, bucketsQueued: 1 });
+    assert.equal(readRows(queuePath).at(-1).conversation_count, 2);
+
+    const third = await parseReasonixIncremental({ telemetryFiles: [telemetryPath], cursors, queuePath });
+    assert.deepEqual(third, { recordsProcessed: 1, eventsAggregated: 0, bucketsQueued: 0 });
+    assert.equal(readRows(queuePath).length, 2);
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
   }

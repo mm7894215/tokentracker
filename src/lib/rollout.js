@@ -12758,9 +12758,12 @@ function normalizeReasonixTotals(usage) {
   const cacheMiss = Math.min(prompt, toNonNegativeInt(usage.cacheMissTokens));
   const cacheHit = Math.min(prompt, toNonNegativeInt(usage.cacheHitTokens));
   const hasCacheMiss = usage.cacheMissTokens != null;
+  const uncachedPrompt = hasCacheMiss ? cacheMiss : Math.max(0, prompt - cacheHit);
+  const cacheWrite = Math.min(uncachedPrompt, toNonNegativeInt(usage.cacheWriteTokens));
   return {
-    input: hasCacheMiss ? cacheMiss : Math.max(0, prompt - cacheHit),
+    input: uncachedPrompt - cacheWrite,
     cacheRead: hasCacheMiss ? prompt - cacheMiss : cacheHit,
+    cacheWrite,
     output: Math.max(0, completion - reasoning),
     reasoning,
     requests: toNonNegativeInt(usage.requestCount),
@@ -12769,7 +12772,7 @@ function normalizeReasonixTotals(usage) {
 
 function diffReasonixTotals(current, previous = {}) {
   const delta = {};
-  for (const key of ["input", "cacheRead", "output", "reasoning", "requests"]) {
+  for (const key of ["input", "cacheRead", "cacheWrite", "output", "reasoning", "requests"]) {
     delta[key] = Math.max(0, current[key] - toNonNegativeInt(previous[key]));
   }
   return delta;
@@ -12794,12 +12797,12 @@ function addReasonixDelta(hourlyState, touchedBuckets, snapshot, delta) {
   const bucketStart = toUtcHalfHourStart(new Date(reasonixTimestamp(snapshot)).toISOString());
   if (!bucketStart) return false;
   const model = normalizeReasonixModel(snapshot.meta.model);
-  const total = delta.input + delta.cacheRead + delta.output + delta.reasoning;
+  const total = delta.input + delta.cacheRead + delta.cacheWrite + delta.output + delta.reasoning;
   const bucket = getHourlyBucket(hourlyState, "reasonix", model, bucketStart);
   addTotals(bucket.totals, {
     input_tokens: delta.input,
     cached_input_tokens: delta.cacheRead,
-    cache_creation_input_tokens: 0,
+    cache_creation_input_tokens: delta.cacheWrite,
     output_tokens: delta.output,
     reasoning_output_tokens: delta.reasoning,
     total_tokens: total,
@@ -12825,8 +12828,9 @@ async function parseReasonixIncremental({ telemetryFiles, cursors, queuePath, on
     recordsProcessed++;
     const current = normalizeReasonixTotals(snapshot.usage);
     const delta = diffReasonixTotals(current, sessionTotals[filePath]);
-    const tokenDelta = delta.input + delta.cacheRead + delta.output + delta.reasoning;
-    if (tokenDelta > 0 && addReasonixDelta(hourlyState, touchedBuckets, snapshot, delta)) eventsAggregated++;
+    const tokenDelta = delta.input + delta.cacheRead + delta.cacheWrite + delta.output + delta.reasoning;
+    if ((tokenDelta > 0 || delta.requests > 0) &&
+        addReasonixDelta(hourlyState, touchedBuckets, snapshot, delta)) eventsAggregated++;
     sessionTotals[filePath] = current;
     onProgress?.({ index: index + 1, total: files.length, recordsProcessed, eventsAggregated, bucketsQueued: touchedBuckets.size });
   }

@@ -74,23 +74,24 @@ async function writeClaudeSession(home, date, sessionId, totalTokens) {
   return filePath;
 }
 
-async function writeReasonixTelemetry(home, sessionId, totalTokens) {
+async function writeReasonixTelemetry(home, sessionId) {
   const dir = path.join(home, ".reasonix", "projects", "sample", "sessions");
   await fs.mkdir(dir, { recursive: true });
   const basePath = path.join(dir, `${sessionId}.jsonl`);
   await fs.writeFile(`${basePath}.telemetry.json`, JSON.stringify({
     version: 2,
     usage: {
-      promptTokens: totalTokens,
-      cacheMissTokens: totalTokens,
-      completionTokens: 0,
-      reasoningTokens: 0,
-      requestCount: 1,
+      promptTokens: 61,
+      cacheMissTokens: 21,
+      cacheWriteTokens: 5,
+      completionTokens: 9,
+      reasoningTokens: 4,
+      requestCount: 2,
     },
   }));
   await fs.writeFile(`${basePath}.meta`, JSON.stringify({
     id: sessionId,
-    model: "deepseek/deepseek-reasoner",
+    model: "route/deepseek-reasoner",
     updated_at: "2026-06-30T00:00:00.000Z",
   }));
 }
@@ -365,13 +366,35 @@ test("all-local background sync includes Claude while preserving lightweight beh
 
 test("all-local background sync includes Reasonix telemetry", async () => {
   await withTempSyncEnv(async (home) => {
-    await writeReasonixTelemetry(home, "reasonix-all-local", 61);
+    await writeReasonixTelemetry(home, "reasonix-all-local");
 
     await cmdSync(["--auto", "--background", "--all-local-sources"]);
 
+    const firstQueue = await readQueue(home);
+    const [row] = firstQueue.trim().split("\n").map(JSON.parse);
+    assert.equal(row.source, "reasonix");
+    assert.equal(row.model, "deepseek-reasoner");
+    assert.equal(row.input_tokens, 16);
+    assert.equal(row.cached_input_tokens, 40);
+    assert.equal(row.cache_creation_input_tokens, 5);
+    assert.equal(row.output_tokens, 5);
+    assert.equal(row.reasoning_output_tokens, 4);
+    assert.equal(row.total_tokens, 70);
+
+    await cmdSync(["--auto", "--background", "--all-local-sources"]);
+    assert.equal(await readQueue(home), firstQueue);
+  });
+});
+
+test("default background auto sync includes Reasonix telemetry", async () => {
+  await withTempSyncEnv(async (home) => {
+    await writeReasonixTelemetry(home, "reasonix-default-background");
+
+    await cmdSync(["--auto", "--background"]);
+
     const queue = await readQueue(home);
     assert.match(queue, /"source":"reasonix"/);
-    assert.match(queue, /"total_tokens":61/);
+    assert.match(queue, /"model":"deepseek-reasoner"/);
   });
 });
 

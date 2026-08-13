@@ -292,6 +292,7 @@ const BACKGROUND_AUTO_SYNC_SOURCES = new Set([
   // Keep unscoped native 5-minute syncs bounded to dated local session trees.
   "codex",
   "every-code",
+  "reasonix",
 ]);
 
 function warnProviderParseFailure(label, err, opts) {
