@@ -1,4 +1,5 @@
 const fssync = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 const wsl = require("./wsl-probe");
 
@@ -46,6 +47,32 @@ function resolveInstallPaths({ nativeValue, wslDir, wslValue, requireAnyChild, u
 function pathExists(p, existsSync) {
   if (typeof p !== "string" || !p) return null;
   try { return (existsSync || fssync.existsSync)(p) ? p : null; } catch (_e) { return null; }
+}
+
+// ZCode stores its CLI DB under the user's home dir on every platform
+// (~/.zcode/cli/db/db.sqlite), Windows included. The win32 APPDATA guess
+// (introduced with the WSL dual-install work) silently missed the native
+// install, so probe home first and keep APPDATA only as a fallback for
+// installs that do live under Roaming. Falls back to the home path when
+// neither exists so resolveInstallPaths can null it uniformly.
+function resolveZcodeNativeDbPath({
+  home = os.homedir(),
+  env = process.env,
+  platform = process.platform,
+  deps = {},
+} = {}) {
+  const existsSync = deps.existsSync || fssync.existsSync;
+  const zcodeHome =
+    typeof env.ZCODE_HOME === "string" && env.ZCODE_HOME.trim()
+      ? path.resolve(env.ZCODE_HOME.trim())
+      : path.join(home, ".zcode");
+  const candidates = [
+    path.join(zcodeHome, "cli", "db", "db.sqlite"),
+    ...(platform === "win32" && typeof env.APPDATA === "string"
+      ? [path.join(env.APPDATA.trim(), ".zcode", "cli", "db", "db.sqlite")]
+      : []),
+  ];
+  return candidates.find((p) => existsSync(p)) || candidates[0];
 }
 
 function hasAnyChild(p, children, existsSync) {
@@ -99,6 +126,7 @@ function ensureFlatCursor(cursors, providerName, env, preferredKey) {
 
 module.exports = {
   resolveInstallPaths,
+  resolveZcodeNativeDbPath,
   ensureNamespacedCursors,
   ensureFlatCursor,
 };

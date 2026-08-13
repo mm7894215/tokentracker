@@ -5,7 +5,7 @@ const path = require("node:path");
 const fs = require("node:fs");
 const os = require("node:os");
 
-const { resolveInstallPaths, ensureNamespacedCursors } = require("../src/lib/install-resolver");
+const { resolveInstallPaths, resolveZcodeNativeDbPath, ensureNamespacedCursors } = require("../src/lib/install-resolver");
 const wsl = require("../src/lib/wsl-probe");
 
 // ── resolveInstallPaths ───────────────────────────────────────────────────────
@@ -197,6 +197,59 @@ test("zcode WSL path resolves on Windows both mode", (t) => {
   );
   assert.equal(r.native, nativeDir);
   assert.equal(r.wsl, wslDir);
+});
+
+// ── resolveZcodeNativeDbPath ──────────────────────────────────────────────────
+
+test("resolveZcodeNativeDbPath prefers HOME over APPDATA on Windows", (t) => {
+  mockPlatform(t, "win32");
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "ir-zcode-native-"));
+  t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+  const home = path.join(tmpDir, "home");
+  const appData = path.join(tmpDir, "roaming");
+  const dbPath = path.join(home, ".zcode", "cli", "db", "db.sqlite");
+  fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+  fs.writeFileSync(dbPath, "");
+  // Both exist: home wins (ZCode stores under ~/.zcode on Windows too).
+  fs.mkdirSync(path.dirname(path.join(appData, ".zcode", "cli", "db", "db.sqlite")), { recursive: true });
+  fs.writeFileSync(path.join(appData, ".zcode", "cli", "db", "db.sqlite"), "");
+
+  const r = resolveZcodeNativeDbPath({ home, env: { APPDATA: appData }, platform: "win32" });
+  assert.equal(r, dbPath);
+});
+
+test("resolveZcodeNativeDbPath falls back to APPDATA when HOME db is missing on Windows", (t) => {
+  mockPlatform(t, "win32");
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "ir-zcode-appdata-"));
+  t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+  const home = path.join(tmpDir, "home");
+  const appData = path.join(tmpDir, "roaming");
+  const dbPath = path.join(appData, ".zcode", "cli", "db", "db.sqlite");
+  fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+  fs.writeFileSync(dbPath, "");
+
+  const r = resolveZcodeNativeDbPath({ home, env: { APPDATA: appData }, platform: "win32" });
+  assert.equal(r, dbPath);
+});
+
+test("resolveZcodeNativeDbPath uses HOME on non-Windows", (t) => {
+  mockPlatform(t, "linux");
+  const r = resolveZcodeNativeDbPath({
+    home: "/home/user",
+    env: { APPDATA: "/roaming" },
+    platform: "linux",
+  });
+  assert.equal(r, path.join("/home/user", ".zcode", "cli", "db", "db.sqlite"));
+});
+
+test("resolveZcodeNativeDbPath honors ZCODE_HOME override", (t) => {
+  mockPlatform(t, "win32");
+  const r = resolveZcodeNativeDbPath({
+    home: "/home/user",
+    env: { ZCODE_HOME: "/custom/zcode", APPDATA: "/roaming" },
+    platform: "win32",
+  });
+  assert.equal(r, path.join(path.resolve("/custom/zcode"), "cli", "db", "db.sqlite"));
 });
 
 // ── ensureNamespacedCursors ───────────────────────────────────────────────────
