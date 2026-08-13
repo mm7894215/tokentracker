@@ -252,6 +252,26 @@ test("resolveZcodeNativeDbPath honors ZCODE_HOME override", (t) => {
   assert.equal(r, path.join(path.resolve("/custom/zcode"), "cli", "db", "db.sqlite"));
 });
 
+test("resolveZcodeNativeDbPath does not fall back to APPDATA when ZCODE_HOME DB is missing", (t) => {
+  mockPlatform(t, "win32");
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "ir-zcode-override-"));
+  t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+  const zcodeHome = path.join(tmpDir, "custom");
+  const appData = path.join(tmpDir, "roaming");
+  // APPDATA holds a real DB, but ZCODE_HOME explicitly points elsewhere (missing DB).
+  const appDataDb = path.join(appData, ".zcode", "cli", "db", "db.sqlite");
+  fs.mkdirSync(path.dirname(appDataDb), { recursive: true });
+  fs.writeFileSync(appDataDb, "");
+
+  const r = resolveZcodeNativeDbPath({
+    home: path.join(tmpDir, "home"),
+    env: { ZCODE_HOME: zcodeHome, APPDATA: appData },
+    platform: "win32",
+  });
+  // The override pins the install: APPDATA must NOT be picked.
+  assert.equal(r, path.join(zcodeHome, "cli", "db", "db.sqlite"));
+});
+
 // ── ensureNamespacedCursors ───────────────────────────────────────────────────
 
 test("ensureNamespacedCursors transparent for already-namespaced cursors", () => {

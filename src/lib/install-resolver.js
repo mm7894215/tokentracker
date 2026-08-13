@@ -62,13 +62,20 @@ function resolveZcodeNativeDbPath({
   deps = {},
 } = {}) {
   const existsSync = deps.existsSync || fssync.existsSync;
-  const zcodeHome =
-    typeof env.ZCODE_HOME === "string" && env.ZCODE_HOME.trim()
-      ? path.resolve(env.ZCODE_HOME.trim())
-      : path.join(home, ".zcode");
+  const zcodeHomeOverride =
+    typeof env.ZCODE_HOME === "string" ? env.ZCODE_HOME.trim() : "";
+  const zcodeHome = zcodeHomeOverride
+    ? path.resolve(zcodeHomeOverride)
+    : path.join(home, ".zcode");
+  // An explicit ZCODE_HOME pins the install: when its database is missing we
+  // must not fall back to an APPDATA database, or sync could read a different
+  // ZCode installation than the one the user pointed at.
   const candidates = [
     path.join(zcodeHome, "cli", "db", "db.sqlite"),
-    ...(platform === "win32" && typeof env.APPDATA === "string"
+    ...(!zcodeHomeOverride &&
+    platform === "win32" &&
+    typeof env.APPDATA === "string" &&
+    env.APPDATA.trim()
       ? [path.join(env.APPDATA.trim(), ".zcode", "cli", "db", "db.sqlite")]
       : []),
   ];
