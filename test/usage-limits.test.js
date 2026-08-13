@@ -1712,6 +1712,10 @@ describe("getUsageLimits", () => {
         }),
       );
 
+      // Throwing alone proves nothing here: provider failures are collected with
+      // allSettled and this branch never reads claudeResult, so a forbidden call
+      // would be swallowed. Track it and assert it never happened.
+      let usageApiCalled = false;
       const result = await getUsageLimits({
         home: tmp,
         platform: "linux",
@@ -1724,6 +1728,7 @@ describe("getUsageLimits", () => {
         },
         fetchImpl(url) {
           if (typeof url === "string" && url === "https://api.anthropic.com/api/oauth/usage") {
+            usageApiCalled = true;
             throw new Error("must not call the usage API without a token");
           }
           return pendingUnlessCodexReset(url);
@@ -1733,6 +1738,7 @@ describe("getUsageLimits", () => {
       assert.equal(result.claude.configured, true);
       assert.match(result.claude.error, /token expired/i);
       assert.equal(result.claude.auth_action_required, "reauth");
+      assert.equal(usageApiCalled, false);
     } finally {
       resetUsageLimitsCache();
       fs.rmSync(tmp, { recursive: true, force: true });
