@@ -10,6 +10,7 @@ const {
   normalizeArkPlansResponse,
   normalizeArkCodingPlanResponse,
   fetchArkCodingPlanLimits,
+  writeArkCodingPlanLimitsCache,
 } = require("../src/lib/ark-coding-plan-limits");
 
 const USAGE_JSON = JSON.stringify({
@@ -32,6 +33,31 @@ const USAGE_JSON = JSON.stringify({
   ],
 });
 
+// Fetch-path fixtures use reset times relative to `nowMs` so the cache
+// rollover tests never go stale as wall-clock time moves past a fixed date.
+function usageJsonFor({ nowMs = Date.now() } = {}) {
+  const iso = (ms) => new Date(ms).toISOString();
+  return JSON.stringify({
+    viewer: {
+      auth_method: "sso",
+      user_id: "2126262990",
+      profile: "coding-plan_cn-beijing_personal",
+    },
+    items: [
+      {
+        product: "coding-plan",
+        edition: "personal",
+        subscribed: true,
+        periods: [
+          { label: "session", percent: 32.7377, reset_at: iso(nowMs + 3 * 3600_000) },
+          { label: "weekly", percent: 15.670588333333333, reset_at: iso(nowMs + 3 * 86400_000) },
+          { label: "monthly", percent: 8.179090833333333, reset_at: iso(nowMs + 20 * 86400_000) },
+        ],
+      },
+    ],
+  });
+}
+
 const PLANS_JSON = JSON.stringify({
   plans: [
     { key: "coding-plan", name: "Coding Plan", scope: "personal", tier: "lite", status: "Running" },
@@ -42,7 +68,7 @@ const PLANS_JSON = JSON.stringify({
 function mockRunner({
   which = true,
   plansStdout = PLANS_JSON,
-  usageStdout = USAGE_JSON,
+  usageStdout = usageJsonFor(),
   usageStatus = 0,
   usageError = null,
 } = {}) {
@@ -50,6 +76,12 @@ function mockRunner({
     if (command === "which") {
       return which
         ? { status: 0, stdout: "/usr/local/bin/arkcli\n", stderr: "" }
+        : { status: 1, stdout: "", stderr: "" };
+    }
+    // Native Windows discovery probe (where.exe).
+    if (command === "where") {
+      return which
+        ? { status: 0, stdout: "C:\\Program Files\\arkcli.exe\n", stderr: "" }
         : { status: 1, stdout: "", stderr: "" };
     }
     if (command === "arkcli") {
@@ -159,5 +191,51 @@ test("fetchArkCodingPlanLimits surfaces an error when nothing is usable", async 
   });
   const result = await fetchArkCodingPlanLimits({ commandRunner: runner, home: tmpHome(t) });
   assert.equal(result.configured, true);
+  assert.match(result.error, /ETIMEDOUT/);
+});
+
+test("fetchArkCodingPlanLimits discovers arkcli via where.exe on Windows", async (t) => {
+  const calls = [];
+  const runner = (command, args) => {
+    calls.push(command);
+    return mockRunner()(command, args);
+  };
+  const result = await fetchArkCodingPlanLimits({
+    commandRunner: runner,
+    home: tmpHome(t),
+    platform: "win32",
+  });
+  assert.equal(result.configured, true);
+  assert.equal(result.plan_label, "Lite");
+  // Native Windows discovery must use `where`, never the Unix `which` — on
+  // Windows `which` does not exist, so spawning it returns ENOENT and every
+  // provider would look unconfigured even when arkcli is installed.
+  assert.ok(calls.includes("where"), `expected where.exe probe, got calls: ${calls.join(", ")}`);
+  assert.ok(!calls.includes("which"), `must not use which on win32, got calls: ${calls.join(", ")}`);
+});
+
+test("fetchArkCodingPlanLimits does not serve cache windows past their reset_at", async (t) => {
+  const home = tmpHome(t);
+  const nowMs = Date.now();
+  const expired = new Date(nowMs - 60_000).toISOString();
+  // Write a cache whose every window reset before `nowMs` — the quota has
+  // rolled over, so the old percentages must not be served as stale data.
+  writeArkCodingPlanLimitsCache({
+    configured: true,
+    error: null,
+    plan_label: "Lite",
+    primary_window: { used_percent: 100, reset_at: expired, unit: "calls" },
+    secondary_window: { used_percent: 50, reset_at: expired, unit: "calls" },
+    tertiary_window: { used_percent: 10, reset_at: expired, unit: "calls" },
+  }, { home, nowMs });
+
+  const runner = mockRunner({
+    usageError: new Error("ETIMEDOUT"),
+    usageStatus: null,
+  });
+  const result = await fetchArkCodingPlanLimits({ commandRunner: runner, home, nowMs });
+  assert.equal(result.configured, true);
+  assert.equal(result.stale, undefined, "expired cache must not be served as stale data");
+  assert.equal(result.source, undefined);
   assert.match(result.error, /ETIMEDOUT/);
 });

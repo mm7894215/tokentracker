@@ -126,17 +126,27 @@ function readArkCodingPlanLimitsCache({ home = os.homedir(), nowMs = Date.now() 
     const parsed = JSON.parse(fs.readFileSync(arkCodingPlanCachePath({ home }), "utf8"));
     const cachedAtMs = Date.parse(parsed?.cached_at || "");
     if (!Number.isFinite(cachedAtMs) || cachedAtMs > nowMs + 60_000) return null;
+    // A window whose reset_at has passed is stale — the quota has already
+    // rolled over, so serving its old used_percent would mislead. Drop it.
     const windows = [parsed?.primary_window, parsed?.secondary_window, parsed?.tertiary_window];
-    const anyResetAt = windows.some((window) => Number.isFinite(Date.parse(window?.reset_at || "")));
-    if (!anyResetAt && nowMs - cachedAtMs > ARK_LIMITS_CACHE_UNKNOWN_RESET_TTL_MS) return null;
-    if (windows.every((window) => !window)) return null;
+    const surviving = windows.map((window) => {
+      if (!window) return null;
+      const resetAtMs = Date.parse(window.reset_at || "");
+      if (Number.isFinite(resetAtMs) && resetAtMs <= nowMs) return null;
+      return window;
+    });
+    if (surviving.every((window) => !window)) return null;
+    // Undated windows can't be checked against their reset — bound them by
+    // the cache write time instead.
+    const hasDated = surviving.some((window) => Number.isFinite(Date.parse(window?.reset_at || "")));
+    if (!hasDated && nowMs - cachedAtMs > ARK_LIMITS_CACHE_UNKNOWN_RESET_TTL_MS) return null;
     return {
       configured: true,
       error: null,
       plan_label: typeof parsed?.plan_label === "string" ? parsed.plan_label : null,
-      primary_window: parsed?.primary_window || null,
-      secondary_window: parsed?.secondary_window || null,
-      tertiary_window: parsed?.tertiary_window || null,
+      primary_window: surviving[0],
+      secondary_window: surviving[1],
+      tertiary_window: surviving[2],
       cached: true,
       stale: true,
       cached_at: parsed.cached_at,
@@ -217,15 +227,20 @@ function runCommand(commandRunner, command, args, options = {}) {
   });
 }
 
-async function whichBinary(binary, { commandRunner } = {}) {
-  const result = await runCommand(commandRunner, "which", [binary], { timeout: 2000 });
+// Locate a binary on PATH. Unix uses `which`; native Windows ships no `which`
+// (it has `where.exe` instead), so blindly spawning `which` there returns
+// ENOENT and every provider would report itself unconfigured even when the
+// binary is installed and signed in.
+async function whichBinary(binary, { commandRunner, platform = process.platform } = {}) {
+  const probe = platform === "win32" ? "where" : "which";
+  const result = await runCommand(commandRunner, probe, [binary], { timeout: 2000 });
   if (result?.error || result?.status !== 0) return null;
   const stdout = typeof result?.stdout === "string" ? result.stdout.trim() : "";
   return stdout ? stdout.split("\n")[0] : null;
 }
 
-async function isBinaryAvailable(binary, { commandRunner } = {}) {
-  return (await whichBinary(binary, { commandRunner })) !== null;
+async function isBinaryAvailable(binary, { commandRunner, platform } = {}) {
+  return (await whichBinary(binary, { commandRunner, platform })) !== null;
 }
 
 function trimStderr(stderr) {
@@ -250,10 +265,11 @@ async function fetchArkCodingPlanLimits({
   commandRunner,
   home = os.homedir(),
   nowMs = Date.now(),
+  platform = process.platform,
 } = {}) {
   let available;
   try {
-    available = await isBinaryAvailable("arkcli", { commandRunner });
+    available = await isBinaryAvailable("arkcli", { commandRunner, platform });
   } catch (_error) {
     available = false;
   }

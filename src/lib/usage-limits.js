@@ -3230,6 +3230,7 @@ async function fetchUsageLimitsUncached({
       fetchArkCodingPlanLimits({
         commandRunner,
         home,
+        nowMs,
       }),
       "Ark Coding Plan",
       providerTimeoutMs,
