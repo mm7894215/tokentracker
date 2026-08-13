@@ -190,6 +190,7 @@ function runCommand(commandRunner, command, args, options = {}) {
 
   const {
     timeout,
+    maxBuffer,
     killProcessGroup = false,
     signal,
     ...spawnOptions
@@ -217,6 +218,7 @@ function runCommand(commandRunner, command, args, options = {}) {
 
     let stdout = "";
     let stderr = "";
+    let outputBytes = 0;
     let settled = false;
     let timedOut = false;
     let timer = null;
@@ -262,10 +264,26 @@ function runCommand(commandRunner, command, args, options = {}) {
       if (typeof hardTimer.unref === "function") hardTimer.unref();
     };
 
+    const appendOutput = (key, chunk) => {
+      if (settled) return;
+      if (key === "stdout") stdout += chunk;
+      else stderr += chunk;
+      outputBytes += Buffer.byteLength(chunk, "utf8");
+      // Unlike exec/execFile, spawn does not apply a maxBuffer guard to piped
+      // streams. Enforce the combined byte cap here so a verbose CLI cannot
+      // grow this process without bound.
+      if (outputBytes > maxBuffer) {
+        const error = new Error(`spawn ${command} maxBuffer length exceeded`);
+        error.code = "ERR_CHILD_PROCESS_STDIO_MAXBUFFER";
+        signalChild("SIGKILL");
+        settle({ status: null, error });
+      }
+    };
+
     child.stdout?.setEncoding("utf8");
     child.stderr?.setEncoding("utf8");
-    child.stdout?.on("data", (chunk) => { stdout += chunk; });
-    child.stderr?.on("data", (chunk) => { stderr += chunk; });
+    child.stdout?.on("data", (chunk) => appendOutput("stdout", chunk));
+    child.stderr?.on("data", (chunk) => appendOutput("stderr", chunk));
     child.on("error", (error) => settle({ status: null, error }));
     child.on("close", (code) => settle({ status: timedOut ? null : code }));
 
@@ -405,5 +423,6 @@ module.exports = {
   normalizeArkCodingPlanResponse,
   readArkCodingPlanLimitsCache,
   writeArkCodingPlanLimitsCache,
+  runCommand,
   fetchArkCodingPlanLimits,
 };

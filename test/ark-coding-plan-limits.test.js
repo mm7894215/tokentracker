@@ -11,6 +11,7 @@ const {
   normalizeArkCodingPlanResponse,
   fetchArkCodingPlanLimits,
   writeArkCodingPlanLimitsCache,
+  runCommand,
 } = require("../src/lib/ark-coding-plan-limits");
 
 const USAGE_JSON = JSON.stringify({
@@ -136,6 +137,17 @@ test("normalizeArkPlansResponse extracts tier from plans payload", () => {
   assert.equal(normalizeArkPlansResponse(JSON.parse(PLANS_JSON)), "lite");
   assert.equal(normalizeArkPlansResponse({ plans: [] }), null);
   assert.equal(normalizeArkPlansResponse({ plans: [{ key: "agent-plan", tier: "pro" }] }), null);
+});
+
+test("runCommand stops a verbose child when its combined output exceeds maxBuffer", async () => {
+  const result = await runCommand(
+    undefined,
+    process.execPath,
+    [path.join(__dirname, "fixtures", "noisy-command.js")],
+    { maxBuffer: 1024, timeout: 2_000 },
+  );
+  assert.equal(result.status, null);
+  assert.equal(result.error?.code, "ERR_CHILD_PROCESS_STDIO_MAXBUFFER");
 });
 
 test("fetchArkCodingPlanLimits succeeds with real payloads", async (t) => {

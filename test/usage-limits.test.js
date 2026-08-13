@@ -26,6 +26,7 @@ const {
   fetchAntigravityLimits,
   fetchCopilotLimits,
 } = require("../src/lib/usage-limits");
+const { writeArkCodingPlanLimitsCache } = require("../src/lib/ark-coding-plan-limits");
 
 // Match a fetch URL by host (exact or subdomain) rather than substring, so the
 // filter can't be fooled by lookalike hosts — and so CodeQL's
@@ -3476,6 +3477,56 @@ describe("getUsageLimits plan_label", () => {
       assert.equal(result.claude.configured, true);
       assert.equal(result.claude.error, null);
       assert.equal(result.claude.plan_label, null);
+    } finally {
+      resetUsageLimitsCache();
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("getUsageLimits Ark timeout fallback", () => {
+  it("returns a cached Ark snapshot on timeout and forwards the requested platform", async () => {
+    resetUsageLimitsCache();
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tokentracker-limits-ark-timeout-"));
+    try {
+      const nowMs = Date.now();
+      writeArkCodingPlanLimitsCache({
+        configured: true,
+        error: null,
+        plan_label: "Lite",
+        primary_window: {
+          used_percent: 42,
+          reset_at: new Date(nowMs + 3_600_000).toISOString(),
+          unit: "calls",
+        },
+      }, { home: tmp, nowMs });
+
+      const calls = [];
+      const result = await getUsageLimits({
+        home: tmp,
+        platform: "win32",
+        providerTimeoutMs: 20,
+        securityRunner() {
+          return { status: 1, stdout: "" };
+        },
+        commandRunner(command, args) {
+          calls.push({ command, args });
+          if (command === "where") {
+            return { status: 0, stdout: "C:\\Program Files\\arkcli.exe\n", stderr: "" };
+          }
+          if (command === "arkcli") return new Promise(() => {});
+          return { status: 1, stdout: "", stderr: "" };
+        },
+        fetchImpl() {
+          return new Promise(() => {});
+        },
+      });
+
+      assert.deepEqual(calls.find(({ command }) => command === "where")?.args, ["arkcli"]);
+      assert.equal(result.codingPlan.configured, true);
+      assert.equal(result.codingPlan.stale, true);
+      assert.equal(result.codingPlan.source, "disk-cache");
+      assert.equal(result.codingPlan.primary_window.used_percent, 42);
     } finally {
       resetUsageLimitsCache();
       fs.rmSync(tmp, { recursive: true, force: true });
