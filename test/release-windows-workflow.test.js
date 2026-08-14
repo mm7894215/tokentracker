@@ -15,6 +15,14 @@ function loadWorkflow() {
   return fs.readFileSync(WORKFLOW_PATH, "utf8");
 }
 
+const BUNDLE_SCRIPT_PATH = path.join(
+  __dirname,
+  "..",
+  "TokenTrackerWin",
+  "scripts",
+  "bundle-node.ps1"
+);
+
 test("release-windows workflow file exists", () => {
   assert.ok(fs.existsSync(WORKFLOW_PATH));
 });
@@ -64,6 +72,13 @@ test("workflow builds dashboard before bundling EmbeddedServer", () => {
 test("workflow bundles EmbeddedServer via bundle-node.ps1", () => {
   const content = loadWorkflow();
   assert.ok(content.includes("bundle-node.ps1"));
+});
+
+test("Windows bundle rebuilds and loads the zstd native dependency", () => {
+  const content = fs.readFileSync(BUNDLE_SCRIPT_PATH, "utf8");
+  assert.ok(content.includes("npm rebuild '@mongodb-js/zstd'"));
+  assert.ok(content.includes("require(process.argv[1])"));
+  assert.ok(content.includes("Bundled @mongodb-js/zstd failed to load"));
 });
 
 test("workflow publishes a self-contained win-x64 build", () => {

@@ -143,6 +143,12 @@ Write-Host 'Installing production dependencies...'
 Push-Location $ttDir
 try {
     & npm install --omit=dev --no-optional --ignore-scripts | Out-Null
+    & npm rebuild '@mongodb-js/zstd' | Out-Null
+    if ($LASTEXITCODE -ne 0) { Write-Error 'Failed to build @mongodb-js/zstd' }
+
+    $zstdModule = Join-Path $ttDir 'node_modules\@mongodb-js\zstd'
+    & (Join-Path $EmbedDir 'node.exe') -e 'require(process.argv[1])' $zstdModule
+    if ($LASTEXITCODE -ne 0) { Write-Error 'Bundled @mongodb-js/zstd failed to load' }
 } finally {
     Pop-Location
 }
