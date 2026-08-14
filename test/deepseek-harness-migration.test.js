@@ -27,7 +27,9 @@ test("legacy DeepSeek Harness rows migrate to dsh and retract the old cloud keys
   };
   const current = { ...legacy, source: "dsh", input_tokens: 84, output_tokens: 36, total_tokens: 120 };
   const codex = { ...legacy, source: "codex", model: "gpt-5", total_tokens: 9 };
-  await fs.writeFile(queuePath, [JSON.stringify(codex), JSON.stringify(legacy), JSON.stringify(current)].join("\n") + "\n");
+  // Keep the legacy alias physically after the canonical row. The migration
+  // must re-append the explicit dsh row so last-row-wins readers retain 120.
+  await fs.writeFile(queuePath, [JSON.stringify(codex), JSON.stringify(current), JSON.stringify(legacy)].join("\n") + "\n");
   await fs.writeFile(queueStatePath, JSON.stringify({ offset: 999 }));
   const cursors = {};
 
@@ -39,6 +41,8 @@ test("legacy DeepSeek Harness rows migrate to dsh and retract the old cloud keys
 
   const dshRows = rows.filter((row) => row.source === "dsh" && row.model === current.model && row.hour_start === hour);
   assert.equal(dshRows.at(-1).total_tokens, 120, "the latest canonical row remains authoritative");
+  const migratedLegacy = dshRows.find((row) => row.total_tokens === 100);
+  assert.equal(migratedLegacy.billable_total_tokens, 100, "legacy billable totals default to total tokens");
   assert.equal(rows.filter((row) => row.source === "codex").length, 1, "unrelated sources stay intact");
 
   const state = JSON.parse(await fs.readFile(queueStatePath, "utf8"));

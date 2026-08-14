@@ -192,8 +192,9 @@ test("extractDshSessionUsage never materializes assistant content", () => {
     },
   });
   const originalParse = JSON.parse;
+  let leaked = false;
   JSON.parse = function privacyGuard(value, ...args) {
-    assert.ok(!String(value).includes(secret), "message content was passed to JSON.parse");
+    if (String(value).includes(secret)) leaked = true;
     return originalParse.call(this, value, ...args);
   };
   try {
@@ -203,6 +204,7 @@ test("extractDshSessionUsage never materializes assistant content", () => {
   } finally {
     JSON.parse = originalParse;
   }
+  assert.equal(leaked, false, "message content was passed to JSON.parse");
 });
 
 test("readDshSessionText reassembles concatenated-frame zstd", async () => {
@@ -334,6 +336,42 @@ test("parseDshIncremental accepts a replacement session whose seq restarts", asy
   const rows = fs.readFileSync(queuePath, "utf8").trim().split("\n").map(JSON.parse);
   const total = rows.filter((row) => row.source === "dsh").reduce((sum, row) => sum + row.total_tokens, 0);
   assert.equal(total, 150 + 25 + 10);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("parseDshIncremental isolates corrupt logs and prunes deleted-session cursors", async () => {
+  const { dir, sessionDir, logPath } = await makeTree({
+    compression: "none",
+    lines: [
+      headerLine("sess-good"),
+      requestHeaderLine(0),
+      assistantLine(1, { inputTokens: 8, outputTokens: 2 }),
+    ],
+  });
+  const corruptDir = path.join(path.dirname(sessionDir), "sess-corrupt");
+  fs.mkdirSync(corruptDir, { recursive: true });
+  const corruptPath = path.join(corruptDir, "session.jsonl.zstd");
+  fs.writeFileSync(corruptPath, "not-a-zstd-frame");
+  const deletedPath = path.join(path.dirname(sessionDir), "sess-deleted", "session.jsonl");
+  const cursors = {
+    dsh: {
+      files: {
+        [deletedPath]: { inode: 1, size: 10, mtimeMs: 1, lastSeq: 9 },
+      },
+    },
+  };
+
+  const result = await parseDshIncremental({
+    sessionFiles: [corruptPath, logPath],
+    cursors,
+    queuePath: path.join(dir, "queue.jsonl"),
+  });
+
+  assert.equal(result.recordsProcessed, 1);
+  assert.equal(result.eventsAggregated, 1, "healthy sessions still aggregate");
+  assert.ok(cursors.dsh.files[logPath]);
+  assert.equal(cursors.dsh.files[corruptPath], undefined, "failed logs retry on a later sync");
+  assert.equal(cursors.dsh.files[deletedPath], undefined, "deleted sessions do not leak cursor state");
   fs.rmSync(dir, { recursive: true, force: true });
 });
 

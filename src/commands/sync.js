@@ -2989,7 +2989,8 @@ async function migrateLegacyDeepseekHarnessSource({ cursors, queuePath, queueSta
 
   const output = [];
   const legacyKeys = new Map();
-  const latestCanonicalRows = new Map();
+  const latestMigratedRows = new Map();
+  const latestExplicitCanonicalRows = new Map();
   for (const line of raw.split("\n")) {
     if (!line.trim()) continue;
     let row;
@@ -3000,15 +3001,25 @@ async function migrateLegacyDeepseekHarnessSource({ cursors, queuePath, queueSta
       continue;
     }
 
-    if (row?.source === "deepseek" && typeof row.model === "string" && typeof row.hour_start === "string") {
+    const isLegacy =
+      row?.source === "deepseek" &&
+      typeof row.model === "string" &&
+      typeof row.hour_start === "string";
+    if (isLegacy) {
       const key = `${row.model}|${row.hour_start}`;
       legacyKeys.set(key, { model: row.model, hour_start: row.hour_start });
-      row = { ...row, source: "dsh" };
+      row = {
+        ...row,
+        source: "dsh",
+        billable_total_tokens: row.billable_total_tokens ?? row.total_tokens,
+      };
     }
     const serialized = JSON.stringify(row);
     output.push(serialized);
     if (row?.source === "dsh" && typeof row.model === "string" && typeof row.hour_start === "string") {
-      latestCanonicalRows.set(`${row.model}|${row.hour_start}`, serialized);
+      const key = `${row.model}|${row.hour_start}`;
+      if (isLegacy) latestMigratedRows.set(key, serialized);
+      else latestExplicitCanonicalRows.set(key, serialized);
     }
   }
 
@@ -3025,7 +3036,7 @@ async function migrateLegacyDeepseekHarnessSource({ cursors, queuePath, queueSta
   // last-row-wins contract remains correct even when an old alias line was
   // physically later than an already-emitted dsh row.
   for (const key of legacyKeys.keys()) {
-    const canonical = latestCanonicalRows.get(key);
+    const canonical = latestExplicitCanonicalRows.get(key) || latestMigratedRows.get(key);
     if (canonical) output.push(canonical);
   }
   for (const { model, hour_start } of legacyKeys.values()) {

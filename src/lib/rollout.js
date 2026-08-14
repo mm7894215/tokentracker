@@ -16589,7 +16589,7 @@ function inspectDshZstdFrames(data, maxOutputBytes = DSH_SESSION_TEXT_MAX_BYTES)
   return {
     frames,
     totalContentBytes: allContentSizesDeclared ? totalContentBytes : null,
-    maxContentBytes: totalContentBytes,
+    maxTotalContentBytes: totalContentBytes,
     frameRanges,
   };
 }
@@ -16618,16 +16618,40 @@ async function decodeDshZstd(
   return Buffer.concat(parts, total);
 }
 
-// Read one session log to plaintext, decompressing zstd artifacts. Returns
-// null for a missing/non-file path so callers treat it as a no-op.
-async function readDshSessionText(filePath, { maxOutputBytes = DSH_SESSION_TEXT_MAX_BYTES } = {}) {
+function dshSessionMetadata(stat) {
+  return {
+    inode: stat?.ino || 0,
+    size: Number.isFinite(stat?.size) ? stat.size : 0,
+    mtimeMs: Number.isFinite(stat?.mtimeMs) ? stat.mtimeMs : 0,
+  };
+}
+
+function sameDshSessionMetadata(previous, current) {
+  return Boolean(
+    previous &&
+    previous.inode === current.inode &&
+    previous.size === current.size &&
+    previous.mtimeMs === current.mtimeMs
+  );
+}
+
+// Open, inspect and read through one handle so a path replacement cannot make
+// the metadata describe a different file from the bytes we parse.
+async function readDshSessionSnapshot(
+  filePath,
+  { maxOutputBytes = DSH_SESSION_TEXT_MAX_BYTES, previous = null } = {},
+) {
   const handle = await fs.open(filePath, "r").catch(() => null);
   if (!handle) return null;
   try {
-    const st = await handle.stat().catch(() => null);
-    if (!st || !st.isFile()) return null;
-    if (st.size > DSH_SESSION_LOG_MAX_BYTES) {
+    const initialStat = await handle.stat().catch(() => null);
+    if (!initialStat || !initialStat.isFile()) return null;
+    const initialMetadata = dshSessionMetadata(initialStat);
+    if (initialMetadata.size > DSH_SESSION_LOG_MAX_BYTES) {
       throw new Error(`DeepSeek Harness session log exceeds ${DSH_SESSION_LOG_MAX_BYTES} bytes`);
+    }
+    if (sameDshSessionMetadata(previous, initialMetadata)) {
+      return { ...initialMetadata, unchanged: true, text: null };
     }
     const outputLimit = Number.isSafeInteger(maxOutputBytes) && maxOutputBytes >= 0
       ? maxOutputBytes
@@ -16636,25 +16660,44 @@ async function readDshSessionText(filePath, { maxOutputBytes = DSH_SESSION_TEXT_
     if (data.length > DSH_SESSION_LOG_MAX_BYTES) {
       throw new Error(`DeepSeek Harness session log exceeds ${DSH_SESSION_LOG_MAX_BYTES} bytes`);
     }
+    let text;
     if (filePath.endsWith(".zstd")) {
-      if (data.length === 0) return "";
-      const inspected = inspectDshZstdFrames(data, outputLimit);
-      const decoded = await decodeDshZstd(data, { maxOutputBytes: outputLimit, inspected });
-      if (
-        decoded.length > outputLimit ||
-        (inspected.totalContentBytes != null && decoded.length !== inspected.totalContentBytes)
-      ) {
+      if (data.length === 0) text = "";
+      else {
+        const inspected = inspectDshZstdFrames(data, outputLimit);
+        const decoded = await decodeDshZstd(data, { maxOutputBytes: outputLimit, inspected });
+        if (
+          decoded.length > outputLimit ||
+          (inspected.totalContentBytes != null && decoded.length !== inspected.totalContentBytes)
+        ) {
+          throw new Error(`DeepSeek Harness decompressed session log exceeds ${outputLimit} bytes`);
+        }
+        text = decoded.toString("utf8");
+      }
+    } else {
+      if (data.length > outputLimit) {
         throw new Error(`DeepSeek Harness decompressed session log exceeds ${outputLimit} bytes`);
       }
-      return decoded.toString("utf8");
+      text = data.toString("utf8");
     }
-    if (data.length > outputLimit) {
-      throw new Error(`DeepSeek Harness decompressed session log exceeds ${outputLimit} bytes`);
-    }
-    return data.toString("utf8");
+
+    const finalStat = await handle.stat().catch(() => initialStat);
+    const metadata = dshSessionMetadata(finalStat);
+    // If Harness appended while this handle was being read, force a retry on
+    // the next sync unless the bytes consumed reached the final compressed/raw
+    // file size. This avoids acknowledging a tail that was never parsed.
+    if (metadata.size !== data.length) metadata.mtimeMs = -1;
+    return { ...metadata, unchanged: false, text };
   } finally {
     await handle.close().catch(() => {});
   }
+}
+
+// Read one session log to plaintext, decompressing zstd artifacts. Returns
+// null for a missing/non-file path so callers treat it as a no-op.
+async function readDshSessionText(filePath, options = {}) {
+  const snapshot = await readDshSessionSnapshot(filePath, options);
+  return snapshot?.text ?? null;
 }
 
 // Drop a provider-qualified model id prefix ("deepseek/deepseek-v4-pro" →
@@ -16883,38 +16926,38 @@ async function parseDshIncremental({ sessionFiles, cursors, queuePath, onProgres
   const cb = typeof onProgress === "function" ? onProgress : null;
 
   const files = Array.isArray(sessionFiles) ? sessionFiles : [];
+  const presentFiles = new Set(files.filter((filePath) => typeof filePath === "string"));
   const total = files.length;
   let recordsProcessed = 0;
   let eventsAggregated = 0;
 
   for (let idx = 0; idx < files.length; idx++) {
     const filePath = files[idx];
-    const st = await fs.stat(filePath).catch(() => null);
-    if (!st || !st.isFile()) continue;
-
     const prev = fileState[filePath] || null;
-    const inode = st.ino || 0;
-    const size = Number.isFinite(st.size) ? st.size : 0;
-    const mtimeMs = Number.isFinite(st.mtimeMs) ? st.mtimeMs : 0;
-    const unchanged =
-      prev &&
-      prev.inode === inode &&
-      prev.size === size &&
-      prev.mtimeMs === mtimeMs;
-    if (unchanged) {
+    let snapshot;
+    let parsed;
+    try {
+      snapshot = await readDshSessionSnapshot(filePath, { previous: prev });
+      if (!snapshot || snapshot.unchanged) {
+        if (cb) {
+          cb({ index: idx + 1, total, recordsProcessed, eventsAggregated, bucketsQueued: touchedBuckets.size });
+        }
+        continue;
+      }
+
+      const lastSeq = Number.isFinite(prev?.lastSeq) ? prev.lastSeq : -1;
+      parsed = extractDshSessionUsage(snapshot.text, lastSeq);
+      if (prev && parsed.sessionId && parsed.sessionId !== prev.sessionId) {
+        parsed = extractDshSessionUsage(snapshot.text, -1);
+      }
+    } catch (error) {
+      if (process.env.TOKENTRACKER_DEBUG) {
+        process.stderr.write(`[dsh] skipped ${filePath}: ${error?.message || error}\n`);
+      }
       if (cb) {
         cb({ index: idx + 1, total, recordsProcessed, eventsAggregated, bucketsQueued: touchedBuckets.size });
       }
       continue;
-    }
-
-    const text = await readDshSessionText(filePath);
-    if (text == null) continue;
-
-    const lastSeq = Number.isFinite(prev?.lastSeq) ? prev.lastSeq : -1;
-    let parsed = extractDshSessionUsage(text, lastSeq);
-    if (prev && parsed.sessionId && parsed.sessionId !== prev.sessionId) {
-      parsed = extractDshSessionUsage(text, -1);
     }
 
     for (const delta of parsed.deltas) {
@@ -16927,9 +16970,9 @@ async function parseDshIncremental({ sessionFiles, cursors, queuePath, onProgres
     }
 
     fileState[filePath] = {
-      inode,
-      size,
-      mtimeMs,
+      inode: snapshot.inode,
+      size: snapshot.size,
+      mtimeMs: snapshot.mtimeMs,
       sessionId: parsed.sessionId || null,
       lastSeq: parsed.maxSeq,
       updatedAt: new Date().toISOString(),
@@ -16939,6 +16982,10 @@ async function parseDshIncremental({ sessionFiles, cursors, queuePath, onProgres
     if (cb) {
       cb({ index: idx + 1, total, recordsProcessed, eventsAggregated, bucketsQueued: touchedBuckets.size });
     }
+  }
+
+  for (const filePath of Object.keys(fileState)) {
+    if (!presentFiles.has(filePath)) delete fileState[filePath];
   }
 
   const bucketsQueued = await enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets });
