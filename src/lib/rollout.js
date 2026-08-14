@@ -16447,8 +16447,18 @@ async function resolveDshSessionFiles(env = process.env) {
         // same session twice; a tie prefers the default zstd encoding.
         const ranked = await Promise.all(transcripts.map(async (artifact) => {
           const full = path.join(sessionDir, artifact.name);
-          const stat = await fs.stat(full).catch(() => null);
-          return { full, name: artifact.name, mtimeMs: Number(stat?.mtimeMs || 0) };
+          const handle = await fs.open(full, "r").catch(() => null);
+          if (!handle) return { full, name: artifact.name, mtimeMs: 0 };
+          try {
+            const stat = await handle.stat().catch(() => null);
+            return {
+              full,
+              name: artifact.name,
+              mtimeMs: stat?.isFile() ? Number(stat.mtimeMs || 0) : 0,
+            };
+          } finally {
+            await handle.close().catch(() => {});
+          }
         }));
         ranked.sort((left, right) =>
           right.mtimeMs - left.mtimeMs ||
@@ -16611,31 +16621,40 @@ async function decodeDshZstd(
 // Read one session log to plaintext, decompressing zstd artifacts. Returns
 // null for a missing/non-file path so callers treat it as a no-op.
 async function readDshSessionText(filePath, { maxOutputBytes = DSH_SESSION_TEXT_MAX_BYTES } = {}) {
-  const st = await fs.stat(filePath).catch(() => null);
-  if (!st || !st.isFile()) return null;
-  if (st.size > DSH_SESSION_LOG_MAX_BYTES) {
-    throw new Error(`DeepSeek Harness session log exceeds ${DSH_SESSION_LOG_MAX_BYTES} bytes`);
-  }
-  const outputLimit = Number.isSafeInteger(maxOutputBytes) && maxOutputBytes >= 0
-    ? maxOutputBytes
-    : DSH_SESSION_TEXT_MAX_BYTES;
-  if (filePath.endsWith(".zstd")) {
-    const data = await fs.readFile(filePath);
-    if (data.length === 0) return "";
-    const inspected = inspectDshZstdFrames(data, outputLimit);
-    const decoded = await decodeDshZstd(data, { maxOutputBytes: outputLimit, inspected });
-    if (
-      decoded.length > outputLimit ||
-      (inspected.totalContentBytes != null && decoded.length !== inspected.totalContentBytes)
-    ) {
+  const handle = await fs.open(filePath, "r").catch(() => null);
+  if (!handle) return null;
+  try {
+    const st = await handle.stat().catch(() => null);
+    if (!st || !st.isFile()) return null;
+    if (st.size > DSH_SESSION_LOG_MAX_BYTES) {
+      throw new Error(`DeepSeek Harness session log exceeds ${DSH_SESSION_LOG_MAX_BYTES} bytes`);
+    }
+    const outputLimit = Number.isSafeInteger(maxOutputBytes) && maxOutputBytes >= 0
+      ? maxOutputBytes
+      : DSH_SESSION_TEXT_MAX_BYTES;
+    const data = await handle.readFile();
+    if (data.length > DSH_SESSION_LOG_MAX_BYTES) {
+      throw new Error(`DeepSeek Harness session log exceeds ${DSH_SESSION_LOG_MAX_BYTES} bytes`);
+    }
+    if (filePath.endsWith(".zstd")) {
+      if (data.length === 0) return "";
+      const inspected = inspectDshZstdFrames(data, outputLimit);
+      const decoded = await decodeDshZstd(data, { maxOutputBytes: outputLimit, inspected });
+      if (
+        decoded.length > outputLimit ||
+        (inspected.totalContentBytes != null && decoded.length !== inspected.totalContentBytes)
+      ) {
+        throw new Error(`DeepSeek Harness decompressed session log exceeds ${outputLimit} bytes`);
+      }
+      return decoded.toString("utf8");
+    }
+    if (data.length > outputLimit) {
       throw new Error(`DeepSeek Harness decompressed session log exceeds ${outputLimit} bytes`);
     }
-    return decoded.toString("utf8");
+    return data.toString("utf8");
+  } finally {
+    await handle.close().catch(() => {});
   }
-  if (st.size > outputLimit) {
-    throw new Error(`DeepSeek Harness decompressed session log exceeds ${outputLimit} bytes`);
-  }
-  return fs.readFile(filePath, "utf8");
 }
 
 // Drop a provider-qualified model id prefix ("deepseek/deepseek-v4-pro" →
