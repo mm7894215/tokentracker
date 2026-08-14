@@ -12,6 +12,7 @@ describe("ProviderIcon", () => {
     expect(icon).not.toBeNull();
     expect(icon).toHaveAttribute("width", "20");
     expect(icon).toHaveAttribute("height", "20");
+    expect(icon).toHaveAttribute("height", "20");
     expect(icon).toHaveClass("brightness-0", "dark:brightness-100", "shrink-0");
   });
 
@@ -63,6 +64,17 @@ describe("ProviderIcon", () => {
     expect(icon).not.toBeNull();
     expect(icon).toHaveAttribute("width", "20");
     expect(icon).toHaveAttribute("height", "20");
+  });
+
+  it("renders the official theme-aware DeepSeek Harness fish instead of the legacy blue asset", () => {
+    const { container } = render(<ProviderIcon provider="dsh" size={20} />);
+    const icon = container.querySelector('svg[data-brand="deepseek-harness"]');
+
+    expect(icon).not.toBeNull();
+    expect(icon).toHaveAttribute("width", "20");
+    expect(icon).toHaveAttribute("viewBox", "0 0 23.16 17.04");
+    expect(container.querySelector('img[src="/brand-logos/deepseek.svg"]')).toBeNull();
+    expect(icon?.querySelector('path[fill="currentColor"]')).not.toBeNull();
   });
 });
 

@@ -74,7 +74,7 @@ function parseAnimatedCounterValue(displayValue) {
 // Provider color mapping for visual distinction
 const PROVIDER_COLORS = {
   CODEX: "#3b82f6",     // blue-500
-  DSH: "#4d6bfe",       // DeepSeek Harness brand blue
+  DSH: "var(--community-deepseek)", // DeepSeek Harness brand blue
   CLAUDE: "#d97757",    // Anthropic Japonica orange-red
   OPENCODE: "#f59e0b",  // amber-500
   GEMINI: "#2196f3",    // Google Gemini bright blue

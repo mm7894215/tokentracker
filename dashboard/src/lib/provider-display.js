@@ -3,13 +3,14 @@ import { copy } from "./copy";
 const SPECIAL_PROVIDER_NAMES = {
   anythingllm: "AnythingLLM",
   claudescience: "Claude Science",
-  dsh: "DeepSeek Harness",
   pianthropic: "Pi · Anthropic",
   pigithubcopilot: "Pi · GitHub Copilot",
   picopilot: "Pi · Copilot",
 };
 
 const SPECIAL_PROVIDER_COPY_KEYS = {
+  deepseek: "provider.display.deepseek_harness",
+  dsh: "provider.display.deepseek_harness",
   omp: "provider.display.omp",
 };
 

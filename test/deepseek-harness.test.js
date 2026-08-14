@@ -7,8 +7,7 @@
  *   - `resolveDshHome` precedence (TOKENTRACKER_DSH_HOME > DSH_HOME > ~/.dsh)
  *   - `resolveDshSessionFiles` finds both plaintext and zstd artifacts
  *   - `readDshSessionText` reassembles a concatenated-frame zstd container
- *     (Node's zlib.zstdDecompressSync decodes only the FIRST frame, so the
- *     parser must use @mongodb-js/zstd)
+ *     frame-by-frame with a bounded aggregate output
  *   - usage mapping (disjoint input/cache_read/cache_write/reasoning/output)
  *   - model from `assistant/message.data.message.source.model` with a
  *     `request/header` fallback
@@ -177,6 +176,35 @@ test("extractDshSessionUsage parses header, model source, header fallback, water
   assert.equal(tail.deltas[0].totals.total_tokens, 25);
 });
 
+test("extractDshSessionUsage never materializes assistant content", () => {
+  const secret = "SECRET_PROMPT_MUST_NOT_BE_PARSED";
+  const line = JSON.stringify({
+    type: "assistant/message",
+    seq: 1,
+    time: T0,
+    data: {
+      message: {
+        role: "assistant",
+        content: [{ type: "text", text: secret }],
+        source: { provider: "deepseek-official", model: "deepseek-v4-flash" },
+      },
+      usage: { inputTokens: 4, outputTokens: 2 },
+    },
+  });
+  const originalParse = JSON.parse;
+  JSON.parse = function privacyGuard(value, ...args) {
+    assert.ok(!String(value).includes(secret), "message content was passed to JSON.parse");
+    return originalParse.call(this, value, ...args);
+  };
+  try {
+    const parsed = extractDshSessionUsage(`${headerLine()}\n${line}\n`, -1);
+    assert.equal(parsed.deltas.length, 1);
+    assert.equal(parsed.deltas[0].totals.total_tokens, 6);
+  } finally {
+    JSON.parse = originalParse;
+  }
+});
+
 test("readDshSessionText reassembles concatenated-frame zstd", async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dsh-zstd-"));
   const lines = [headerLine(), assistantLine(1, { inputTokens: 1, outputTokens: 1 })];
@@ -188,21 +216,41 @@ test("readDshSessionText reassembles concatenated-frame zstd", async () => {
 
   const text = await readDshSessionText(p);
   assert.equal(text, full, "both frames must be reassembled");
+
+  await assert.rejects(
+    readDshSessionText(p, { maxOutputBytes: Buffer.byteLength(full) - 1 }),
+    /decompressed session log exceeds/i,
+    "declared frame sizes must be rejected before unbounded decompression",
+  );
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-test("resolveDshSessionFiles finds plaintext and zstd artifacts, ignores others", async () => {
+test("resolveDshSessionFiles only accepts exact project/session transcript leaves", async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dsh-files-"));
   const root = path.join(dir, ".dsh", "sessions");
   fs.mkdirSync(path.join(root, "--a--", "s1"), { recursive: true });
   fs.mkdirSync(path.join(root, "--a--", "s2"), { recursive: true });
+  fs.mkdirSync(path.join(root, "--a--", "s3", "nested"), { recursive: true });
+  fs.mkdirSync(path.join(root, "--a--", "s4"), { recursive: true });
   fs.writeFileSync(path.join(root, "--a--", "s1", "session.jsonl"), "x\n");
   fs.writeFileSync(path.join(root, "--a--", "s2", "session.jsonl.zstd"), "y\n");
   fs.writeFileSync(path.join(root, "--a--", "s2", "settings.yaml"), "ignore\n");
+  fs.writeFileSync(path.join(root, "session.jsonl"), "wrong depth\n");
+  fs.writeFileSync(path.join(root, "--a--", "session.jsonl"), "wrong depth\n");
+  fs.writeFileSync(path.join(root, "--a--", "s3", "nested", "session.jsonl"), "wrong depth\n");
+  const staleRaw = path.join(root, "--a--", "s4", "session.jsonl");
+  const activeZstd = path.join(root, "--a--", "s4", "session.jsonl.zstd");
+  fs.writeFileSync(staleRaw, "stale encoding\n");
+  fs.writeFileSync(activeZstd, "active encoding\n");
+  fs.utimesSync(staleRaw, new Date(T0), new Date(T0));
+  fs.utimesSync(activeZstd, new Date(T0 + 1000), new Date(T0 + 1000));
 
   const files = await resolveDshSessionFiles({ TOKENTRACKER_DSH_HOME: path.join(dir, ".dsh") });
-  assert.equal(files.length, 2);
-  assert.ok(files.every((f) => f.endsWith("session.jsonl") || f.endsWith("session.jsonl.zstd")));
+  assert.deepEqual(files, [
+    path.join(root, "--a--", "s1", "session.jsonl"),
+    path.join(root, "--a--", "s2", "session.jsonl.zstd"),
+    activeZstd,
+  ]);
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -254,6 +302,38 @@ test("parseDshIncremental writes queue rows, dedups on rerun, and adds appended 
   const dshTokens = rows3.filter((r) => r.source === "dsh").reduce((s, r) => s + r.total_tokens, 0);
   assert.equal(dshTokens, 172 + 25 + 330, "no re-count of the seed events");
 
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("parseDshIncremental accepts a replacement session whose seq restarts", async () => {
+  const { dir, logPath } = await makeTree({
+    compression: "none",
+    lines: [
+      headerLine("sess-old"),
+      requestHeaderLine(0),
+      assistantLine(1, { inputTokens: 100, outputTokens: 50 }),
+      assistantLine(2, { inputTokens: 20, outputTokens: 5 }),
+    ],
+  });
+  const queuePath = path.join(dir, "queue.jsonl");
+  const cursors = {};
+
+  const first = await parseDshIncremental({ sessionFiles: [logPath], cursors, queuePath });
+  assert.equal(first.eventsAggregated, 2);
+
+  await writeSessionLog(path.dirname(logPath), path.basename(logPath), [
+    headerLine("sess-new"),
+    requestHeaderLine(0, "deepseek-v4-flash"),
+    assistantLine(1, { inputTokens: 7, outputTokens: 3 }),
+  ]);
+
+  const second = await parseDshIncremental({ sessionFiles: [logPath], cursors, queuePath });
+  assert.equal(second.eventsAggregated, 1, "new session identity resets the seq watermark");
+  assert.equal(cursors.dsh.files[logPath].sessionId, "sess-new");
+
+  const rows = fs.readFileSync(queuePath, "utf8").trim().split("\n").map(JSON.parse);
+  const total = rows.filter((row) => row.source === "dsh").reduce((sum, row) => sum + row.total_tokens, 0);
+  assert.equal(total, 150 + 25 + 10);
   fs.rmSync(dir, { recursive: true, force: true });
 });
 

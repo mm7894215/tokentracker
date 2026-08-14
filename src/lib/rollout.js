@@ -16394,12 +16394,14 @@ function readTraeEntitlementFromStorage(storagePath) {
 //
 // Zstd artifacts are a concatenated-frame container: Node's
 // `zlib.zstdDecompressSync` decodes only the first frame (silently dropping
-// every event line), so we use `@mongodb-js/zstd`'s streaming `decompress()`,
-// which reassembles all frames. Dedup is a per-file `lastSeq` watermark — seq
+// every event line), so we identify the frame boundaries and feed each frame
+// through `@mongodb-js/zstd`, enforcing a cumulative plaintext bound as we go.
+// Dedup is a per-file `lastSeq` watermark — seq
 // is monotonic within a session log, so an append-only grow re-reads the file
 // and skips everything at or below the watermark; a torn-tail repair or full
 // rewrite re-reads the same seqs and is therefore idempotent.
 const DSH_SESSION_LOG_MAX_BYTES = 64 * 1024 * 1024;
+const DSH_SESSION_TEXT_MAX_BYTES = 128 * 1024 * 1024;
 const DSH_SOURCE = "dsh";
 
 // Precedence mirrors the harness's own resolveDshHome: an explicit
@@ -16425,41 +16427,213 @@ function isDshSessionLogName(name) {
 async function resolveDshSessionFiles(env = process.env) {
   const sessionsRoot = path.join(resolveDshHome(env), "sessions");
   const out = [];
-  const walk = async (dir, depth) => {
-    if (depth > 4) return;
-    const entries = await safeReadDir(dir);
-    for (const entry of entries) {
-      const full = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        await walk(full, depth + 1);
-      } else if (entry.isFile() && isDshSessionLogName(entry.name)) {
-        out.push(full);
+  const projects = await safeReadDir(sessionsRoot);
+  for (const project of projects) {
+    if (!project.isDirectory()) continue;
+    const projectDir = path.join(sessionsRoot, project.name);
+    const sessions = await safeReadDir(projectDir);
+    for (const session of sessions) {
+      if (!session.isDirectory()) continue;
+      const sessionDir = path.join(projectDir, session.name);
+      const artifacts = await safeReadDir(sessionDir);
+      const transcripts = artifacts.filter(
+        (artifact) => artifact.isFile() && isDshSessionLogName(artifact.name),
+      );
+      if (transcripts.length === 1) {
+        out.push(path.join(sessionDir, transcripts[0].name));
+      } else if (transcripts.length > 1) {
+        // Harness itself rejects mixed encodings in one root. For a passive
+        // reader, choose the actively-written artifact instead of counting the
+        // same session twice; a tie prefers the default zstd encoding.
+        const ranked = await Promise.all(transcripts.map(async (artifact) => {
+          const full = path.join(sessionDir, artifact.name);
+          const stat = await fs.stat(full).catch(() => null);
+          return { full, name: artifact.name, mtimeMs: Number(stat?.mtimeMs || 0) };
+        }));
+        ranked.sort((left, right) =>
+          right.mtimeMs - left.mtimeMs ||
+          Number(right.name.endsWith(".zstd")) - Number(left.name.endsWith(".zstd")),
+        );
+        if (ranked[0]) out.push(ranked[0].full);
       }
     }
-  };
-  await walk(sessionsRoot, 0);
+  }
   out.sort((a, b) => a.localeCompare(b));
   return out;
 }
 
-// Decode a concatenated-frame Zstandard container. Must use the streaming
-// @mongodb-js/zstd decoder — see the section comment above.
-async function decodeDshZstd(data) {
-  return Buffer.from(await require("@mongodb-js/zstd").decompress(data));
+// Inspect concatenated Zstandard frames without decompressing them. Harness
+// writes a content size into every independent append frame; summing those
+// declarations lets us reject a decompression bomb before the native decoder
+// allocates its plaintext buffer.
+function inspectDshZstdFrames(data, maxOutputBytes = DSH_SESSION_TEXT_MAX_BYTES) {
+  const input = Buffer.isBuffer(data) ? data : Buffer.from(data || []);
+  const limit = Number.isSafeInteger(maxOutputBytes) && maxOutputBytes >= 0
+    ? maxOutputBytes
+    : DSH_SESSION_TEXT_MAX_BYTES;
+  let offset = 0;
+  let totalContentBytes = 0;
+  let allContentSizesDeclared = true;
+  let frames = 0;
+  const frameRanges = [];
+
+  const need = (count, label) => {
+    if (offset + count > input.length) throw new Error(`Invalid DeepSeek Harness zstd ${label}`);
+  };
+  const readUnsignedLE = (count) => {
+    need(count, "frame header");
+    let value = 0n;
+    for (let i = 0; i < count; i++) value |= BigInt(input[offset + i]) << BigInt(i * 8);
+    offset += count;
+    return value;
+  };
+
+  while (offset < input.length) {
+    const frameStart = offset;
+    need(4, "magic");
+    const magic = input.readUInt32LE(offset);
+    offset += 4;
+
+    if (magic >= 0x184d2a50 && magic <= 0x184d2a5f) {
+      need(4, "skippable frame size");
+      const skipBytes = input.readUInt32LE(offset);
+      offset += 4;
+      need(skipBytes, "skippable frame payload");
+      offset += skipBytes;
+      continue;
+    }
+    if (magic !== 0xfd2fb528) throw new Error("Invalid DeepSeek Harness zstd frame magic");
+
+    need(1, "descriptor");
+    const descriptor = input[offset++];
+    if ((descriptor & 0x08) !== 0) throw new Error("Invalid DeepSeek Harness zstd reserved frame bit");
+    const contentSizeFlag = descriptor >>> 6;
+    const singleSegment = (descriptor & 0x20) !== 0;
+    const hasChecksum = (descriptor & 0x04) !== 0;
+    const dictionaryIdBytes = [0, 1, 2, 4][descriptor & 0x03];
+    let windowSize = null;
+    if (!singleSegment) {
+      need(1, "window descriptor");
+      const windowDescriptor = input[offset++];
+      const windowBase = 2 ** (10 + (windowDescriptor >>> 3));
+      windowSize = windowBase + (windowBase / 8) * (windowDescriptor & 0x07);
+    }
+    need(dictionaryIdBytes, "dictionary id");
+    offset += dictionaryIdBytes;
+
+    const contentSizeBytes = contentSizeFlag === 0
+      ? (singleSegment ? 1 : 0)
+      : [0, 2, 4, 8][contentSizeFlag];
+    let declaredContentBytes = null;
+    if (contentSizeBytes > 0) {
+      declaredContentBytes = readUnsignedLE(contentSizeBytes);
+      if (contentSizeBytes === 2) declaredContentBytes += 256n;
+      if (declaredContentBytes > BigInt(limit)) {
+        throw new Error(`DeepSeek Harness decompressed session log exceeds ${limit} bytes`);
+      }
+      if (singleSegment) windowSize = Number(declaredContentBytes);
+    } else {
+      allContentSizesDeclared = false;
+    }
+
+    let lastBlock = false;
+    let frameUpperBound = 0;
+    while (!lastBlock) {
+      need(3, "block header");
+      const blockHeader = input[offset] | (input[offset + 1] << 8) | (input[offset + 2] << 16);
+      offset += 3;
+      lastBlock = (blockHeader & 1) !== 0;
+      const blockType = (blockHeader >>> 1) & 0x03;
+      const blockSize = blockHeader >>> 3;
+      if (blockType === 3) throw new Error("Invalid DeepSeek Harness zstd reserved block type");
+      const payloadBytes = blockType === 1 ? 1 : blockSize;
+      need(payloadBytes, "block payload");
+      offset += payloadBytes;
+      // A raw block emits blockSize bytes; an RLE block expands to blockSize
+      // repeated bytes; a compressed block cannot emit more than the frame's
+      // window or Zstandard's 128 KiB maximum block size. This gives frames
+      // without FCS a safe allocation bound before native decompression.
+      frameUpperBound += blockType === 2
+        ? Math.min(Number(windowSize) || 128 * 1024, 128 * 1024)
+        : blockSize;
+      if (declaredContentBytes == null && frameUpperBound > limit) {
+        throw new Error(`DeepSeek Harness decompressed session log exceeds ${limit} bytes`);
+      }
+    }
+    if (hasChecksum) {
+      need(4, "checksum");
+      offset += 4;
+    }
+    const boundedFrameBytes = declaredContentBytes == null
+      ? frameUpperBound
+      : Number(declaredContentBytes);
+    totalContentBytes += boundedFrameBytes;
+    if (allContentSizesDeclared && totalContentBytes > limit) {
+      throw new Error(`DeepSeek Harness decompressed session log exceeds ${limit} bytes`);
+    }
+    frameRanges.push({ start: frameStart, end: offset, maxContentBytes: boundedFrameBytes });
+    frames += 1;
+  }
+
+  if (frames === 0) throw new Error("DeepSeek Harness zstd log contains no data frames");
+  return {
+    frames,
+    totalContentBytes: allContentSizesDeclared ? totalContentBytes : null,
+    maxContentBytes: totalContentBytes,
+    frameRanges,
+  };
+}
+
+// Decode one independent Harness append frame at a time. The MongoDB binding
+// understands every Node version we ship; per-frame decoding also lets us
+// enforce the aggregate plaintext limit when the frame omits its content size.
+async function decodeDshZstd(
+  data,
+  { maxOutputBytes = DSH_SESSION_TEXT_MAX_BYTES, inspected = null } = {},
+) {
+  const input = Buffer.isBuffer(data) ? data : Buffer.from(data || []);
+  const frameInfo = inspected || inspectDshZstdFrames(input, maxOutputBytes);
+  const parts = [];
+  let total = 0;
+  for (const frame of frameInfo.frameRanges) {
+    const decoded = Buffer.from(
+      await require("@mongodb-js/zstd").decompress(input.subarray(frame.start, frame.end)),
+    );
+    total += decoded.length;
+    if (total > maxOutputBytes) {
+      throw new Error(`DeepSeek Harness decompressed session log exceeds ${maxOutputBytes} bytes`);
+    }
+    parts.push(decoded);
+  }
+  return Buffer.concat(parts, total);
 }
 
 // Read one session log to plaintext, decompressing zstd artifacts. Returns
 // null for a missing/non-file path so callers treat it as a no-op.
-async function readDshSessionText(filePath) {
+async function readDshSessionText(filePath, { maxOutputBytes = DSH_SESSION_TEXT_MAX_BYTES } = {}) {
   const st = await fs.stat(filePath).catch(() => null);
   if (!st || !st.isFile()) return null;
   if (st.size > DSH_SESSION_LOG_MAX_BYTES) {
     throw new Error(`DeepSeek Harness session log exceeds ${DSH_SESSION_LOG_MAX_BYTES} bytes`);
   }
+  const outputLimit = Number.isSafeInteger(maxOutputBytes) && maxOutputBytes >= 0
+    ? maxOutputBytes
+    : DSH_SESSION_TEXT_MAX_BYTES;
   if (filePath.endsWith(".zstd")) {
     const data = await fs.readFile(filePath);
     if (data.length === 0) return "";
-    return (await decodeDshZstd(data)).toString("utf8");
+    const inspected = inspectDshZstdFrames(data, outputLimit);
+    const decoded = await decodeDshZstd(data, { maxOutputBytes: outputLimit, inspected });
+    if (
+      decoded.length > outputLimit ||
+      (inspected.totalContentBytes != null && decoded.length !== inspected.totalContentBytes)
+    ) {
+      throw new Error(`DeepSeek Harness decompressed session log exceeds ${outputLimit} bytes`);
+    }
+    return decoded.toString("utf8");
+  }
+  if (st.size > outputLimit) {
+    throw new Error(`DeepSeek Harness decompressed session log exceeds ${outputLimit} bytes`);
   }
   return fs.readFile(filePath, "utf8");
 }
@@ -16499,6 +16673,119 @@ function dshUsageToTotals(usage) {
   };
 }
 
+// Return one top-level JSON object property's raw value slice without parsing
+// sibling values. In particular this lets the Harness reader skip message
+// content byte-for-byte and materialize only routing metadata plus token
+// counters. It is intentionally small and JSON-syntax aware (strings, escapes,
+// nested arrays/objects), not a regex over potentially nested content.
+function findDshJsonProperty(raw, wantedKey) {
+  const text = String(raw || "");
+  const skipWhitespace = (index) => {
+    while (index < text.length && /\s/.test(text[index])) index += 1;
+    return index;
+  };
+  const stringEnd = (start) => {
+    if (text[start] !== '"') return -1;
+    for (let index = start + 1; index < text.length; index++) {
+      if (text[index] === "\\") {
+        index += 1;
+      } else if (text[index] === '"') {
+        return index + 1;
+      }
+    }
+    return -1;
+  };
+  const valueEnd = (start) => {
+    const first = text[start];
+    if (first === '"') return stringEnd(start);
+    if (first === "{" || first === "[") {
+      const stack = [first === "{" ? "}" : "]"];
+      let inString = false;
+      for (let index = start + 1; index < text.length; index++) {
+        const char = text[index];
+        if (inString) {
+          if (char === "\\") index += 1;
+          else if (char === '"') inString = false;
+          continue;
+        }
+        if (char === '"') {
+          inString = true;
+        } else if (char === "{") {
+          stack.push("}");
+        } else if (char === "[") {
+          stack.push("]");
+        } else if (char === stack.at(-1)) {
+          stack.pop();
+          if (stack.length === 0) return index + 1;
+        }
+      }
+      return -1;
+    }
+    let index = start;
+    while (index < text.length && !/[\s,}\]]/.test(text[index])) index += 1;
+    return index > start ? index : -1;
+  };
+
+  let index = skipWhitespace(0);
+  if (text[index] !== "{") return null;
+  index += 1;
+  while (index < text.length) {
+    index = skipWhitespace(index);
+    if (text[index] === "}") return null;
+    const keyStart = index;
+    const keyEnd = stringEnd(keyStart);
+    if (keyEnd < 0) return null;
+    let key;
+    try {
+      key = JSON.parse(text.slice(keyStart, keyEnd));
+    } catch {
+      return null;
+    }
+    index = skipWhitespace(keyEnd);
+    if (text[index] !== ":") return null;
+    index = skipWhitespace(index + 1);
+    const start = index;
+    const end = valueEnd(start);
+    if (end < 0) return null;
+    if (key === wantedKey) return text.slice(start, end);
+    index = skipWhitespace(end);
+    if (text[index] === ",") {
+      index += 1;
+      continue;
+    }
+    if (text[index] === "}") return null;
+    return null;
+  }
+  return null;
+}
+
+function parseDshJsonString(raw) {
+  if (typeof raw !== "string" || raw[0] !== '"') return null;
+  try {
+    const value = JSON.parse(raw);
+    return typeof value === "string" ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function parseDshJsonNumber(raw) {
+  if (typeof raw !== "string") return NaN;
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : NaN;
+}
+
+function parseDshUsageSlice(raw) {
+  if (typeof raw !== "string") return null;
+  return {
+    inputTokens: parseDshJsonNumber(findDshJsonProperty(raw, "inputTokens")),
+    outputTokens: parseDshJsonNumber(findDshJsonProperty(raw, "outputTokens")),
+    cacheReadTokens: parseDshJsonNumber(findDshJsonProperty(raw, "cacheReadTokens")),
+    cacheWriteTokens: parseDshJsonNumber(findDshJsonProperty(raw, "cacheWriteTokens")),
+    reasoningTokens: parseDshJsonNumber(findDshJsonProperty(raw, "reasoningTokens")),
+  };
+}
+
 // Parse one session log's plaintext into usage deltas, skipping events whose
 // seq is at or below the watermark. Returns the deltas (each carrying the
 // model and epoch-ms timestamp), the highest seq seen, and the session id.
@@ -16513,41 +16800,45 @@ function extractDshSessionUsage(text, lastSeq = -1) {
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     if (!line || !line.trim()) continue;
-    let event;
-    try {
-      event = JSON.parse(line);
-    } catch {
-      continue;
-    }
-    if (!event || typeof event !== "object") continue;
+    const eventType = parseDshJsonString(findDshJsonProperty(line, "type"));
+    if (!eventType) continue;
 
-    if (event.type === "session") {
-      if (typeof event.id === "string" && event.id) sessionId = event.id;
+    if (eventType === "session") {
+      const id = parseDshJsonString(findDshJsonProperty(line, "id"));
+      if (id) sessionId = id;
       continue;
     }
 
-    const seq = Number(event.seq);
+    const seq = parseDshJsonNumber(findDshJsonProperty(line, "seq"));
     const seqKnown = Number.isFinite(seq) && seq >= 0;
     if (seqKnown && seq > maxSeq) maxSeq = seq;
 
-    const data = event.data && typeof event.data === "object" ? event.data : null;
+    const data = findDshJsonProperty(line, "data");
     if (!data) continue;
 
-    if (event.type === "request/header") {
-      const model = data.header?.config?.model;
+    if (eventType === "request/header") {
+      const header = findDshJsonProperty(data, "header");
+      const config = findDshJsonProperty(header, "config");
+      const model = parseDshJsonString(findDshJsonProperty(config, "model"));
       const normalized = normalizeDshModelName(model);
       if (normalized) headerModel = normalized;
       continue;
     }
 
-    if (event.type !== "assistant/message") continue;
+    if (eventType !== "assistant/message") continue;
     if (seqKnown && seq <= watermark) continue;
 
-    const model = normalizeDshModelName(data.message?.source?.model) || headerModel;
-    const totals = dshUsageToTotals(data.usage);
+    const message = findDshJsonProperty(data, "message");
+    const source = findDshJsonProperty(message, "source");
+    const model = normalizeDshModelName(
+      parseDshJsonString(findDshJsonProperty(source, "model")),
+    ) || headerModel;
+    const totals = dshUsageToTotals(
+      parseDshUsageSlice(findDshJsonProperty(data, "usage")),
+    );
     if (!model || !totals) continue;
 
-    const timeMs = Number(event.time);
+    const timeMs = parseDshJsonNumber(findDshJsonProperty(line, "time"));
     if (!Number.isFinite(timeMs) || timeMs <= 0) continue;
 
     deltas.push({ model, timeMs, totals });
@@ -16602,7 +16893,10 @@ async function parseDshIncremental({ sessionFiles, cursors, queuePath, onProgres
     if (text == null) continue;
 
     const lastSeq = Number.isFinite(prev?.lastSeq) ? prev.lastSeq : -1;
-    const parsed = extractDshSessionUsage(text, lastSeq);
+    let parsed = extractDshSessionUsage(text, lastSeq);
+    if (prev && parsed.sessionId && parsed.sessionId !== prev.sessionId) {
+      parsed = extractDshSessionUsage(text, -1);
+    }
 
     for (const delta of parsed.deltas) {
       const bucketStart = toUtcHalfHourStart(delta.timeMs);
@@ -16818,6 +17112,7 @@ module.exports = {
   resolveDshSessionFiles,
   readDshSessionText,
   decodeDshZstd,
+  inspectDshZstdFrames,
   normalizeDshModelName,
   dshUsageToTotals,
   extractDshSessionUsage,

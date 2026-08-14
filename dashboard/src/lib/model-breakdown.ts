@@ -118,7 +118,7 @@ function mergeSourcesByAlias(sources: any[]) {
       bySource.set(source, merged);
     }
     addTotalsInto(merged.totals, entry?.totals);
-    for (const model of entry?.models || []) {
+    for (const model of Array.isArray(entry?.models) ? entry.models : []) {
       const id = model?.model_id || model?.model || "";
       if (!id) continue;
       let modelRow = merged.models.get(id);

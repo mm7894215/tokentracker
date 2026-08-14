@@ -60,6 +60,16 @@ describe("buildFleetData", () => {
     const byId = Object.fromEntries(fleet[0].models.map((m: any) => [m.id, m.usage]));
     expect(byId).toEqual({ "deepseek-v4-pro": 370, "deepseek-v4-flash": 130 });
   });
+
+  it("ignores malformed non-array model collections while preserving source totals", () => {
+    expect(() => buildFleetData({
+      sources: [{
+        source: "dsh",
+        totals: { billable_total_tokens: 42 },
+        models: { model_id: "not-an-array" },
+      }],
+    })).not.toThrow();
+  });
 });
 
 describe("buildAllModels", () => {
