@@ -179,7 +179,7 @@ final class WeeklyLimitResetDetectorTests: XCTestCase {
         let readings = response.limitWindowReadings()
 
         XCTAssertEqual(
-            readings.map { "\($0.provider).\($0.windowKey)" },
+            readings.map { $0.windowKey },
             ["qoder.primary", "qoder.secondary", "qoderCn.primary", "qoderCn.secondary"]
         )
         XCTAssertEqual(
