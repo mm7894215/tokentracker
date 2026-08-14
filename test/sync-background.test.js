@@ -4,7 +4,7 @@ const os = require("node:os");
 const path = require("node:path");
 const { test } = require("node:test");
 
-const { cmdSync } = require("../src/commands/sync");
+const { acquireSyncLock, cmdSync } = require("../src/commands/sync");
 const { openLock } = require("../src/lib/fs");
 
 function tokenCountLine({ ts, totalTokens }) {
@@ -262,6 +262,29 @@ test("native account publication waits for an overlapping sync instead of report
     const queue = await readQueue(home);
     assert.match(queue, /"source":"codex"/);
     assert.match(queue, /"total_tokens":79/);
+  });
+});
+
+test("manual sync waits for an overlapping background sync instead of reporting success", async () => {
+  await withTempSyncEnv(async (home) => {
+    const trackerDir = path.join(home, ".tokentracker", "tracker");
+    await fs.mkdir(trackerDir, { recursive: true });
+    const lockPath = path.join(trackerDir, "sync.lock");
+    const active = await openLock(lockPath, {
+      quietIfLocked: true,
+    });
+    assert.ok(active);
+
+    const waitingLock = acquireSyncLock(
+      lockPath,
+      { auto: false, drain: false, publishAccount: false },
+      { priorityWaitMs: 500, priorityPollMs: 10 },
+    );
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    await active.release();
+    const acquired = await waitingLock;
+    assert.ok(acquired);
+    await acquired.release();
   });
 });
 

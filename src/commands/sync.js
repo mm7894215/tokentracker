@@ -363,7 +363,7 @@ async function acquireSyncLock(
     priorityPollMs = PRIORITY_LOCK_POLL_MS,
   } = {},
 ) {
-  const waitsForPriority = Boolean(opts.drain || opts.publishAccount);
+  const waitsForPriority = Boolean(!opts.auto || opts.drain || opts.publishAccount);
   let lock = await openLock(lockPath, {
     quietIfLocked: opts.auto || waitsForPriority,
   });
