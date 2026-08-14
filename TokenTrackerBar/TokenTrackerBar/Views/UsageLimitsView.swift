@@ -377,10 +377,10 @@ struct UsageLimitsView: View {
     private func qoderSpecs(_ q: QoderLimits) -> [LimitWindowSpec] {
         var specs: [LimitWindowSpec] = []
         if let window = q.primaryWindow {
-            specs.append(makeSpec("Plan", window.usedPercent, iso: window.resetAt))
+            specs.append(makeSpec(Strings.qoderPlanLabel, window.usedPercent, iso: window.resetAt))
         }
         if let window = q.secondaryWindow {
-            specs.append(makeSpec("Bonus", window.usedPercent, iso: window.resetAt))
+            specs.append(makeSpec(Strings.qoderBonusLabel, window.usedPercent, iso: window.resetAt))
         }
         return specs
     }
