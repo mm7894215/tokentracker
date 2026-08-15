@@ -14,13 +14,14 @@
 // (`arkcli usage plan --format json`), which is already installed and logged
 // in for users of the Ark CLI ecosystem. Feature-detected: when `arkcli` is
 // missing, the provider simply reports `configured: false` and stays out of
-// the way. This mirrors the pattern used by qoder-limits.js — self-contained,
-// no dependency on usage-limits.js (which requires this module).
+// the way. Mirrors qoder-limits.js; shares the command runner with
+// usage-limits.js through ./command-runner (no circular dependency).
 
-const cp = require("node:child_process");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+
+const { runCommand, resolveBinaryPath } = require("./command-runner");
 
 const ARK_LIMITS_CACHE_FILE = "ark-coding-plan-limits-cache.json";
 const ARK_LIMITS_CACHE_UNKNOWN_RESET_TTL_MS = 12 * 60 * 60 * 1000;
@@ -80,7 +81,20 @@ function arkProfileIdentity(body) {
   const name = typeof body?.profile === "string"
     ? body.profile
     : profile?.name || profile?.profile || profile?.profile_name;
-  const userId = profile?.user_id || profile?.userId || body?.user_id || body?.userId;
+  let userId = profile?.user_id || profile?.userId || body?.user_id || body?.userId;
+  if (!userId) {
+    // `arkcli profile show` reports the account through owner_trn /
+    // identity_key (e.g. "trn:iam::1234567890:root" / "volc-1234567890")
+    // instead of a user_id field — extract the numeric id so identities
+    // coming from `usage plan`'s viewer and from `profile show` compare
+    // equal.
+    const trnMatch = String(profile?.owner_trn || "").match(/::(\d+):/);
+    if (trnMatch) userId = trnMatch[1];
+    else {
+      const keyMatch = String(profile?.identity_key || "").match(/-(\d+)$/);
+      if (keyMatch) userId = keyMatch[1];
+    }
+  }
   const identity = [name, userId].filter(Boolean).join(":");
   return identity || null;
 }
@@ -194,152 +208,20 @@ function writeArkCodingPlanLimitsCache(limits, { home = os.homedir(), nowMs = Da
   } catch (_error) {}
 }
 
-// Async command runner in the same shape as usage-limits.runCommand. It
-// intentionally owns its child-process lifecycle so the provider-level abort
-// signal can stop spawned CLI processes instead of merely racing their result.
-function runCommand(commandRunner, command, args, options = {}) {
-  const merged = {
-    encoding: "utf8",
-    maxBuffer: 10 * 1024 * 1024,
-    ...options,
-  };
-  if (typeof commandRunner === "function") {
-    return Promise.resolve(commandRunner(command, args, merged));
+// runCommand / whichBinary / resolveBinaryPath now live in ./command-runner,
+// shared with usage-limits.js (single implementation, no forked copies).
+
+// arkcli keeps its config and credentials under ~/.arkcli. Checking for the
+// directory is a spawn-free way to tell "arkcli has never been installed"
+// apart from "installed but the quota call failed" — machines without the
+// CLI skip the binary probe entirely on every poll, so the 5s refresh
+// cadence never pays a `which` spawn for a provider they cannot use.
+function hasArkCliInstallEvidence({ home = os.homedir() } = {}) {
+  try {
+    return fs.statSync(path.join(home, ".arkcli")).isDirectory();
+  } catch (_error) {
+    return false;
   }
-
-  const {
-    timeout,
-    maxBuffer,
-    killProcessGroup = false,
-    platform = process.platform,
-    signal,
-    ...spawnOptions
-  } = merged;
-  return new Promise((resolve) => {
-    if (signal?.aborted) {
-      const error = new Error(`spawn ${command} aborted`);
-      error.name = "AbortError";
-      resolve({ status: null, stdout: "", stderr: "", error });
-      return;
-    }
-
-    const useProcessGroup = killProcessGroup && platform !== "win32";
-    let child;
-    try {
-      child = cp.spawn(command, args, {
-        ...spawnOptions,
-        detached: useProcessGroup || spawnOptions.detached,
-        // npm installs CLI entrypoints as .cmd shims on Windows. Node's spawn
-        // cannot execute those shims directly, whereas shell execution can.
-        shell: platform === "win32",
-        stdio: ["ignore", "pipe", "pipe"],
-      });
-    } catch (error) {
-      resolve({ status: null, stdout: "", stderr: "", error });
-      return;
-    }
-
-    let stdout = "";
-    let stderr = "";
-    let outputBytes = 0;
-    let settled = false;
-    let timedOut = false;
-    let timer = null;
-    let hardTimer = null;
-    let abortListener = null;
-
-    const settle = ({ status = null, error = null } = {}) => {
-      if (settled) return;
-      settled = true;
-      if (timer) clearTimeout(timer);
-      if (hardTimer) clearTimeout(hardTimer);
-      if (abortListener) signal?.removeEventListener("abort", abortListener);
-      let finalError = error;
-      if (!finalError && timedOut) {
-        finalError = new Error(`spawn ${command} ETIMEDOUT`);
-        finalError.code = "ETIMEDOUT";
-      }
-      const result = { status, stdout, stderr };
-      if (finalError) result.error = finalError;
-      resolve(result);
-    };
-
-    const signalChild = (killSignal) => {
-      try {
-        if (useProcessGroup && Number.isInteger(child.pid)) {
-          process.kill(-child.pid, killSignal);
-        } else {
-          child.kill(killSignal);
-        }
-      } catch (_error) {}
-    };
-
-    const stopChild = ({ timeoutExpired = false } = {}) => {
-      if (settled) return;
-      if (timeoutExpired) timedOut = true;
-      signalChild("SIGTERM");
-      // A CLI may leave descendants or inherited stdio alive after SIGTERM.
-      // Escalate after a short grace period and settle even if close never fires.
-      hardTimer = setTimeout(() => {
-        signalChild("SIGKILL");
-        settle({ status: null });
-      }, 1000);
-      if (typeof hardTimer.unref === "function") hardTimer.unref();
-    };
-
-    const appendOutput = (key, chunk) => {
-      if (settled) return;
-      if (key === "stdout") stdout += chunk;
-      else stderr += chunk;
-      outputBytes += Buffer.byteLength(chunk, "utf8");
-      // Unlike exec/execFile, spawn does not apply a maxBuffer guard to piped
-      // streams. Enforce the combined byte cap here so a verbose CLI cannot
-      // grow this process without bound.
-      if (outputBytes > maxBuffer) {
-        const error = new Error(`spawn ${command} maxBuffer length exceeded`);
-        error.code = "ERR_CHILD_PROCESS_STDIO_MAXBUFFER";
-        signalChild("SIGKILL");
-        settle({ status: null, error });
-      }
-    };
-
-    child.stdout?.setEncoding("utf8");
-    child.stderr?.setEncoding("utf8");
-    child.stdout?.on("data", (chunk) => appendOutput("stdout", chunk));
-    child.stderr?.on("data", (chunk) => appendOutput("stderr", chunk));
-    child.on("error", (error) => settle({ status: null, error }));
-    child.on("close", (code) => settle({ status: timedOut ? null : code }));
-
-    if (signal) {
-      abortListener = () => stopChild();
-      signal.addEventListener("abort", abortListener, { once: true });
-      if (signal.aborted) abortListener();
-    }
-    if (Number.isFinite(timeout) && timeout > 0) {
-      timer = setTimeout(() => stopChild({ timeoutExpired: true }), timeout);
-    }
-  });
-}
-
-// Locate a binary on PATH. Unix uses `which`; native Windows ships no `which`
-// (it has `where.exe` instead), so blindly spawning `which` there returns
-// ENOENT and every provider would report itself unconfigured even when the
-// binary is installed and signed in.
-async function whichBinary(binary, { commandRunner, platform = process.platform, signal } = {}) {
-  const probe = platform === "win32" ? "where" : "which";
-  const result = await runCommand(commandRunner, probe, [binary], {
-    timeout: 2000,
-    signal,
-    platform,
-    killProcessGroup: true,
-  });
-  if (result?.error || result?.status !== 0) return null;
-  const stdout = typeof result?.stdout === "string" ? result.stdout.trim() : "";
-  return stdout ? stdout.split("\n")[0] : null;
-}
-
-async function isBinaryAvailable(binary, { commandRunner, platform, signal } = {}) {
-  return (await whichBinary(binary, { commandRunner, platform, signal })) !== null;
 }
 
 function trimStderr(stderr) {
@@ -354,11 +236,16 @@ function trimStderr(stderr) {
  * Fetch Ark Coding Plan quota windows from the local `arkcli` binary.
  *
  * Resolution order:
- *  1. `arkcli` missing (not installed / not on PATH)          -> { configured: false }
- *  2. `arkcli usage plan` succeeds but no subscription        -> { configured: false }
- *  3. live success                                            -> { configured: true, ...windows }
- *  4. command failed / parse failed -> bounded disk cache     -> { configured: true, ...stale }
- *  5. nothing usable                                          -> { configured: true, error }
+ *  1. no ~/.arkcli (arkcli never installed on this machine)   -> { configured: false }, zero spawns
+ *  2. arkcli binary not resolvable                            -> { configured: false }
+ *  3. `arkcli usage plan` succeeds but no subscription        -> { configured: false }
+ *  4. live success                                            -> { configured: true, ...windows }
+ *  5. command/parse failure -> bounded disk cache             -> { configured: true, ...stale }
+ *  6. nothing usable                                          -> { configured: true, error }
+ *
+ * Only `usage plan` runs on the happy path. `plans get` (tier label) runs
+ * only when the usage response carries no tier, and `profile show` (the
+ * cross-account cache guard) only when the disk cache is consulted.
  */
 async function fetchArkCodingPlanLimits({
   commandRunner,
@@ -366,58 +253,49 @@ async function fetchArkCodingPlanLimits({
   nowMs = Date.now(),
   platform = process.platform,
   signal,
+  globalBinDirs,
 } = {}) {
-  let available;
-  try {
-    available = await isBinaryAvailable("arkcli", { commandRunner, platform, signal });
-  } catch (_error) {
-    available = false;
-  }
-  if (!available) return { configured: false };
+  if (!hasArkCliInstallEvidence({ home })) return { configured: false };
 
-  // `usage plan` is essential; `plans get` supplies only a fallback tier label.
-  // Run both requests together so a slow optional lookup cannot consume the
-  // provider's deadline before the quota response is available.
+  let arkcliPath;
+  try {
+    arkcliPath = await resolveBinaryPath("arkcli", { commandRunner, home, platform, signal, globalBinDirs });
+  } catch (_error) {
+    arkcliPath = null;
+  }
+  if (!arkcliPath) return { configured: false };
+
   const commandOptions = {
     timeout: ARK_USAGE_PLAN_TIMEOUT_MS,
     signal,
     killProcessGroup: true,
     platform,
   };
-  const [plansResult, result, profileResult] = await Promise.all([
-    runCommand(
+  // Spawn the resolved absolute path, never the bare name: on Windows
+  // cmd.exe searches the current directory before PATH, so a bare
+  // `arkcli` would let an `arkcli.bat` dropped in the server cwd hijack
+  // the spawn.
+  const result = await runCommand(
+    commandRunner,
+    arkcliPath,
+    ["usage", "plan", "--format", "json"],
+    commandOptions,
+  );
+
+  const failWithCache = async (message) => {
+    const profileIdentity = await runCommand(
       commandRunner,
-      "arkcli",
-      ["plans", "get", "--format", "json"],
-      commandOptions,
-    ),
-    runCommand(
-      commandRunner,
-      "arkcli",
-      ["usage", "plan", "--format", "json"],
-      commandOptions,
-    ),
-    runCommand(
-      commandRunner,
-      "arkcli",
+      arkcliPath,
       ["profile", "show", "--format", "json"],
       commandOptions,
-    ),
-  ]);
-
-  let profileIdentity = null;
-  if (!profileResult?.error && profileResult?.status === 0) {
-    try { profileIdentity = arkProfileIdentity(JSON.parse(String(profileResult.stdout || ""))); } catch (_error) {}
-  }
-
-  let tier = null;
-  if (!plansResult?.error && plansResult?.status === 0) {
-    try {
-      tier = normalizeArkPlansResponse(JSON.parse(String(plansResult.stdout || "")));
-    } catch (_error) {}
-  }
-
-  const failWithCache = (message) => {
+    ).then((profileResult) => {
+      if (profileResult?.error || profileResult?.status !== 0) return null;
+      try {
+        return arkProfileIdentity(JSON.parse(String(profileResult.stdout || "")));
+      } catch (_error) {
+        return null;
+      }
+    }).catch(() => null);
     const cached = readArkCodingPlanLimitsCache({ home, nowMs, profileIdentity });
     if (cached) return cached;
     return { configured: true, error: message };
@@ -447,8 +325,22 @@ async function fetchArkCodingPlanLimits({
   }
   if (!limits) return { configured: false };
 
-  if (tier && !limits.plan_label) limits.plan_label = planLabelForTier(tier);
-  limits.profile_identity = profileIdentity || limits.profile_identity;
+  if (!limits.plan_label) {
+    // The tier ("lite" / "pro") lives on the `plans get` payload; fetch it
+    // only when the usage response did not carry one.
+    const plansResult = await runCommand(
+      commandRunner,
+      arkcliPath,
+      ["plans", "get", "--format", "json"],
+      commandOptions,
+    );
+    if (!plansResult?.error && plansResult?.status === 0) {
+      try {
+        const tier = normalizeArkPlansResponse(JSON.parse(String(plansResult.stdout || "")));
+        if (tier) limits.plan_label = planLabelForTier(tier);
+      } catch (_error) {}
+    }
+  }
 
   writeArkCodingPlanLimitsCache(limits, { home, nowMs });
   return limits;
@@ -461,6 +353,6 @@ module.exports = {
   normalizeArkCodingPlanResponse,
   readArkCodingPlanLimitsCache,
   writeArkCodingPlanLimitsCache,
-  runCommand,
+  hasArkCliInstallEvidence,
   fetchArkCodingPlanLimits,
 };

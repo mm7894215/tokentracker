@@ -8,11 +8,15 @@ const test = require("node:test");
 
 const {
   normalizeArkPlansResponse,
+  arkProfileIdentity,
   normalizeArkCodingPlanResponse,
   fetchArkCodingPlanLimits,
   writeArkCodingPlanLimitsCache,
-  runCommand,
 } = require("../src/lib/ark-coding-plan-limits");
+const {
+  runCommand,
+  resolveBinaryPath,
+} = require("../src/lib/command-runner");
 
 const PROFILE_JSON = JSON.stringify({ profile: "coding-plan_test_region_personal", user_id: "test-user-001" });
 
@@ -38,19 +42,22 @@ const USAGE_JSON = JSON.stringify({
 
 // Fetch-path fixtures use reset times relative to `nowMs` so the cache
 // rollover tests never go stale as wall-clock time moves past a fixed date.
-function usageJsonFor({ nowMs = Date.now() } = {}) {
+// The viewer identity mirrors PROFILE_JSON so cache snapshots written from
+// the usage payload match the identity guard computed from `profile show`.
+function usageJsonFor({ nowMs = Date.now(), withTier = false } = {}) {
   const iso = (ms) => new Date(ms).toISOString();
   return JSON.stringify({
     viewer: {
       auth_method: "sso",
-      user_id: "2126262990",
-      profile: "coding-plan_cn-beijing_personal",
+      user_id: "test-user-001",
+      profile: "coding-plan_test_region_personal",
     },
     items: [
       {
         product: "coding-plan",
         edition: "personal",
         subscribed: true,
+        ...(withTier ? { tier: "lite" } : {}),
         periods: [
           { label: "session", percent: 32.7377, reset_at: iso(nowMs + 3 * 3600_000) },
           { label: "weekly", percent: 15.670588333333333, reset_at: iso(nowMs + 3 * 86400_000) },
@@ -68,6 +75,12 @@ const PLANS_JSON = JSON.stringify({
 });
 
 // Injects a spawnSync-shaped runner that dispatches on the command name.
+// Ark commands arrive as the absolute path resolved by the discovery probe,
+// never as a bare "arkcli" — matching what the provider spawns.
+function isArkCommand(command) {
+  return /arkcli(\.exe)?$/i.test(String(command || ""));
+}
+
 function mockRunner({
   which = true,
   plansStdout = PLANS_JSON,
@@ -87,7 +100,7 @@ function mockRunner({
         ? { status: 0, stdout: "C:\\Program Files\\arkcli.exe\n", stderr: "" }
         : { status: 1, stdout: "", stderr: "" };
     }
-    if (command === "arkcli") {
+    if (isArkCommand(command)) {
       if (args[0] === "plans") {
         return { status: 0, stdout: plansStdout, stderr: "" };
       }
@@ -107,8 +120,11 @@ function mockRunner({
   };
 }
 
-function tmpHome(t) {
+// Temporary HOME with the ~/.arkcli install-evidence directory by default —
+// the spawn-free gate requires it before any binary probe runs.
+function tmpHome(t, { arkcliDir = true } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ark-plan-test-"));
+  if (arkcliDir) fs.mkdirSync(path.join(dir, ".arkcli"), { recursive: true });
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   return dir;
 }
@@ -144,6 +160,27 @@ test("normalizeArkPlansResponse extracts tier from plans payload", () => {
   assert.equal(normalizeArkPlansResponse({ plans: [{ key: "agent-plan", tier: "pro" }] }), null);
 });
 
+test("arkProfileIdentity extracts the account id from profile show's owner_trn", () => {
+  // `arkcli profile show --format json` has no user_id field; the account
+  // surfaces through owner_trn / identity_key instead.
+  const body = {
+    name: "coding-plan_cn-beijing_personal",
+    owner_trn: "trn:iam::1234567890:root",
+    identity_key: "volc-1234567890",
+  };
+  assert.equal(arkProfileIdentity(body), "coding-plan_cn-beijing_personal:1234567890");
+  assert.equal(
+    arkProfileIdentity({ name: "p", identity_key: "volc-9876543210" }),
+    "p:9876543210",
+  );
+  // The usage payload's viewer shape must produce the same identity so the
+  // cache guard compares equal across both sources.
+  assert.equal(
+    arkProfileIdentity({ user_id: "1234567890", profile: "coding-plan_cn-beijing_personal" }),
+    "coding-plan_cn-beijing_personal:1234567890",
+  );
+});
+
 test("runCommand stops a verbose child when its combined output exceeds maxBuffer", async () => {
   const result = await runCommand(
     undefined,
@@ -153,6 +190,31 @@ test("runCommand stops a verbose child when its combined output exceeds maxBuffe
   );
   assert.equal(result.status, null);
   assert.equal(result.error?.code, "ERR_CHILD_PROCESS_STDIO_MAXBUFFER");
+});
+
+test("resolveBinaryPath falls back to a spawn-free probe of global bin dirs", async (t) => {
+  const home = tmpHome(t, { arkcliDir: false });
+  const binDir = path.join(home, ".npm-global", "bin");
+  fs.mkdirSync(binDir, { recursive: true });
+  fs.writeFileSync(path.join(binDir, "arkcli"), "#!/bin/sh\n", { mode: 0o755 });
+  // `which` fails (minimal PATH); the directory probe must find the binary
+  // and return its absolute path without any extra spawn.
+  const resolved = await resolveBinaryPath("arkcli", {
+    commandRunner: async () => ({ status: 1, stdout: "", stderr: "" }),
+    home,
+    globalBinDirs: [path.join(home, ".npm-global", "bin")],
+  });
+  assert.equal(resolved, path.join(binDir, "arkcli"));
+});
+
+test("resolveBinaryPath returns null when nothing resolves", async (t) => {
+  const home = tmpHome(t, { arkcliDir: false });
+  const resolved = await resolveBinaryPath("arkcli", {
+    commandRunner: async () => ({ status: 1, stdout: "", stderr: "" }),
+    home,
+    globalBinDirs: [path.join(home, "empty-bin")],
+  });
+  assert.equal(resolved, null);
 });
 
 test("fetchArkCodingPlanLimits succeeds with real payloads", async (t) => {
@@ -170,8 +232,32 @@ test("fetchArkCodingPlanLimits succeeds with real payloads", async (t) => {
   assert.equal(fs.existsSync(cachePath), true);
 });
 
+test("fetchArkCodingPlanLimits skips every spawn when ~/.arkcli is absent", async (t) => {
+  const calls = [];
+  const runner = (command, args) => {
+    calls.push({ command, args });
+    return mockRunner()(command, args);
+  };
+  // No ~/.arkcli → arkcli was never installed on this machine; the provider
+  // must bail out before the `which` probe so the 5s poll cadence never pays
+  // a spawn for it.
+  const result = await fetchArkCodingPlanLimits({
+    commandRunner: runner,
+    home: tmpHome(t, { arkcliDir: false }),
+  });
+  assert.deepEqual(result, { configured: false });
+  assert.equal(calls.length, 0);
+});
+
 test("fetchArkCodingPlanLimits reports configured:false when arkcli is missing", async (t) => {
-  const result = await fetchArkCodingPlanLimits({ commandRunner: mockRunner({ which: false }), home: tmpHome(t) });
+  const result = await fetchArkCodingPlanLimits({
+    commandRunner: mockRunner({ which: false }),
+    home: tmpHome(t),
+    // Empty probe list keeps the directory fallback away from the real
+    // filesystem: this machine has arkcli in /opt/homebrew/bin, and the
+    // fallback would otherwise find it and break the test.
+    globalBinDirs: [],
+  });
   assert.deepEqual(result, { configured: false });
 });
 
@@ -233,6 +319,23 @@ test("fetchArkCodingPlanLimits discovers arkcli via where.exe on Windows", async
   assert.deepEqual(calls.find(({ command }) => command === "where")?.args, ["arkcli"]);
 });
 
+test("fetchArkCodingPlanLimits spawns the resolved absolute path, not a bare name", async (t) => {
+  const arkCommands = [];
+  const runner = (command, args) => {
+    if (isArkCommand(command)) arkCommands.push(command);
+    return mockRunner()(command, args);
+  };
+  await fetchArkCodingPlanLimits({ commandRunner: runner, home: tmpHome(t) });
+  assert.ok(arkCommands.length > 0);
+  // Every ark spawn goes through the absolute path from the discovery probe.
+  // A bare "arkcli" would re-run PATH search — and on Windows cmd.exe
+  // searches the current directory first, enabling a cwd hijack.
+  assert.ok(
+    arkCommands.every((command) => path.isAbsolute(command)),
+    `expected absolute paths, got: ${arkCommands.join(", ")}`,
+  );
+});
+
 test("fetchArkCodingPlanLimits executes Ark commands through the Windows shell", async (t) => {
   const options = [];
   const runner = (command, args, commandOptions) => {
@@ -241,6 +344,33 @@ test("fetchArkCodingPlanLimits executes Ark commands through the Windows shell",
   };
   await fetchArkCodingPlanLimits({ commandRunner: runner, home: tmpHome(t), platform: "win32" });
   assert.ok(options.every(({ command, commandOptions }) => command === "where" || commandOptions.platform === "win32"));
+});
+
+test("fetchArkCodingPlanLimits skips plans get when the usage payload carries a tier", async (t) => {
+  const calls = [];
+  const runner = (command, args) => {
+    calls.push(`${String(command).split(path.sep).pop()} ${args[0]}`);
+    return mockRunner({ usageStdout: usageJsonFor({ withTier: true }) })(command, args);
+  };
+  const result = await fetchArkCodingPlanLimits({ commandRunner: runner, home: tmpHome(t) });
+  assert.equal(result.configured, true);
+  assert.equal(result.plan_label, "Lite");
+  // `plans get` is a per-fetch extra round trip — it must only run when the
+  // usage response did not already carry the tier.
+  assert.ok(!calls.some((entry) => entry.endsWith("plans")), `plans get must be skipped, got: ${calls.join(" | ")}`);
+});
+
+test("fetchArkCodingPlanLimits fetches the tier on demand when usage lacks it", async (t) => {
+  const order = [];
+  const runner = (command, args) => {
+    if (isArkCommand(command) && args[0] === "usage") order.push("usage");
+    if (isArkCommand(command) && args[0] === "plans") order.push("plans");
+    return mockRunner()(command, args);
+  };
+  const result = await fetchArkCodingPlanLimits({ commandRunner: runner, home: tmpHome(t) });
+  assert.equal(result.configured, true);
+  assert.equal(result.plan_label, "Lite");
+  assert.deepEqual(order, ["usage", "plans"]);
 });
 
 test("fetchArkCodingPlanLimits does not serve cache windows past their reset_at", async (t) => {
@@ -312,28 +442,6 @@ test("readArkCodingPlanLimitsCache expires an undated window even with a dated s
   assert.equal(result.secondary_window.used_percent, 20);
 });
 
-test("fetchArkCodingPlanLimits runs the optional plan lookup alongside quota retrieval", async (t) => {
-  let usageStarted = false;
-  const runner = (command, args) => {
-    if (command === "which") return { status: 0, stdout: "/usr/local/bin/arkcli\n", stderr: "" };
-    if (command === "arkcli" && args[0] === "plans") {
-      return new Promise((resolve) => setTimeout(() => {
-        assert.equal(usageStarted, true, "usage plan should begin before plans get finishes");
-        resolve({ status: 0, stdout: PLANS_JSON, stderr: "" });
-      }, 10));
-    }
-    if (command === "arkcli" && args[0] === "usage") {
-      usageStarted = true;
-      return { status: 0, stdout: usageJsonFor(), stderr: "" };
-    }
-    return { status: 1, stdout: "", stderr: "unknown command" };
-  };
-
-  const result = await fetchArkCodingPlanLimits({ commandRunner: runner, home: tmpHome(t) });
-  assert.equal(result.configured, true);
-  assert.equal(result.plan_label, "Lite");
-});
-
 test("fetchArkCodingPlanLimits passes its cancellation signal to every Ark command", async (t) => {
   const controller = new AbortController();
   const signals = [];
@@ -348,7 +456,8 @@ test("fetchArkCodingPlanLimits passes its cancellation signal to every Ark comma
     signal: controller.signal,
   });
   assert.equal(result.configured, true);
-  assert.equal(signals.length, 4);
+  // which probe + usage plan + (tier missing →) plans get.
+  assert.equal(signals.length, 3);
   assert.ok(signals.every(({ signal }) => signal === controller.signal));
 });
 
@@ -362,7 +471,9 @@ test("fetchArkCodingPlanLimits refuses a cache from another profile", async (t) 
   }, { home, nowMs });
   const runner = (command, args) => {
     if (command === "which") return { status: 0, stdout: "/usr/local/bin/arkcli\n", stderr: "" };
-    if (args[0] === "profile") return { status: 0, stdout: JSON.stringify({ profile: "profile-b", user_id: "user-b" }), stderr: "" };
+    if (isArkCommand(command) && args[0] === "profile") {
+      return { status: 0, stdout: JSON.stringify({ profile: "profile-b", user_id: "user-b" }), stderr: "" };
+    }
     return { status: null, stdout: "", stderr: "", error: new Error("ETIMEDOUT") };
   };
   const result = await fetchArkCodingPlanLimits({ commandRunner: runner, home, nowMs });

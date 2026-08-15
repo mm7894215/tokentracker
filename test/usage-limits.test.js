@@ -3587,6 +3587,9 @@ describe("getUsageLimits Ark timeout fallback", () => {
     resetUsageLimitsCache();
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tokentracker-limits-ark-timeout-"));
     try {
+      // Install-evidence dir: without ~/.arkcli the provider bails out
+      // before any probe, and the timeout path below never runs.
+      fs.mkdirSync(path.join(tmp, ".arkcli"), { recursive: true });
       const nowMs = Date.now();
       writeArkCodingPlanLimitsCache({
         configured: true,
@@ -3612,7 +3615,9 @@ describe("getUsageLimits Ark timeout fallback", () => {
           if (command === "where") {
             return { status: 0, stdout: "C:\\Program Files\\arkcli.exe\n", stderr: "" };
           }
-          if (command === "arkcli") return new Promise(() => {});
+          // The provider spawns the resolved absolute path, never a bare
+          // "arkcli" — hang it so the outer provider timeout fires.
+          if (/arkcli(\.exe)?$/i.test(command)) return new Promise(() => {});
           return { status: 1, stdout: "", stderr: "" };
         },
         fetchImpl() {

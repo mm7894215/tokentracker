@@ -197,14 +197,6 @@ final class ServerManager: ObservableObject {
         process.standardError = FileHandle.nullDevice
 
         var env = ProcessInfo.processInfo.environment
-        // Finder-launched apps do not inherit the user's login-shell PATH.
-        // Include the standard Homebrew locations so the embedded server can
-        // discover globally installed companion CLIs such as arkcli.
-        let standardPaths = ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"]
-        let inheritedPaths = (env["PATH"] ?? "").split(separator: ":").map(String.init)
-        env["PATH"] = (standardPaths + inheritedPaths).reduce(into: [String]()) { paths, path in
-            if !paths.contains(path) { paths.append(path) }
-        }.joined(separator: ":")
         env["NODE_ENV"] = "production"
         env["HOME"] = NSHomeDirectory()
         env["TOKENTRACKER_APP_SHELL"] = "macos"
