@@ -1,12 +1,17 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 
+const http = require("node:http");
 const {
   parseMacProxyOutput,
   pickProxyUrl,
   resolveSystemProxyEnv,
   relaunchWithProxyEnvIfNeeded,
   applyUndiciProxyIfNeeded,
+  createProxyDispatcher,
+  runProxyConnectivityTest,
+  getLastProxyApplyError,
+  resetProxyApplyStateForTests,
 } = require("../src/lib/proxy-env");
 
 test("parseMacProxyOutput extracts enabled HTTPS system proxy", () => {
@@ -113,18 +118,21 @@ test("applyUndiciProxyIfNeeded sets a ProxyAgent dispatcher when proxy env exist
     captured = dispatcher;
   };
 
+  resetProxyApplyStateForTests();
   const result = applyUndiciProxyIfNeeded({
     env: { HTTPS_PROXY: "http://127.0.0.1:7897" },
     setGlobalDispatcher: setter,
     ProxyAgent: FakeAgent,
+    Agent: function () {},
   });
 
-  assert.equal(result, "http://127.0.0.1:7897");
+  assert.deepEqual(result, { ok: true, proxyUrl: "http://127.0.0.1:7897" });
   assert.ok(captured instanceof FakeAgent);
   assert.equal(captured.url, "http://127.0.0.1:7897");
 });
 
 test("applyUndiciProxyIfNeeded is a no-op when no proxy env var is set", () => {
+  resetProxyApplyStateForTests();
   let called = false;
   const result = applyUndiciProxyIfNeeded({
     env: {},
@@ -137,29 +145,352 @@ test("applyUndiciProxyIfNeeded is a no-op when no proxy env var is set", () => {
   assert.equal(called, false);
 });
 
-test("applyUndiciProxyIfNeeded swallows ProxyAgent construction errors", () => {
+test("applyUndiciProxyIfNeeded swallows ProxyAgent construction errors in env mode", () => {
+  resetProxyApplyStateForTests();
+  const warnings = [];
   const result = applyUndiciProxyIfNeeded({
     env: { HTTPS_PROXY: "not-a-url" },
     setGlobalDispatcher: () => {},
     ProxyAgent: function () {
       throw new Error("bad url");
     },
+    Agent: function () {},
+    warn: (msg) => warnings.push(msg),
   });
   assert.equal(result, null);
+  assert.equal(warnings.length, 0);
+  assert.equal(getLastProxyApplyError(), null);
 });
+
+test("applyUndiciProxyIfNeeded installs a fail-closed dispatcher on manual construction failure", () => {
+  resetProxyApplyStateForTests();
+  const warnings = [];
+  let installed = null;
+  function DirectAgent() {
+    this.direct = true;
+  }
+  const result = applyUndiciProxyIfNeeded({
+    env: {},
+    setGlobalDispatcher: (dispatcher) => {
+      installed = dispatcher;
+    },
+    ProxyAgent: function () {
+      throw new Error("bad url");
+    },
+    Agent: DirectAgent,
+    warn: (msg) => warnings.push(msg),
+    proxyConfig: { mode: "manual", protocol: "socks5", host: "127.0.0.1", port: 7890 },
+  });
+  assert.deepEqual(result, { ok: false, error: "bad url" });
+  assert.ok(installed);
+  assert.equal(installed instanceof DirectAgent, false);
+  assert.equal(typeof installed.dispatch, "function");
+  assert.equal(getLastProxyApplyError(), "bad url");
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0], /outbound traffic is blocked/);
+});
+
+test("applyUndiciProxyIfNeeded prefers a manual config over env vars", () => {
+  resetProxyApplyStateForTests();
+  let captured = null;
+  const FakeAgent = function (url) {
+    this.url = url;
+    captured = this;
+  };
+  const result = applyUndiciProxyIfNeeded({
+    env: { HTTPS_PROXY: "http://env-proxy:1" },
+    setGlobalDispatcher: (dispatcher) => {
+      captured = dispatcher;
+    },
+    ProxyAgent: FakeAgent,
+    Agent: function () {},
+    proxyConfig: { mode: "manual", protocol: "http", host: "127.0.0.1", port: 7890 },
+  });
+  assert.deepEqual(result, { ok: true, proxyUrl: "http://127.0.0.1:7890" });
+  assert.ok(captured instanceof FakeAgent);
+  assert.equal(captured.url, "http://127.0.0.1:7890");
+});
+
+test("applyUndiciProxyIfNeeded mode=off installs a direct Agent and ignores env", () => {
+  resetProxyApplyStateForTests();
+  let captured = null;
+  function DirectAgent() {
+    this.direct = true;
+    captured = this;
+  }
+  function FakeProxy(url) {
+    this.url = url;
+    captured = this;
+  }
+  const result = applyUndiciProxyIfNeeded({
+    env: { HTTPS_PROXY: "http://env-proxy:1" },
+    setGlobalDispatcher: (dispatcher) => {
+      captured = dispatcher;
+    },
+    ProxyAgent: FakeProxy,
+    Agent: DirectAgent,
+    proxyConfig: { mode: "off" },
+  });
+  assert.equal(result, null);
+  assert.ok(captured instanceof DirectAgent);
+});
+
+test("createProxyDispatcher uses ProxyAgent for http and socks5 URLs", () => {
+  const FakeAgent = function (url) {
+    this.url = url;
+  };
+  const socks = createProxyDispatcher("socks5://127.0.0.1:7890", { ProxyAgent: FakeAgent });
+  assert.ok(socks instanceof FakeAgent);
+  assert.equal(socks.url, "socks5://127.0.0.1:7890");
+  const httpDispatcher = createProxyDispatcher("http://127.0.0.1:7890", { ProxyAgent: FakeAgent });
+  assert.ok(httpDispatcher instanceof FakeAgent);
+});
+
+test("applyUndiciProxyIfNeeded closes the previous owned dispatcher after a successful swap", async () => {
+  resetProxyApplyStateForTests();
+  const closed = [];
+  function FakeAgent(url) {
+    this.url = url;
+    this.close = async () => {
+      closed.push(this.url);
+    };
+  }
+  applyUndiciProxyIfNeeded({
+    env: { HTTPS_PROXY: "http://first:1" },
+    setGlobalDispatcher: () => {},
+    ProxyAgent: FakeAgent,
+    Agent: function () {},
+  });
+  applyUndiciProxyIfNeeded({
+    env: { HTTPS_PROXY: "http://second:2" },
+    setGlobalDispatcher: () => {},
+    ProxyAgent: FakeAgent,
+    Agent: function () {},
+  });
+  await Promise.resolve();
+  assert.deepEqual(closed, ["http://first:1"]);
+});
+
+test("applyUndiciProxyIfNeeded replaces a working manual dispatcher with fail-closed on later construct failure", async () => {
+  resetProxyApplyStateForTests();
+  const closed = [];
+  let installed = null;
+  function GoodAgent(url) {
+    this.url = url;
+    this.close = async () => {
+      closed.push(this.url);
+    };
+  }
+  applyUndiciProxyIfNeeded({
+    env: {},
+    setGlobalDispatcher: (dispatcher) => {
+      installed = dispatcher;
+    },
+    ProxyAgent: GoodAgent,
+    Agent: function () {},
+    proxyConfig: { mode: "manual", protocol: "http", host: "127.0.0.1", port: 1 },
+  });
+  assert.ok(installed instanceof GoodAgent);
+  const failed = applyUndiciProxyIfNeeded({
+    env: {},
+    setGlobalDispatcher: (dispatcher) => {
+      installed = dispatcher;
+    },
+    ProxyAgent: function () {
+      throw new Error("cannot build");
+    },
+    Agent: function () {},
+    warn: () => {},
+    proxyConfig: { mode: "manual", protocol: "socks5", host: "127.0.0.1", port: 2 },
+  });
+  assert.equal(failed.ok, false);
+  assert.equal(installed instanceof GoodAgent, false);
+  assert.equal(typeof installed.dispatch, "function");
+  await Promise.resolve();
+  assert.deepEqual(closed, ["http://127.0.0.1:1"]);
+});
+
+test("runProxyConnectivityTest uses a temporary dispatcher and never sets the global", async () => {
+  resetProxyApplyStateForTests();
+  let setterCalled = false;
+  let closed = 0;
+  function FakeAgent(url) {
+    this.url = url;
+    this.close = async () => {
+      closed += 1;
+    };
+  }
+  const result = await runProxyConnectivityTest({
+    proxyUrl: "socks5://127.0.0.1:7890",
+    targetUrl: "https://www.tokentracker.cc",
+    fetchImpl: async () => ({ status: 204 }),
+    ProxyAgent: FakeAgent,
+    Agent: function () {},
+    setGlobalDispatcher: () => {
+      setterCalled = true;
+    },
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.status, 204);
+  assert.equal(setterCalled, false);
+  await Promise.resolve();
+  assert.equal(closed, 1);
+});
+
+test("resolveSystemProxyEnv honors manual and off before env/scutil", () => {
+  assert.deepEqual(
+    resolveSystemProxyEnv({
+      env: { HTTPS_PROXY: "http://env:1" },
+      platform: "linux",
+      proxyConfig: { mode: "off" },
+    }),
+    null,
+  );
+  assert.equal(
+    resolveSystemProxyEnv({
+      env: { HTTPS_PROXY: "http://env:1" },
+      platform: "linux",
+      proxyConfig: { mode: "manual", protocol: "http", host: "127.0.0.1", port: 7890 },
+    }),
+    null,
+  );
+});
+
+test("createProxyDispatcher constructs a real undici ProxyAgent for socks5", () => {
+  const undici = require("undici");
+  const dispatcher = createProxyDispatcher("socks5://127.0.0.1:7890", {
+    ProxyAgent: undici.ProxyAgent,
+  });
+  assert.ok(dispatcher instanceof undici.ProxyAgent);
+  closeQuietlyForTest(dispatcher);
+});
+
+function closeQuietlyForTest(dispatcher) {
+  if (dispatcher && typeof dispatcher.close === "function") {
+    Promise.resolve(dispatcher.close()).catch(() => {});
+  }
+}
 
 test("applyUndiciProxyIfNeeded actually swaps the real undici dispatcher", () => {
   const undici = require("undici");
   const previous = undici.getGlobalDispatcher();
   try {
+    resetProxyApplyStateForTests();
     const result = applyUndiciProxyIfNeeded({
       env: { HTTPS_PROXY: "http://127.0.0.1:7897" },
     });
-    assert.equal(result, "http://127.0.0.1:7897");
+    assert.deepEqual(result, { ok: true, proxyUrl: "http://127.0.0.1:7897" });
     const dispatcher = undici.getGlobalDispatcher();
     assert.notEqual(dispatcher, previous);
     assert.ok(dispatcher instanceof undici.ProxyAgent);
   } finally {
     undici.setGlobalDispatcher(previous);
+  }
+});
+
+test("resolveSystemProxyEnv returns null in manual mode and does not relaunch", () => {
+  const proxyConfig = { mode: "manual", protocol: "socks5", host: "10.0.0.1", port: 1080 };
+  assert.equal(
+    resolveSystemProxyEnv({
+      env: {},
+      platform: "linux",
+      proxyConfig,
+    }),
+    null,
+  );
+  const result = relaunchWithProxyEnvIfNeeded({
+    argv: ["serve"],
+    originalArgv: ["bin/tracker.js", "serve"],
+    env: {},
+    platform: "linux",
+    nodePath: "/usr/local/bin/node",
+    commandRunner() {
+      throw new Error("should not relaunch or probe scutil in manual mode");
+    },
+    proxyConfig,
+  });
+  assert.equal(result, null);
+});
+
+test("switching from manual to system does not keep using the manual proxy", () => {
+  resetProxyApplyStateForTests();
+  const env = {};
+  let installed = null;
+  function FakeProxy(url) {
+    this.url = url;
+  }
+  function DirectAgent() {
+    this.direct = true;
+  }
+  const setter = (dispatcher) => {
+    installed = dispatcher;
+  };
+  applyUndiciProxyIfNeeded({
+    env,
+    setGlobalDispatcher: setter,
+    ProxyAgent: FakeProxy,
+    Agent: DirectAgent,
+    proxyConfig: { mode: "manual", protocol: "http", host: "10.0.0.1", port: 1080 },
+  });
+  assert.ok(installed instanceof FakeProxy);
+  assert.equal(installed.url, "http://10.0.0.1:1080");
+
+  // Manual must not have injected HTTPS_PROXY; system then cannot pick it up.
+  assert.equal(
+    resolveSystemProxyEnv({ env, platform: "linux", proxyConfig: { mode: "manual", protocol: "http", host: "10.0.0.1", port: 1080 } }),
+    null,
+  );
+  assert.equal(env.HTTPS_PROXY, undefined);
+
+  applyUndiciProxyIfNeeded({
+    env,
+    setGlobalDispatcher: setter,
+    ProxyAgent: FakeProxy,
+    Agent: DirectAgent,
+    proxyConfig: { mode: "system" },
+  });
+  assert.ok(installed instanceof DirectAgent);
+  assert.notEqual(installed.url, "http://10.0.0.1:1080");
+});
+
+test("manual construction failure replaces a live direct dispatcher and blocks requests", async () => {
+  const undici = require("undici");
+  const previous = undici.getGlobalDispatcher();
+  const server = http.createServer((_req, res) => {
+    res.writeHead(200, { "content-type": "text/plain" });
+    res.end("ok");
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address();
+  const url = `http://127.0.0.1:${port}/`;
+  try {
+    resetProxyApplyStateForTests();
+    const direct = new undici.Agent();
+    undici.setGlobalDispatcher(direct);
+    const ok = await undici.fetch(url);
+    assert.equal(ok.status, 200);
+    await ok.body?.cancel?.();
+
+    const result = applyUndiciProxyIfNeeded({
+      env: {},
+      setGlobalDispatcher: undici.setGlobalDispatcher,
+      ProxyAgent: function () {
+        throw new Error("bad url");
+      },
+      Agent: undici.Agent,
+      warn: () => {},
+      proxyConfig: { mode: "manual", protocol: "socks5", host: "127.0.0.1", port: 7890 },
+    });
+    assert.equal(result.ok, false);
+    const current = undici.getGlobalDispatcher();
+    assert.notEqual(current, direct);
+
+    await assert.rejects(
+      () => undici.fetch(url, { signal: AbortSignal.timeout(2000) }),
+    );
+  } finally {
+    undici.setGlobalDispatcher(previous);
+    resetProxyApplyStateForTests();
+    await new Promise((resolve) => server.close(resolve));
   }
 });

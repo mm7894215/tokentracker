@@ -6,14 +6,17 @@ const { stripDebugFlag } = require('../src/lib/debug-flags');
 const {
   relaunchWithProxyEnvIfNeeded,
   applyUndiciProxyIfNeeded,
+  readPersistedProxyConfig,
 } = require('../src/lib/proxy-env');
 
 const { argv, debug } = stripDebugFlag(process.argv.slice(2));
 if (debug) process.env.TOKENTRACKER_DEBUG = '1';
 
+const persistedProxy = readPersistedProxyConfig();
 const relaunch = relaunchWithProxyEnvIfNeeded({
   argv,
   originalArgv: process.argv.slice(1),
+  proxyConfig: persistedProxy,
 });
 if (relaunch) {
   if (typeof relaunch.status === 'number') process.exit(relaunch.status);
@@ -29,7 +32,7 @@ if (relaunch) {
 // with older macOS app builds), set an undici ProxyAgent so fetch() actually
 // honors HTTPS_PROXY. Safe to run on modern Node too — explicit dispatcher
 // takes precedence over the env-var-driven default.
-applyUndiciProxyIfNeeded();
+applyUndiciProxyIfNeeded({ proxyConfig: persistedProxy });
 
 run(argv).catch((err) => {
   console.error(err?.stack || String(err));

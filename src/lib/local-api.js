@@ -2618,6 +2618,133 @@ function createLocalApiHandler({ queuePath }) {
       return true;
     }
 
+    // --- outbound proxy preference (manual / system / off) ---
+    // Persisted on config.json next to the queue. GET is unauthenticated so the
+    // settings page can probe availability; POST requires local-auth.
+    if (p === "/functions/tokentracker-proxy-config") {
+      const {
+        normalizeProxyConfig,
+        parseProxyPayload,
+      } = require("./proxy-settings");
+      const {
+        applyUndiciProxyIfNeeded,
+        getLastProxyApplyError,
+        resolveEffectiveProxySource,
+      } = require("./proxy-env");
+      const configPath = path.join(path.dirname(qp), "config.json");
+      const readConfig = () => {
+        try {
+          const parsed = JSON.parse(fs.readFileSync(configPath, "utf8"));
+          return parsed && typeof parsed === "object" ? parsed : {};
+        } catch {
+          return {};
+        }
+      };
+      const writeConfig = (next) => {
+        fs.mkdirSync(path.dirname(configPath), { recursive: true });
+        const tmpPath = `${configPath}.${process.pid}.tmp`;
+        fs.writeFileSync(tmpPath, JSON.stringify(next, null, 2));
+        fs.renameSync(tmpPath, configPath);
+      };
+      const toResponse = (configObj) => {
+        const normalized = normalizeProxyConfig(configObj?.proxy);
+        const effective = resolveEffectiveProxySource({
+          env: process.env,
+          proxyConfig: configObj?.proxy,
+        });
+        return {
+          mode: normalized.mode,
+          protocol: normalized.protocol,
+          host: normalized.host,
+          port: normalized.port,
+          effective: effective.source,
+          applyError: getLastProxyApplyError(),
+        };
+      };
+      const method = String(req.method || "GET").toUpperCase();
+      if (method === "GET") {
+        json(res, toResponse(readConfig()));
+        return true;
+      }
+      if (method === "POST" || method === "PUT") {
+        if (!isAuthorizedLocalMutation(req)) {
+          json(res, { ok: false, error: "Unauthorized" }, 401);
+          return true;
+        }
+        let body = {};
+        try {
+          body = await readJsonBody(req);
+        } catch {
+          json(res, { ok: false, error: "invalid JSON" }, 400);
+          return true;
+        }
+        const parsed = parseProxyPayload(body);
+        if (!parsed.ok) {
+          json(res, { ok: false, error: parsed.error }, 400);
+          return true;
+        }
+        const current = readConfig();
+        const prevProxy = current.proxy && typeof current.proxy === "object" && !Array.isArray(current.proxy)
+          ? current.proxy
+          : {};
+        current.proxy = {
+          ...prevProxy,
+          mode: parsed.value.mode,
+          protocol: parsed.value.protocol,
+          host: parsed.value.host,
+          port: parsed.value.port,
+        };
+        writeConfig(current);
+        applyUndiciProxyIfNeeded({ proxyConfig: current.proxy });
+        json(res, { ok: true, ...toResponse(current) });
+        return true;
+      }
+      json(res, { error: "Method Not Allowed" }, 405);
+      return true;
+    }
+
+    if (p === "/functions/tokentracker-proxy-test") {
+      const { parseProxyPayload, buildProxyUrl } = require("./proxy-settings");
+      const { runProxyConnectivityTest } = require("./proxy-env");
+      if (String(req.method || "GET").toUpperCase() !== "POST") {
+        json(res, { error: "Method Not Allowed" }, 405);
+        return true;
+      }
+      if (!isAuthorizedLocalMutation(req)) {
+        json(res, { ok: false, error: "Unauthorized" }, 401);
+        return true;
+      }
+      let body = {};
+      try {
+        body = await readJsonBody(req);
+      } catch {
+        json(res, { ok: false, error: "invalid JSON" }, 400);
+        return true;
+      }
+      const parsed = parseProxyPayload({ ...body, mode: "manual" });
+      if (!parsed.ok) {
+        json(res, { ok: false, error: parsed.error }, 400);
+        return true;
+      }
+      const proxyUrl = buildProxyUrl({ ...parsed.value, mode: "manual" });
+      const configPath = path.join(path.dirname(qp), "config.json");
+      let config = {};
+      try {
+        config = JSON.parse(fs.readFileSync(configPath, "utf8")) || {};
+      } catch {
+        config = {};
+      }
+      const runtime = resolveRuntimeConfig({ config, env: process.env });
+      const targetUrl = runtime.dashboardUrl || runtime.baseUrl;
+      const result = await runProxyConnectivityTest({
+        proxyUrl,
+        targetUrl,
+        timeoutMs: 5000,
+      });
+      json(res, result);
+      return true;
+    }
+
     // --- telemetry preference (anonymous analytics opt-out mirror) ---
     // The dashboard's analytics init on localhost / native-app surfaces asks
     // this before sending anything, so TOKENTRACKER_NO_TELEMETRY /
