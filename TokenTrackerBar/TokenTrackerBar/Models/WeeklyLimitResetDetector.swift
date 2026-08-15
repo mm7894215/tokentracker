@@ -36,6 +36,7 @@ enum LimitResetProviderIconCatalog {
         case "zcode": return "zcode.svg"
         case "opencodeGo": return "opencode.svg"
         case "qoder": return "qoder.svg"
+        case "codingPlan": return "volcano-ark.svg"
         default: return nil
         }
     }

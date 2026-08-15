@@ -117,7 +117,7 @@ struct UsageLimitsView: View {
                 }
             case "codingPlan":
                 if let codingPlan = limits.codingPlan, codingPlan.configured, codingPlan.error == nil {
-                    groups.append(AnyView(toolSection(id: id, title: planTitle("Ark Coding Plan", codingPlan.planLabel), assetName: nil, toolName: "Ark Coding Plan", specs: codingPlanSpecs(codingPlan), updatedAtISO: codingPlan.cachedAt, isStale: codingPlan.stale ?? false)))
+                    groups.append(AnyView(toolSection(id: id, title: planTitle("Ark Coding Plan", codingPlan.planLabel), assetName: "VolcanoArkLogo", toolName: "Ark Coding Plan", specs: codingPlanSpecs(codingPlan), updatedAtISO: codingPlan.cachedAt, isStale: codingPlan.stale ?? false)))
                 }
             default:
                 break
@@ -607,7 +607,7 @@ struct UsageLimitsView: View {
     @ViewBuilder
     private func brandIcon(_ name: String) -> some View {
         switch name {
-        case "CursorLogo", "KimiLogo", "KiroLogo", "GrokLogo", "CopilotLogo", "ZcodeLogo", "OpenCodeLogo", "QoderLogo", "QoderCnLogo":
+        case "CursorLogo", "KimiLogo", "KiroLogo", "GrokLogo", "CopilotLogo", "ZcodeLogo", "OpenCodeLogo", "QoderLogo", "QoderCnLogo", "VolcanoArkLogo":
             let filename: String = {
                 switch name {
                 case "CursorLogo": return "cursor.svg"
@@ -618,6 +618,7 @@ struct UsageLimitsView: View {
                 case "OpenCodeLogo": return "opencode.svg"
                 case "QoderLogo": return "qoder.svg"
                 case "QoderCnLogo": return "qoder-cn.svg"
+                case "VolcanoArkLogo": return "volcano-ark.svg"
                 default: return "copilot.svg"
                 }
             }()
