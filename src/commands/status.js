@@ -62,6 +62,8 @@ const {
   piAgentDirCollidesWithOmp,
   resolveCraftSessionFiles,
   resolveCraftConfigDir,
+  resolveReasonixHome,
+  resolveReasonixTelemetryFiles,
   resolveKilocodeTaskFiles,
   resolveRoocodeTaskFiles,
   resolveZedDbPath,
@@ -72,6 +74,8 @@ const {
   resolveGooseDbPath,
   listDroidSettingsFiles,
   resolveDroidSessionsDir,
+  resolveDshHome,
+  resolveDshSessionFiles,
   resolveTraeStoragePath,
   readTraeEntitlementFromStorage,
   resolveGrokBuildSessions,
@@ -85,7 +89,7 @@ const {
 } = require("../lib/rollout");
 const wsl = require("../lib/wsl-probe");
 const { getWslMode, isInvalidWslMode, shouldProbeWsl, discoverWslHome } = wsl;
-const { resolveInstallPaths } = require("../lib/install-resolver");
+const { resolveInstallPaths, resolveZcodeNativeDbPath } = require("../lib/install-resolver");
 const { probeGrokHookState, resolveGrokHome } = require("../lib/grok-hook");
 const { probeOmpHookState } = require("../lib/omp-hook");
 
@@ -428,6 +432,11 @@ async function cmdStatus(argv = []) {
   const craftInstalled = Boolean(craftConfigDir && fssync.existsSync(craftConfigDir));
   const craftFiles = craftInstalled ? resolveCraftSessionFiles(process.env) : [];
 
+  // Reasonix — passive scan of content-free cumulative telemetry sidecars.
+  const reasonixHome = resolveReasonixHome(process.env);
+  const reasonixInstalled = Boolean(reasonixHome && fssync.existsSync(reasonixHome));
+  const reasonixFiles = reasonixInstalled ? resolveReasonixTelemetryFiles(process.env) : [];
+
   // Kilo CLI (kilo.ai @kilocode/plugin) — passive scan of kilo.db.
   const xdgDataHome = process.env.XDG_DATA_HOME || path.join(home, ".local", "share");
   const kiloHome = process.env.KILO_HOME || path.join(xdgDataHome, "kilo");
@@ -456,10 +465,7 @@ async function cmdStatus(argv = []) {
   const mimoDbPath = mimoActive.join(" | ");
 
   // ZCode (Z.ai's coding agent — OpenCode-fork SQLite) — passive scan of db.sqlite.
-  const zcodeHome = process.env.ZCODE_HOME || path.join(home, ".zcode");
-  const zcodeNativeValue = process.platform === "win32" && typeof process.env.APPDATA === "string"
-    ? path.join(process.env.APPDATA.trim(), ".zcode", "cli", "db", "db.sqlite")
-    : path.join(zcodeHome, "cli", "db", "db.sqlite");
+  const zcodeNativeValue = resolveZcodeNativeDbPath({ home });
   const wslZcodeDir = process.platform === "win32" && wsl.shouldProbeWsl(process.env)
     ? wsl.discoverWslHome(".zcode")
     : null;
@@ -613,6 +619,10 @@ async function cmdStatus(argv = []) {
   const droidSessionsDir = resolveDroidSessionsDir(process.env);
   const droidSettingsFiles = listDroidSettingsFiles(process.env);
   const droidInstalled = droidSettingsFiles.length > 0;
+  const dshHome = resolveDshHome(process.env);
+  const dshSessionsDir = path.join(dshHome, "sessions");
+  const dshSessionFiles = await resolveDshSessionFiles(process.env);
+  const dshInstalled = dshSessionFiles.length > 0;
 
   // Trae SOLO (ByteDance AI IDE) — passive entitlement snapshot reader.
   const traeStoragePath = resolveTraeStoragePath(process.env);
@@ -866,6 +876,9 @@ async function cmdStatus(argv = []) {
         craft: craftInstalled
           ? { installed: true, files: craftFiles.length }
           : { installed: false },
+        reasonix: reasonixInstalled
+          ? { installed: true, files: reasonixFiles.length }
+          : { installed: false },
         anythingllm: anythingllmInstalled
           ? { installed: true, detail: anythingllmDbPath }
           : { installed: false },
@@ -899,6 +912,9 @@ async function cmdStatus(argv = []) {
           : { installed: false },
         droid: droidInstalled
           ? { installed: true, files: droidSettingsFiles.length, detail: droidSessionsDir }
+          : { installed: false },
+        dsh: dshInstalled
+          ? { installed: true, files: dshSessionFiles.length, detail: dshSessionsDir }
           : { installed: false },
         trae: traeInstalled
           ? {
@@ -1001,6 +1017,9 @@ async function cmdStatus(argv = []) {
       craftInstalled
         ? `- Craft Agents: passive reader (${craftFiles.length} session jsonl file${craftFiles.length !== 1 ? "s" : ""} found)`
         : null,
+      reasonixInstalled
+        ? `- Reasonix: passive reader (${reasonixFiles.length} telemetry file${reasonixFiles.length !== 1 ? "s" : ""} found)`
+        : null,
       anythingllmInstalled
         ? `- AnythingLLM Desktop: passive reader (${anythingllmDbPath})`
         : null,
@@ -1058,6 +1077,9 @@ async function cmdStatus(argv = []) {
         : null,
       droidInstalled
         ? `- Droid (Factory): passive reader (${droidSettingsFiles.length} session${droidSettingsFiles.length !== 1 ? "s" : ""} in ${droidSessionsDir}, cumulative-delta)`
+        : null,
+      dshInstalled
+        ? `- DeepSeek Harness: passive reader (${dshSessionFiles.length} session${dshSessionFiles.length !== 1 ? "s" : ""} in ${dshSessionsDir})`
         : null,
       traeInstalled
         // Deliberately NOT "passive reader": every other line with that wording

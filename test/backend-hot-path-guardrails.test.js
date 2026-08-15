@@ -184,7 +184,7 @@ test("leaderboard refresh reconciles stale rows after the replacement snapshot i
   );
 });
 
-test("leaderboard anti-cheat workflow actively scans, refreshes, and never leaks identities", () => {
+test("leaderboard anti-cheat workflow verifies database-native scans, refreshes, and never leaks identities", () => {
   const workflow = read(".github/workflows/leaderboard-anticheat.yml");
   assert.match(
     workflow,
@@ -197,11 +197,17 @@ test("leaderboard anti-cheat workflow actively scans, refreshes, and never leaks
     "automatic soft exclusion must not depend on or create a public GitHub issue",
   );
   assert.match(workflow, /secrets\.LEADERBOARD_REFRESH_SECRET/u);
-  assert.match(workflow, /"scan_anomalies":true/u);
-  assert.match(workflow, /"force_refresh":true/u);
+  assert.doesNotMatch(
+    workflow,
+    /"scan_anomalies":true/u,
+    "the HTTP workflow must not synchronously rerun a detector that can exceed the backend proxy timeout",
+  );
+  assert.match(workflow, /last_scan_completed_at/u);
+  assert.match(workflow, /scan_age_seconds/u);
+  assert.match(workflow, /force_refresh\\":true/u);
   assert.match(workflow, /--retry 2 --retry-delay 3 --retry-max-time 90 --retry-all-errors/u,
-    "the remote scan must absorb one transient edge/database timeout");
-  assert.match(workflow, /for period in month total/u);
+    "the remote refresh must absorb one transient edge/database failure");
+  assert.match(workflow, /for period in week month total/u);
   assert.match(workflow, /\?anomalies=1/u, "the workflow must independently read back queue state");
   assert.doesNotMatch(workflow, /user_id/u, "workflow logs must never expose flagged identities");
   assert.match(
@@ -211,21 +217,43 @@ test("leaderboard anti-cheat workflow actively scans, refreshes, and never leaks
   );
 });
 
-test("privileged anti-cheat scans run before forced snapshot refresh", () => {
+test("anti-cheat health reports database-native scan freshness before protected snapshot refresh", () => {
   const source = read("dashboard/edge-patches/tokentracker-leaderboard-refresh.ts");
+  const migration = read("migrations/20260812115221_observe-database-anticheat-scans.sql");
   const authorizationGuard = source.indexOf('authorization !== "privileged"');
-  const detectorCall = source.indexOf('"detect_leaderboard_anomalies"');
   const periodLoop = source.indexOf("for (const period of periods)");
 
-  assert.ok(authorizationGuard > 0 && authorizationGuard < detectorCall,
-    "scan and force flags must be privileged before the detector RPC runs");
-  assert.ok(detectorCall < periodLoop,
-    "the detector must finish before snapshots are rebuilt");
+  assert.match(source, /tokentracker_anticheat_run_state/u);
+  assert.match(source, /last_scan_completed_at/u);
+  assert.match(migration, /AFTER INSERT ON public\.tokentracker_leaderboard_anomaly_flags/u);
+  assert.match(migration, /FOR EACH STATEMENT/u,
+    "even a clean zero-row detector INSERT must advance the scan heartbeat");
+  assert.ok(authorizationGuard > 0 && authorizationGuard < periodLoop,
+    "forced refresh flags must be privileged before snapshots are rebuilt");
   assert.match(source, /p_min_interval_s: forceRefresh \? 0 : 30/u,
     "an authenticated response run must not lose to an unrelated refresh throttle");
   assert.match(source, /timeout: 25_000/u,
     "the bounded detector must have enough client timeout headroom to finish under load");
   assert.match(source, /return json\(\{ ok: true, results, \.\.\.\(anomalyScan \? \{ scan: anomalyScan \} : \{\}\) \}\)/u);
+});
+
+test("anti-cheat responder rebuilds snapshots only when the moderation queue changed", () => {
+  const workflow = read(".github/workflows/leaderboard-anticheat.yml");
+  const source = read("dashboard/edge-patches/tokentracker-leaderboard-refresh.ts");
+  const migration = read("migrations/20260812122500_track-anticheat-response-state.sql");
+
+  assert.match(workflow, /last_queue_changed_at/u);
+  assert.match(workflow, /last_response_completed_at/u);
+  assert.match(workflow, /needs_response/u,
+    "unchanged queues must not force the same expensive snapshot rebuild every hour");
+  assert.match(workflow, /anti_cheat_response_completed_at/u,
+    "a successful multi-period rebuild must atomically acknowledge the queue version it applied");
+  assert.match(source, /mark_anticheat_response_completed/u);
+  assert.match(migration, /last_queue_changed_at/u);
+  assert.match(migration, /last_response_completed_at/u);
+  assert.match(migration, /AFTER INSERT OR DELETE OR UPDATE OF status/u);
+  assert.match(migration, /FOR EACH ROW/u,
+    "a zero-row detector pass must not pretend the moderation queue changed");
 });
 
 test("leaderboard bans block token issuance and usage ingestion", () => {

@@ -5,7 +5,7 @@ const fssync = require("node:fs");
 const cp = require("node:child_process");
 const readline = require("node:readline");
 
-const { resolveInstallPaths, ensureFlatCursor } = require("../lib/install-resolver");
+const { resolveInstallPaths, resolveZcodeNativeDbPath, ensureFlatCursor } = require("../lib/install-resolver");
 const { multiInstallParse, mergeBothFileSources } = require("../lib/multi-install-parser");
 const wsl = require("../lib/wsl-probe");
 const {
@@ -80,6 +80,8 @@ const {
   piAgentDirCollidesWithOmp,
   resolveCraftSessionFiles,
   parseCraftIncremental,
+  resolveReasonixTelemetryFiles,
+  parseReasonixIncremental,
   resolveGrokBuildSessions,
   parseGrokBuildIncremental,
   listAntigravityTranscripts,
@@ -106,6 +108,8 @@ const {
   parseDroidIncremental,
   droidSessionIdFromPath,
   resolveDroidModel,
+  resolveDshSessionFiles,
+  parseDshIncremental,
   bucketKey,
   toUtcHalfHourStart,
   totalsKey,
@@ -244,8 +248,10 @@ const CODEX_COLD_SCAN_AUDIT_MAX_SYNCS = 288;
 // one-time repair purges all source=mimo data from the local queues + cursor
 // state so the next sync (providerID-filtered reader) rebuilds it correctly.
 const MIMO_PROVIDER_REPAIR_KEY = "mimoClaudeMislabelRepair_2026_06";
+const DSH_LEGACY_SOURCE_MIGRATION_KEY = "deepseekHarnessSourceMigration_2026_08";
 const AUTO_SYNC_SOURCE_ALIASES = new Map([
   ["code", "every-code"],
+  ["deepseek", "dsh"],
   ["everycode", "every-code"],
   ["kilo", "kilo-cli"],
   ["kilo-code", "kilocode"],
@@ -263,6 +269,7 @@ const AUTO_SYNC_SOURCES = new Set([
   "craft",
   "cursor",
   "droid",
+  "dsh",
   "every-code",
   "gemini",
   "goose",
@@ -280,6 +287,7 @@ const AUTO_SYNC_SOURCES = new Set([
   "pi",
   "qoder",
   "qoder-cn",
+  "reasonix",
   "roocode",
   "workbuddy",
   "zcode",
@@ -289,6 +297,7 @@ const BACKGROUND_AUTO_SYNC_SOURCES = new Set([
   // Keep unscoped native 5-minute syncs bounded to dated local session trees.
   "codex",
   "every-code",
+  "reasonix",
 ]);
 
 function warnProviderParseFailure(label, err, opts) {
@@ -354,7 +363,7 @@ async function acquireSyncLock(
     priorityPollMs = PRIORITY_LOCK_POLL_MS,
   } = {},
 ) {
-  const waitsForPriority = Boolean(opts.drain || opts.publishAccount);
+  const waitsForPriority = Boolean(opts.waitForLock || opts.drain || opts.publishAccount);
   let lock = await openLock(lockPath, {
     quietIfLocked: opts.auto || waitsForPriority,
   });
@@ -576,7 +585,6 @@ async function cmdSync(argv, context = {}) {
     const xdgDataHome = process.env.XDG_DATA_HOME || path.join(home, ".local", "share");
     const kiloHome = process.env.KILO_HOME || path.join(xdgDataHome, "kilo");
     const mimoHome = process.env.MIMO_HOME || path.join(xdgDataHome, "mimocode");
-    const zcodeHome = process.env.ZCODE_HOME || path.join(home, ".zcode");
 
     // OpenClaw session plugin integration: lifecycle hooks request an
     // OpenClaw-only auto sync so unrelated providers do not get walked.
@@ -1369,9 +1377,7 @@ async function cmdSync(argv, context = {}) {
     // ── ZCode (Z.ai's coding agent — OpenCode-fork SQLite) ──
     let zcodeResult = { recordsProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
     if (sourceAllowed("zcode")) {
-      const zcodeNativeValue = process.platform === "win32" && typeof process.env.APPDATA === "string"
-        ? path.join(process.env.APPDATA.trim(), ".zcode", "cli", "db", "db.sqlite")
-        : path.join(zcodeHome, "cli", "db", "db.sqlite");
+      const zcodeNativeValue = resolveZcodeNativeDbPath({ home });
       const wslZcodeDir = process.platform === "win32" && wsl.shouldProbeWsl(process.env)
         ? wsl.discoverWslHome(".zcode")
         : null;
@@ -1396,6 +1402,32 @@ async function cmdSync(argv, context = {}) {
           `Parsing ${label} ${renderBar(pct)} ${formatNumber(p.index)}/${formatNumber(p.total)} records | buckets ${formatNumber(p.bucketsQueued)}`,
         );
       };
+    }
+
+    // ── DeepSeek Harness — passive read of ~/.dsh/sessions session logs ──
+    let dshResult = { recordsProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
+    if (sourceAllowed("dsh")) {
+      await migrateLegacyDeepseekHarnessSource({ cursors, queuePath, queueStatePath });
+      const dshSessionFiles = await resolveDshSessionFiles(process.env);
+      if (dshSessionFiles.length > 0) {
+        if (progress?.enabled) {
+          progress.start(
+            `Parsing DeepSeek Harness ${renderBar(0)} 0/${formatNumber(
+              dshSessionFiles.length,
+            )} sessions | buckets 0`,
+          );
+        }
+        try {
+          dshResult = await parseDshIncremental({
+            sessionFiles: dshSessionFiles,
+            cursors,
+            queuePath,
+            onProgress: makeProviderProgress("DeepSeek Harness"),
+          });
+        } catch (err) {
+          warnProviderParseFailure("DeepSeek Harness", err, opts);
+        }
+      }
     }
 
     // ── AnythingLLM Desktop (workspace_chats.response.metrics) ──
@@ -2075,6 +2107,25 @@ async function cmdSync(argv, context = {}) {
       }
     }
 
+    // Reasonix — content-free cumulative telemetry sidecars only.
+    let reasonixResult = { recordsProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
+    const reasonixFiles = sourceAllowed("reasonix")
+      ? mergeBothFileSources({ resolveFiles: resolveReasonixTelemetryFiles, env: process.env })
+      : [];
+    if (reasonixFiles.length > 0) {
+      try {
+        reasonixResult = await parseReasonixIncremental({
+          telemetryFiles: reasonixFiles,
+          cursors,
+          queuePath,
+          env: process.env,
+          onProgress: makeProviderProgress("Reasonix"),
+        });
+      } catch (err) {
+        warnProviderParseFailure("Reasonix", err, opts);
+      }
+    }
+
     // ── Grok Build (xAI) ──
     let grokResult = { recordsProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
     // Full passive scan of all Grok sessions (historical + any not covered by hook)
@@ -2513,6 +2564,7 @@ async function cmdSync(argv, context = {}) {
       ompResult.recordsProcessed +
       piResult.recordsProcessed +
       craftResult.recordsProcessed +
+      reasonixResult.recordsProcessed +
       grokResult.recordsProcessed +
       copilotResult.recordsProcessed +
       anythingllmResult.recordsProcessed +
@@ -2523,6 +2575,7 @@ async function cmdSync(argv, context = {}) {
       roocodeResult.recordsProcessed +
       zedResult.recordsProcessed +
       gooseResult.recordsProcessed +
+      dshResult.recordsProcessed +
       droidResult.recordsProcessed;
     const totalBuckets =
       parseResult.bucketsQueued +
@@ -2545,6 +2598,7 @@ async function cmdSync(argv, context = {}) {
       ompResult.bucketsQueued +
       piResult.bucketsQueued +
       craftResult.bucketsQueued +
+      reasonixResult.bucketsQueued +
       grokResult.bucketsQueued +
       copilotResult.bucketsQueued +
       anythingllmResult.bucketsQueued +
@@ -2555,6 +2609,7 @@ async function cmdSync(argv, context = {}) {
       roocodeResult.bucketsQueued +
       zedResult.bucketsQueued +
       gooseResult.bucketsQueued +
+      dshResult.bucketsQueued +
       droidResult.bucketsQueued;
     const skipNoOpCursorCommit =
       opts.auto &&
@@ -2780,6 +2835,7 @@ function parseArgs(argv) {
     fromOpenclaw: false,
     source: null,
     drain: false,
+    waitForLock: false,
     background: false,
     publishAccount: false,
     allLocalSources: false,
@@ -2797,6 +2853,7 @@ function parseArgs(argv) {
     }
     else if (a.startsWith("--source=")) out.source = normalizeSyncSource(a.slice("--source=".length));
     else if (a === "--drain") out.drain = true;
+    else if (a === "--wait-for-lock") out.waitForLock = true;
     else if (a === "--background" || a === "--lightweight") out.background = true;
     else if (a === "--publish-account") out.publishAccount = true;
     else if (a === "--all-local-sources") out.allLocalSources = true;
@@ -2888,6 +2945,8 @@ module.exports = {
   repairCodebuddyLogJsonlOverlap,
   repairWorkbuddyContextUsage,
   WORKBUDDY_CONTEXT_USAGE_REPAIR_KEY,
+  migrateLegacyDeepseekHarnessSource,
+  DSH_LEGACY_SOURCE_MIGRATION_KEY,
   repairCodexRescanInflation,
   repairCodexForkReplayInflation,
   repairCodexInterleavedUsageInflation,
@@ -2911,6 +2970,121 @@ module.exports = {
   GROK_APPEND_ONLY_REPAIR_MIGRATION_KEY,
   CLOUD_CONVERSATIONS_BACKFILL_KEY,
 };
+
+// The pre-merge Harness prototype briefly emitted source="deepseek" before
+// settling on the official CLI id, source="dsh". Relabel the local history,
+// append explicit zero rows for every old cloud key, and replay from offset 0.
+// That preserves the latest canonical totals while making remote whole-row
+// upserts remove the stale alias instead of displaying both sources or summing
+// the same session twice.
+async function migrateLegacyDeepseekHarnessSource({ cursors, queuePath, queueStatePath } = {}) {
+  if (!cursors || typeof cursors !== "object") return false;
+  const migrations = (cursors.migrations ||= {});
+  if (migrations[DSH_LEGACY_SOURCE_MIGRATION_KEY]) return false;
+
+  let raw = "";
+  try {
+    raw = await fs.readFile(queuePath, "utf8");
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+  }
+
+  const output = [];
+  const legacyKeys = new Map();
+  const latestMigratedRows = new Map();
+  const latestExplicitCanonicalRows = new Map();
+  for (const line of raw.split("\n")) {
+    if (!line.trim()) continue;
+    let row;
+    try {
+      row = JSON.parse(line);
+    } catch (_error) {
+      output.push(line);
+      continue;
+    }
+
+    const isLegacy =
+      row?.source === "deepseek" &&
+      typeof row.model === "string" &&
+      typeof row.hour_start === "string";
+    if (isLegacy) {
+      const key = `${row.model}|${row.hour_start}`;
+      legacyKeys.set(key, { model: row.model, hour_start: row.hour_start });
+      row = {
+        ...row,
+        source: "dsh",
+        billable_total_tokens: row.billable_total_tokens ?? row.total_tokens,
+      };
+    }
+    const serialized = JSON.stringify(row);
+    output.push(serialized);
+    if (row?.source === "dsh" && typeof row.model === "string" && typeof row.hour_start === "string") {
+      const key = `${row.model}|${row.hour_start}`;
+      if (isLegacy) latestMigratedRows.set(key, serialized);
+      else latestExplicitCanonicalRows.set(key, serialized);
+    }
+  }
+
+  if (legacyKeys.size === 0) {
+    migrations[DSH_LEGACY_SOURCE_MIGRATION_KEY] = {
+      status: "noop",
+      appliedAt: new Date().toISOString(),
+      reason: "no-legacy-deepseek-rows",
+    };
+    return false;
+  }
+
+  // Re-append the last canonical row for each affected key so local readers'
+  // last-row-wins contract remains correct even when an old alias line was
+  // physically later than an already-emitted dsh row.
+  for (const key of legacyKeys.keys()) {
+    const canonical = latestExplicitCanonicalRows.get(key) || latestMigratedRows.get(key);
+    if (canonical) output.push(canonical);
+  }
+  for (const { model, hour_start } of legacyKeys.values()) {
+    output.push(JSON.stringify({
+      source: "deepseek",
+      model,
+      hour_start,
+      input_tokens: 0,
+      cached_input_tokens: 0,
+      cache_creation_input_tokens: 0,
+      output_tokens: 0,
+      reasoning_output_tokens: 0,
+      total_tokens: 0,
+      billable_total_tokens: 0,
+      conversation_count: 0,
+    }));
+  }
+
+  await ensureDir(path.dirname(queuePath));
+  const tmpPath = `${queuePath}.tmp.${process.pid}.${Date.now()}`;
+  await fs.writeFile(tmpPath, `${output.join("\n")}\n`, "utf8");
+  await fs.rename(tmpPath, queuePath);
+
+  if (typeof queueStatePath === "string" && queueStatePath) {
+    let state = {};
+    try {
+      state = JSON.parse(await fs.readFile(queueStatePath, "utf8"));
+      if (!state || typeof state !== "object") state = {};
+    } catch (_error) {
+      state = {};
+    }
+    state.offset = 0;
+    state.updatedAt = new Date().toISOString();
+    state.note = "reset_after_deepseek_harness_source_migration_2026_08";
+    await ensureDir(path.dirname(queueStatePath));
+    await fs.writeFile(queueStatePath, `${JSON.stringify(state, null, 2)}\n`, "utf8");
+  }
+
+  migrations[DSH_LEGACY_SOURCE_MIGRATION_KEY] = {
+    status: "applied",
+    appliedAt: new Date().toISOString(),
+    migratedBuckets: legacyKeys.size,
+    retractedBuckets: legacyKeys.size,
+  };
+  return true;
+}
 
 function normalizeString(value) {
   if (typeof value !== "string") return null;

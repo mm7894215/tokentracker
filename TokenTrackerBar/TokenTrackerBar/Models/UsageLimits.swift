@@ -14,11 +14,12 @@ struct UsageLimitsResponse: Codable, Equatable {
     let zcode: ZcodeLimits?
     let opencodeGo: OpencodeGoLimits?
     let qoder: QoderLimits?
+    let qoderCn: QoderLimits?
     let codingPlan: CodingPlanLimits?
 
     enum CodingKeys: String, CodingKey {
         case fetchedAt = "fetched_at"
-        case claude, codex, cursor, gemini, kimi, kiro, grok, antigravity, copilot, zcode, qoder, codingPlan
+        case claude, codex, cursor, gemini, kimi, kiro, grok, antigravity, copilot, zcode, qoder, qoderCn, codingPlan
         case opencodeGo = "opencodeGo"
     }
 }
@@ -312,10 +313,12 @@ struct CodexCreditWindow: Codable, Equatable {
 struct GenericLimitWindow: Codable, Equatable {
     let usedPercent: Double
     let resetAt: String?
+    let limitWindowSeconds: Double?
 
     enum CodingKeys: String, CodingKey {
         case usedPercent = "used_percent"
         case resetAt = "reset_at"
+        case limitWindowSeconds = "limit_window_seconds"
     }
 }
 
@@ -553,6 +556,7 @@ extension UsageLimitsResponse {
             (zcode?.configured ?? false, zcode?.error),
             (opencodeGo?.configured ?? false, opencodeGo?.error),
             (qoder?.configured ?? false, qoder?.error),
+            (qoderCn?.configured ?? false, qoderCn?.error),
             (codingPlan?.configured ?? false, codingPlan?.error),
         ]
         return providers.contains { $0.0 && $0.1 == nil }

@@ -64,7 +64,7 @@ final class LimitsSettingsStore: ObservableObject {
         "copilot": "CopilotLogo",
         "antigravity": "AntigravityLogo",
         "qoder": "QoderLogo",
-        "qoderCn": "QoderLogo",
+        "qoderCn": "QoderCnLogo",
     ]
 
     // MARK: - Published state

@@ -9,6 +9,7 @@ const { performance } = require("node:perf_hooks");
 const { promisify } = require("node:util");
 
 const {
+  detectClaudeCodeCredentialsPresence,
   detectClaudeCodeSubscriptionDetails,
   readClaudeCodeAccessToken,
   readCodexAccessToken,
@@ -84,13 +85,17 @@ function toFiniteNumberOrNull(value) {
   return Number.isFinite(n) ? n : null;
 }
 
-function buildWindow({ usedPercent, resetAt }) {
+function buildWindow({ usedPercent, resetAt, windowSeconds = null }) {
   const pct = clampPercent(usedPercent);
   if (pct === null) return null;
-  return {
+  const window = {
     used_percent: pct,
     reset_at: typeof resetAt === "string" && resetAt ? resetAt : null,
   };
+  if (Number.isFinite(windowSeconds) && windowSeconds > 0) {
+    window.limit_window_seconds = windowSeconds;
+  }
+  return window;
 }
 
 function decodeJwtPayload(token) {
@@ -196,6 +201,10 @@ function extractClaudeScopedWeekly(body) {
   return out.length > 0 ? out : null;
 }
 
+// Shared by the 401 path below and by the blank-credential path in getUsageLimits:
+// both mean "the CLI login no longer works", and both are fixed the same way.
+const CLAUDE_AUTH_EXPIRED_MESSAGE = "Claude token expired — run `claude` once to refresh.";
+
 async function fetchClaudeUsageLimits(accessToken, { fetchImpl = fetch, maxAttempts = 3 } = {}) {
   const url = "https://api.anthropic.com/api/oauth/usage";
   const headers = {
@@ -206,7 +215,7 @@ async function fetchClaudeUsageLimits(accessToken, { fetchImpl = fetch, maxAttem
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     const res = await fetchImpl(url, { method: "GET", headers });
     if (res.status === 401) {
-      const err = new Error("Claude token expired — run `claude` once to refresh.");
+      const err = new Error(CLAUDE_AUTH_EXPIRED_MESSAGE);
       err.code = "AUTH_EXPIRED";
       throw err;
     }
@@ -590,7 +599,15 @@ function normalizeCursorUsageSummary(body) {
   const plan = body?.individualUsage?.plan || null;
   const indOnDemand = body?.individualUsage?.onDemand || null;
   const teamOnDemand = body?.teamUsage?.onDemand || null;
+  const billingCycleStart = typeof body?.billingCycleStart === "string" ? body.billingCycleStart : null;
   const billingCycleEnd = typeof body?.billingCycleEnd === "string" ? body.billingCycleEnd : null;
+  const billingCycleStartMs = Date.parse(billingCycleStart || "");
+  const billingCycleEndMs = Date.parse(billingCycleEnd || "");
+  const billingCycleSeconds = Number.isFinite(billingCycleStartMs)
+    && Number.isFinite(billingCycleEndMs)
+    && billingCycleEndMs > billingCycleStartMs
+    ? Math.round((billingCycleEndMs - billingCycleStartMs) / 1000)
+    : null;
   const autoPercent = clampPercent(plan?.autoPercentUsed);
   const apiPercent = clampPercent(plan?.apiPercentUsed);
 
@@ -643,9 +660,9 @@ function normalizeCursorUsageSummary(body) {
 
   return {
     membership_type: typeof body?.membershipType === "string" ? body.membershipType : null,
-    primary_window: buildWindow({ usedPercent: planPercent, resetAt: billingCycleEnd }),
-    secondary_window: buildWindow({ usedPercent: autoPercent, resetAt: billingCycleEnd }),
-    tertiary_window: buildWindow({ usedPercent: apiPercent, resetAt: billingCycleEnd }),
+    primary_window: buildWindow({ usedPercent: planPercent, resetAt: billingCycleEnd, windowSeconds: billingCycleSeconds }),
+    secondary_window: buildWindow({ usedPercent: autoPercent, resetAt: billingCycleEnd, windowSeconds: billingCycleSeconds }),
+    tertiary_window: buildWindow({ usedPercent: apiPercent, resetAt: billingCycleEnd, windowSeconds: billingCycleSeconds }),
   };
 }
 
@@ -3258,7 +3275,17 @@ async function fetchUsageLimitsUncached({
 
   let claude;
   if (!claudeToken) {
-    claude = { configured: false };
+    // Claude Code blanks `accessToken`/`refreshToken` in place when its login expires
+    // (macOS Keychain item and .credentials.json alike) instead of removing the entry,
+    // so "no token" is ambiguous: never signed in, or signed in and expired. An entry
+    // that still exists means the latter — reporting `configured: false` there hides the
+    // whole Claude section while the usage bars (parsed from local logs, no auth needed)
+    // keep updating, which reads as "TokenTracker doesn't support my plan" rather than
+    // "your CLI login expired". Existence-only probe: no secret is read here.
+    const credentialsPresent = detectClaudeCodeCredentialsPresence({ platform, securityRunner, home });
+    claude = credentialsPresent
+      ? { configured: true, error: CLAUDE_AUTH_EXPIRED_MESSAGE, auth_action_required: "reauth" }
+      : { configured: false };
   } else if (freshClaudeCache) {
     claude = freshClaudeCache;
   } else if (claudeResult && claudeResult.status === "fulfilled") {
