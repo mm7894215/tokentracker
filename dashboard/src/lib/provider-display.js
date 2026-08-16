@@ -6,13 +6,14 @@ const SPECIAL_PROVIDER_NAMES = {
   pianthropic: "Pi · Anthropic",
   pigithubcopilot: "Pi · GitHub Copilot",
   picopilot: "Pi · Copilot",
-  traecn: "TRAE Work CN",
 };
 
 const SPECIAL_PROVIDER_COPY_KEYS = {
   deepseek: "provider.display.deepseek_harness",
   dsh: "provider.display.deepseek_harness",
   omp: "provider.display.omp",
+  traecn: "provider.display.trae_work_cn",
+  traeworkcn: "provider.display.trae_work_cn",
 };
 
 function normalizedProviderKey(value) {

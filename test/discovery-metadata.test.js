@@ -8,6 +8,41 @@ const path = require("node:path");
 const ROOT = path.resolve(__dirname, "..");
 const read = (relativePath) => fs.readFileSync(path.join(ROOT, relativePath), "utf8");
 
+const CANONICAL_PROVIDERS = [
+  "Claude Code",
+  "Codex CLI",
+  "Cursor",
+  "Gemini CLI",
+  "Antigravity",
+  "Kiro",
+  "OpenCode",
+  "OpenClaw",
+  "Every Code",
+  "Hermes Agent",
+  "GitHub Copilot",
+  "Kimi Code",
+  "CodeBuddy",
+  "WorkBuddy",
+  "Grok Build",
+  "oh-my-pi",
+  "pi",
+  "Craft Agents",
+  "Reasonix",
+  "Kilo CLI",
+  "Kilo Code",
+  "Roo Code",
+  "Zed Agent",
+  "Goose",
+  "Droid",
+  "Mimo Code",
+  "ZCode",
+  "Qoder",
+  "AnythingLLM Desktop",
+  "Claude Science",
+  "DeepSeek Harness",
+  "TRAE Work CN",
+];
+
 const README_EXPECTATIONS = [
   ["README.md", /32 AI coding tools/, /\|\s+\*\*AI tools supported\*\*\s+\|\s+\*\*32\*\*/, /Rate-limit tracking.*✅ 13 providers/],
   ["README.zh-CN.md", /32 款 AI 编码工具/, /\|\s+\*\*支持的 AI 工具数\*\*\s+\|\s+\*\*32\*\*/, /限额追踪.*✅ 13 家 provider/],
@@ -21,11 +56,9 @@ test("public discovery surfaces describe all 32 supported tools", () => {
     const source = read(file);
     assert.match(source, countPattern, `${file} has the current provider count`);
     assert.match(source, comparisonPattern, `${file} comparison table has the current provider count`);
-    assert.match(source, /Droid/, `${file} lists Droid`);
-    assert.match(source, /AnythingLLM Desktop/, `${file} lists AnythingLLM Desktop`);
-    assert.match(source, /Qoder/, `${file} lists Qoder`);
-    assert.match(source, /DeepSeek Harness/, `${file} lists DeepSeek Harness`);
-    assert.match(source, /TRAE Work CN/, `${file} lists TRAE Work CN`);
+    for (const provider of CANONICAL_PROVIDERS) {
+      assert.match(source, new RegExp(provider), `${file} lists ${provider}`);
+    }
     assert.match(source, limitCountPattern, `${file} rate-limit row carries the current usage-limits provider count`);
   }
 

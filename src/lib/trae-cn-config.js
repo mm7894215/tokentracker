@@ -275,61 +275,63 @@ async function fetchTraeCnUsagePage({
   assertUsageParams({ start_time, end_time, page_size });
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
-  let response;
   try {
-    response = await fetchImpl(TRAE_CN_USAGE_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        // codeql[js/file-access-to-http]: locally stored TRAE JWT is sent only to the fixed official HTTPS endpoint; never logged or persisted.
-        Authorization: `Cloud-IDE-JWT ${jwt.trim()}`,
-      },
-      body: JSON.stringify({
-        usage_type: TRAE_CN_USAGE_TYPE,
-        start_time,
-        end_time,
-        page_num,
-        page_size,
-      }),
-      signal: controller.signal,
-    });
-  } catch (_error) {
-    throw new Error("Trae CN usage API request failed.");
+    let response;
+    try {
+      response = await fetchImpl(TRAE_CN_USAGE_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          // codeql[js/file-data-to-network]: locally stored TRAE JWT is sent only to the fixed official HTTPS endpoint; never logged or persisted.
+          Authorization: `Cloud-IDE-JWT ${jwt.trim()}`,
+        },
+        body: JSON.stringify({
+          usage_type: TRAE_CN_USAGE_TYPE,
+          start_time,
+          end_time,
+          page_num,
+          page_size,
+        }),
+        signal: controller.signal,
+      });
+    } catch (_error) {
+      throw new Error("Trae CN usage API request failed.");
+    }
+    if (response.status === 401 || response.status === 403) {
+      throw usageError(`Trae CN usage API returned HTTP ${response.status}.`, { status: response.status });
+    }
+    if (!response.ok) {
+      throw usageError(`Trae CN usage API returned HTTP ${response.status}.`, { status: response.status });
+    }
+    let parsed;
+    try {
+      parsed = await response.json();
+    } catch (_error) {
+      throw new Error("Trae CN usage API returned a non-JSON response.");
+    }
+    const apiCode = parsed?.data?.code ?? parsed?.code;
+    if (apiCode !== undefined && Number(apiCode) !== 0) {
+      throw usageError(`Trae CN usage API returned error code ${apiCode}.`, {
+        status: response.status,
+        apiCode: Number(apiCode),
+      });
+    }
+    // Documented wrapper: data.user_usage_group_by_sessions, or the top-level
+    // equivalent. Only this module parses the wrapper; token rows/buckets are
+    // normalized elsewhere. A body without the session-array wrapper fails
+    // closed as a schema error instead of being misread as an empty result;
+    // an explicit empty array remains valid.
+    const data = parsed?.data && typeof parsed.data === "object" ? parsed.data : parsed;
+    if (!Array.isArray(data?.user_usage_group_by_sessions)) {
+      throw new Error("Trae CN usage API response is missing the session list.");
+    }
+    const sessions = data.user_usage_group_by_sessions;
+    const rawTotal = data?.total;
+    const total = rawTotal === undefined || rawTotal === null ? null : Number(rawTotal);
+    return { sessions, total, page_num, page_size };
   } finally {
     clearTimeout(timer);
   }
-  if (response.status === 401 || response.status === 403) {
-    throw usageError(`Trae CN usage API returned HTTP ${response.status}.`, { status: response.status });
-  }
-  if (!response.ok) {
-    throw usageError(`Trae CN usage API returned HTTP ${response.status}.`, { status: response.status });
-  }
-  let parsed;
-  try {
-    parsed = await response.json();
-  } catch (_error) {
-    throw new Error("Trae CN usage API returned a non-JSON response.");
-  }
-  const apiCode = parsed?.data?.code ?? parsed?.code;
-  if (apiCode !== undefined && Number(apiCode) !== 0) {
-    throw usageError(`Trae CN usage API returned error code ${apiCode}.`, {
-      status: response.status,
-      apiCode: Number(apiCode),
-    });
-  }
-  // Documented wrapper: data.user_usage_group_by_sessions, or the top-level
-  // equivalent. Only this module parses the wrapper; token rows/buckets are
-  // normalized elsewhere. A body without the session-array wrapper fails
-  // closed as a schema error instead of being misread as an empty result;
-  // an explicit empty array remains valid.
-  const data = parsed?.data && typeof parsed.data === "object" ? parsed.data : parsed;
-  if (!Array.isArray(data?.user_usage_group_by_sessions)) {
-    throw new Error("Trae CN usage API response is missing the session list.");
-  }
-  const sessions = data.user_usage_group_by_sessions;
-  const rawTotal = data?.total;
-  const total = rawTotal === undefined || rawTotal === null ? null : Number(rawTotal);
-  return { sessions, total, page_num, page_size };
 }
 
 /**
@@ -362,6 +364,11 @@ async function fetchTraeCnUsage({
     const result = await pageFetcher({ jwt, start_time, end_time, page_num: page, page_size, fetchImpl });
     pagesFetched += 1;
     total = result.total;
+    if (pagesFetched === 1 && Number.isFinite(total) && total > page_size * maxPages) {
+      const error = new Error("Trae CN usage snapshot exceeds the supported capacity.");
+      error.code = "TRAE_CN_USAGE_CAPACITY_EXCEEDED";
+      throw error;
+    }
     if (Array.isArray(result.sessions)) sessions.push(...result.sessions);
     if (result.sessions.length === 0) break;
     if (total !== null && sessions.length >= total) break;

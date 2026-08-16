@@ -1,6 +1,8 @@
 // Canonical list of supported coding agents, in display order. Shared by the
 // marketing landing carousel and the dashboard auth/expired gate so the two
 // surfaces can't drift. Names are tooltip/a11y metadata only.
+import { copy } from "../../lib/copy";
+
 export const AGENT_LOGOS = [
   { id: 1, name: "Claude Code", provider: "claude" },
   { id: 2, name: "Codex", provider: "codex" },
@@ -33,5 +35,5 @@ export const AGENT_LOGOS = [
   { id: 29, name: "AnythingLLM", provider: "anythingllm" },
   { id: 30, name: "Claude Science", provider: "claude-science" },
   { id: 31, name: "DeepSeek Harness", provider: "dsh" },
-  { id: 32, name: "TRAE Work CN", provider: "trae-cn" },
+  { id: 32, name: copy("provider.display.trae_work_cn"), provider: "trae-cn" },
 ];

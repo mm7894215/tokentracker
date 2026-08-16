@@ -8,7 +8,7 @@
 
 An accurate, local-first token usage and cost dashboard for **32 AI coding tools** — plus a desktop pet, **4 native widgets**, and **15 achievement tracks**. No TokenTracker account, no API keys, no setup.
 
-> **TRAE Work CN note:** On macOS, TokenTracker reads real session-token usage from the locally signed-in TRAE Work CN app. Its internal API may change.
+> **TRAE Work CN note:** On macOS, during eligible non-background sync when local TRAE Work CN auth exists, TokenTracker reads usage metadata from the locally signed-in app; no prompts are sent, and its internal API may change.
 
 [![npm version](https://img.shields.io/npm/v/tokentracker-cli.svg?color=blue)](https://www.npmjs.com/package/tokentracker-cli)
 [![npm downloads](https://img.shields.io/npm/dm/tokentracker-cli.svg?color=brightgreen)](https://www.npmjs.com/package/tokentracker-cli)
@@ -260,7 +260,7 @@ An Arch `PKGBUILD` for a local pacman install lives in `TokenTrackerLinux/packag
 | **AnythingLLM Desktop** | ✅ Auto | Passive SQLite reader (`anythingllm-desktop/storage/anythingllm.db`; reads per-message token metrics only, never prompts or responses) |
 | **Claude Science** | ✅ Auto | Passive SQLite reader (`~/.claude-science/operon-cli.db`; reads the `frames` table's token counters only, never prompts, artifacts or research content). No native Windows build — on Windows the app runs inside WSL and is read from there. |
 | **DeepSeek Harness** | ✅ Auto | Passive session reader (`~/.dsh/sessions/**/session.jsonl[.zstd]`; parses session header and assistant events, handles multi-frame zstd decompression) |
-| **TRAE Work CN** | ✅ Auto | macOS session-token usage from the locally signed-in app; reads its internal API, which may change |
+| **TRAE Work CN** | ✅ Auto | During eligible non-background sync when local TRAE Work CN auth exists, reads session-token usage from the locally signed-in macOS app; its internal API may change |
 
 > **Do I need to install any plugin or hook manually?** No. `tokentracker` (or `tokentracker init`) handles everything on first run:
 > - **Hook-based** tools (Claude Code, Codex, Gemini, Every Code, **CodeBuddy**, **WorkBuddy**, **Grok Build**) — we write a SessionEnd hook or TOML notify entry into the tool's own config.

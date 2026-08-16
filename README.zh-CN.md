@@ -199,7 +199,7 @@ brew install xiufengsun/tokentracker/tokentracker
 | **AnythingLLM Desktop** | ✅ 自动 | 被动 SQLite 读取（`anythingllm-desktop/storage/anythingllm.db`；只读取每条消息的 token 指标，不读取 prompt 或回复） |
 | **Claude Science** | ✅ 自动 | 被动 SQLite 读取（`~/.claude-science/operon-cli.db`；只读取 `frames` 表的 token 计数，不读取 prompt、产物或研究内容）。没有原生 Windows 版——Windows 上该应用运行在 WSL 内，从 WSL 中读取。 |
 | **DeepSeek Harness** | ✅ 自动 | 被动读取会话日志（`~/.dsh/sessions/**/session.jsonl[.zstd]`；解析会话头部与 assistant 事件，支持多帧 zstd 解压） |
-| **TRAE Work CN** | ✅ 自动 | macOS 上读取本地登录的 TRAE Work CN 应用的 session-token 用量；内部 API 可能变化 |
+| **TRAE Work CN** | ✅ 自动 | 仅在存在本地 TRAE Work CN 登录授权的可执行非后台同步期间，读取 macOS 本地登录应用的 session-token 用量；内部 API 可能变化 |
 
 > **需要手动装什么插件 / hook 吗？** 不需要。`tokentracker`（或 `tokentracker init`）第一次跑的时候会全部搞定：
 > - **基于 hook 的工具**（Claude Code、Codex、Gemini、Every Code、**CodeBuddy**、**WorkBuddy**、**Grok Build**）—— 我们把 SessionEnd hook 或 TOML notify 条目写入它们自己的配置文件

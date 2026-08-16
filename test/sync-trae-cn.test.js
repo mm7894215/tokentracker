@@ -230,6 +230,62 @@ test("background and all-local syncs never call the TRAE CN fetch", async () => 
   });
 });
 
+test("an absent TRAE CN storage file does not call the fetch", async () => {
+  await withTempTraeEnv(async ({ home }) => {
+    let fetchCalls = 0;
+    const fetchImpl = async () => {
+      fetchCalls += 1;
+      throw new Error("should not fetch");
+    };
+
+    await cmdSync(["--auto", "--source=trae-cn"], {
+      traeCnFetchImpl: fetchImpl,
+      traeCnNowMs: NOW_MS,
+    });
+
+    assert.equal(fetchCalls, 0);
+    assert.equal(readQueueRows(home).some((row) => row.source === "trae-cn"), false);
+    assert.equal(readCursors(home).traeCn, undefined);
+  });
+});
+
+test("over-capacity TRAE CN fetch preserves the prior queue and cursor bytes", async () => {
+  await withTempTraeEnv(async ({ home, traeCnHome }) => {
+    writeTraeCnStorage(traeCnHome);
+    const initialFetch = traeFetchOnce({
+      user_usage_group_by_sessions: [sampleSession(Math.floor(NOW_MS / 1000) - 86400)],
+      total: 1,
+    });
+    await cmdSync(["--auto", "--source=trae-cn"], {
+      traeCnFetchImpl: initialFetch,
+      traeCnNowMs: NOW_MS,
+    });
+
+    const queuePath = path.join(home, ".tokentracker", "tracker", "queue.jsonl");
+    const cursorsPath = path.join(home, ".tokentracker", "tracker", "cursors.json");
+    const queueBefore = fs.readFileSync(queuePath, "utf8");
+    const traeCursorBefore = JSON.stringify(JSON.parse(fs.readFileSync(cursorsPath, "utf8")).traeCn);
+    const overCapacityRequests = [];
+    const overCapacityFetch = traeFetchOnce(
+      {
+        user_usage_group_by_sessions: [sampleSession(Math.floor(NOW_MS / 1000) - 86400)],
+        total: 2001,
+      },
+      overCapacityRequests,
+    );
+
+    await cmdSync(["--auto", "--source=trae-cn"], {
+      traeCnFetchImpl: overCapacityFetch,
+      traeCnNowMs: NOW_MS,
+    });
+
+    assert.equal(overCapacityRequests.length, 1, "capacity failure stops after page one");
+    assert.equal(fs.readFileSync(queuePath, "utf8"), queueBefore, "prior queue remains byte-identical");
+    const traeCursorAfter = JSON.stringify(JSON.parse(fs.readFileSync(cursorsPath, "utf8")).traeCn);
+    assert.equal(traeCursorAfter, traeCursorBefore, "prior TRAE cursor remains byte-identical");
+  });
+});
+
 test("failed TRAE CN fetch skips parser/queue/cursor mutation while other providers continue", async () => {
   await withTempTraeEnv(async ({ home, traeCnHome }) => {
     writeTraeCnStorage(traeCnHome);

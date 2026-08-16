@@ -420,6 +420,57 @@ test("fetchTraeCnUsagePage sanitizes transport exceptions containing the JWT", a
   );
 });
 
+test("fetchTraeCnUsagePage keeps the abort timeout active through body consumption", async () => {
+  const originalSetTimeout = global.setTimeout;
+  const originalClearTimeout = global.clearTimeout;
+  let timerHandle;
+  let bodyStarted = false;
+  let bodySawCancelledTimer = false;
+  let bodyAborted = false;
+  global.setTimeout = (callback) => {
+    timerHandle = { callback, cancelled: false };
+    return timerHandle;
+  };
+  global.clearTimeout = (handle) => {
+    if (handle) handle.cancelled = true;
+  };
+
+  try {
+    const pending = fetchTraeCnUsagePage({
+      jwt: JWT,
+      start_time: START,
+      end_time: END,
+      page_num: 1,
+      fetchImpl: (_url, options) => ({
+        status: 200,
+        ok: true,
+        json: () => {
+          bodyStarted = true;
+          bodySawCancelledTimer = timerHandle.cancelled;
+          if (bodySawCancelledTimer) return Promise.resolve({ user_usage_group_by_sessions: [] });
+          return new Promise((resolve) => {
+            options.signal.addEventListener("abort", () => {
+              bodyAborted = true;
+              resolve({ user_usage_group_by_sessions: [] });
+            }, { once: true });
+          });
+        },
+      }),
+    });
+    await Promise.resolve();
+    assert.equal(bodyStarted, true);
+    timerHandle.callback();
+    const result = await pending;
+    assert.deepEqual(result.sessions, []);
+    assert.equal(bodySawCancelledTimer, false);
+    assert.equal(bodyAborted, true);
+    assert.equal(timerHandle.cancelled, true, "timer clears after body consumption");
+  } finally {
+    global.setTimeout = originalSetTimeout;
+    global.clearTimeout = originalClearTimeout;
+  }
+});
+
 // ---------------------------------------------------------------------------
 // Pagination
 // ---------------------------------------------------------------------------
@@ -485,6 +536,20 @@ test("fetchTraeCnUsage succeeds when maxPages exactly covers the total", async (
   assert.deepEqual(requestedPages, [1, 2, 3]);
   assert.equal(result.sessions.length, 30);
   assert.equal(result.pages_fetched, 3);
+});
+
+test("fetchTraeCnUsage rejects a declared snapshot over capacity before page two", async () => {
+  const { fetchImpl, requestedPages } = pagedFetch({ rowsPerPage: () => 20, total: 2001 });
+  await assert.rejects(
+    fetchTraeCnUsage({ jwt: JWT, start_time: START, end_time: END, fetchImpl, delayMs: 0, maxPages: 100 }),
+    (error) => {
+      assert.equal(error.code, "TRAE_CN_USAGE_CAPACITY_EXCEEDED");
+      assert.match(error.message, /supported capacity/);
+      assert.ok(!error.message.includes(JWT));
+      return true;
+    },
+  );
+  assert.deepEqual(requestedPages, [1], "declared over-capacity total makes one request");
 });
 
 test("production inter-page delay constant is 300ms (tests inject delayMs: 0)", () => {
