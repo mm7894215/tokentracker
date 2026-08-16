@@ -154,6 +154,9 @@ function arkCodingPlanCachePath({ home = os.homedir() } = {}) {
 function readArkCodingPlanLimitsCache({ home = os.homedir(), nowMs = Date.now(), profileIdentity } = {}) {
   try {
     const parsed = JSON.parse(fs.readFileSync(arkCodingPlanCachePath({ home }), "utf8"));
+    // Deliberately fail-open: the guard only applies when `profile show`
+    // could establish the current identity. When it also failed, serving
+    // the stale cache beats erroring out — availability over strictness.
     if (profileIdentity && parsed?.profile_identity !== profileIdentity) return null;
     const cachedAtMs = Date.parse(parsed?.cached_at || "");
     if (!Number.isFinite(cachedAtMs) || cachedAtMs > nowMs + 60_000) return null;
@@ -357,7 +360,16 @@ async function fetchArkCodingPlanLimits({
   } catch (error) {
     return failWithCache(error?.message || "Ark Coding Plan response could not be parsed.");
   }
-  if (!limits) return { configured: false };
+  if (!limits) {
+    // The live response is authoritative: there is no subscription right
+    // now. Drop any cache left over from the subscribed era, or a later
+    // transient CLI failure would resurrect the retired plan's numbers
+    // through failWithCache.
+    try {
+      fs.unlinkSync(arkCodingPlanCachePath({ home }));
+    } catch (_error) {}
+    return { configured: false };
+  }
 
   if (!limits.plan_label) {
     // The tier ("lite" / "pro") lives on the `plans get` payload; fetch it

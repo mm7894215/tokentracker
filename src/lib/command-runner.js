@@ -184,11 +184,32 @@ async function whichBinary(binary, { commandRunner, platform = process.platform,
   });
   if (result?.error || result?.status !== 0) return null;
   const stdout = typeof result?.stdout === "string" ? result.stdout.trim() : "";
-  return stdout ? stdout.split("\n")[0] : null;
+  if (!stdout) return null;
+  // `where` on Windows emits CRLF and may list several matches across PATH
+  // entries; take the first line without the trailing `\r`, or the polluted
+  // path would fail at spawn time.
+  return stdout
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find(Boolean) || null;
 }
 
 async function isBinaryAvailable(binary, { commandRunner, platform, signal } = {}) {
   return (await whichBinary(binary, { commandRunner, platform, signal })) !== null;
+}
+
+// Expand a versioned install root (e.g. ~/.nvm/versions/node/<ver>/ or
+// fnm's node-versions/<ver>/installation/) into its per-version bin
+// directories. Returns [] when the root does not exist.
+function versionedBinDirs(root, inner) {
+  try {
+    return fs.readdirSync(root)
+      .filter((entry) => !entry.startsWith("."))
+      .sort((a, b) => b.localeCompare(a, "en", { numeric: true }))
+      .map((version) => path.join(root, version, ...inner));
+  } catch (_error) {
+    return [];
+  }
 }
 
 // Directories where globally installed CLIs commonly live even when the
@@ -207,6 +228,13 @@ function commonGlobalBinDirectories({ home = os.homedir(), platform = process.pl
     path.join(home, ".npm-global", "bin"),
     // volta keeps shims for every global install here
     path.join(home, ".volta", "bin"),
+    // nvm / fnm install npm globals under a per-version prefix that a
+    // minimal PATH never sees; newest version first.
+    ...versionedBinDirs(path.join(home, ".nvm", "versions", "node"), ["bin"]),
+    ...versionedBinDirs(path.join(home, ".local", "share", "fnm", "node-versions"), ["installation", "bin"]),
+    ...(platform === "darwin"
+      ? versionedBinDirs(path.join(home, "Library", "Application Support", "fnm", "node-versions"), ["installation", "bin"])
+      : []),
   ];
 }
 

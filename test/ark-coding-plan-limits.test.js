@@ -16,6 +16,8 @@ const {
 const {
   runCommand,
   resolveBinaryPath,
+  whichBinary,
+  commonGlobalBinDirectories,
 } = require("../src/lib/command-runner");
 
 const PROFILE_JSON = JSON.stringify({ profile: "coding-plan_test_region_personal", user_id: "test-user-001" });
@@ -563,4 +565,80 @@ test("fetchArkCodingPlanLimits bounds profile show with a short timeout on the c
   const profileCall = seen.find(({ args }) => args[0] === "profile");
   assert.ok(profileCall, "expected profile show on the cache-guard path");
   assert.equal(profileCall.options.timeout, 2_500);
+});
+
+test("whichBinary strips CRLF when where lists multiple matches", async () => {
+  // Windows `where` emits CRLF and one line per PATH hit. The first line
+  // must come back without its `\r`, or the polluted path fails at spawn.
+  const runner = (command) => {
+    if (command === "where") {
+      return { status: 0, stdout: "C:\\A\\arkcli.cmd\r\nC:\\B\\arkcli.cmd\r\n", stderr: "" };
+    }
+    return { status: 1, stdout: "", stderr: "" };
+  };
+  const resolved = await whichBinary("arkcli", { commandRunner: runner, platform: "win32" });
+  assert.equal(resolved, "C:\\A\\arkcli.cmd");
+});
+
+test("fetchArkCodingPlanLimits drops the cache once the plan is unsubscribed", async (t) => {
+  const home = tmpHome(t);
+  const nowMs = Date.now();
+  const cachePath = path.join(home, ".tokentracker", "tracker", "ark-coding-plan-limits-cache.json");
+
+  // Subscribed era: a live read wrote the cache.
+  writeArkCodingPlanLimitsCache({
+    configured: true,
+    plan_label: "Lite",
+    primary_window: { used_percent: 42, reset_at: new Date(nowMs + 3600_000).toISOString(), unit: "calls" },
+  }, { home, nowMs });
+  assert.equal(fs.existsSync(cachePath), true);
+
+  // The user unsubscribes: the authoritative live response says so.
+  const unsubscribed = JSON.parse(usageJsonFor({ nowMs }));
+  unsubscribed.items[0].subscribed = false;
+  const gone = await fetchArkCodingPlanLimits({
+    commandRunner: mockRunner({ usageStdout: JSON.stringify(unsubscribed) }),
+    home,
+    nowMs,
+  });
+  assert.deepEqual(gone, { configured: false });
+  assert.equal(fs.existsSync(cachePath), false, "cache must be dropped on unsubscribe");
+
+  // A later transient CLI failure must not resurrect the retired plan.
+  const hung = await fetchArkCodingPlanLimits({
+    commandRunner: (command, args) => {
+      if (command === "which") return { status: 0, stdout: "/usr/local/bin/arkcli\n", stderr: "" };
+      if (isArkCommand(command)) {
+        return { status: null, stdout: "", stderr: "", error: new Error("ETIMEDOUT") };
+      }
+      return { status: 1, stdout: "", stderr: "" };
+    },
+    home,
+    nowMs,
+  });
+  assert.equal(hung.stale, undefined);
+  assert.equal(hung.cached, undefined);
+  assert.match(hung.error, /ETIMEDOUT/);
+});
+
+test("commonGlobalBinDirectories expands nvm and fnm version directories", (t) => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "ark-bin-home-"));
+  t.after(() => fs.rmSync(home, { recursive: true, force: true }));
+  fs.mkdirSync(path.join(home, ".nvm", "versions", "node", "v22.1.0", "bin"), { recursive: true });
+  fs.mkdirSync(path.join(home, ".nvm", "versions", "node", "v18.0.0", "bin"), { recursive: true });
+  fs.mkdirSync(path.join(home, ".local", "share", "fnm", "node-versions", "v22.1.0", "installation", "bin"), { recursive: true });
+
+  const dirs = commonGlobalBinDirectories({ home, platform: "linux" });
+  // nvm entries are expanded newest-first so the active Node's global bin
+  // is probed before stale versions.
+  assert.deepEqual(
+    dirs.filter((dir) => dir.includes(".nvm")),
+    [
+      path.join(home, ".nvm", "versions", "node", "v22.1.0", "bin"),
+      path.join(home, ".nvm", "versions", "node", "v18.0.0", "bin"),
+    ],
+  );
+  assert.ok(dirs.includes(
+    path.join(home, ".local", "share", "fnm", "node-versions", "v22.1.0", "installation", "bin"),
+  ));
 });
