@@ -854,3 +854,109 @@ test("fetchTraeCnUsageWithAuth fails when credentials are missing", async () => 
     /credentials are not configured/,
   );
 });
+
+
+// ---------------------------------------------------------------------------
+// Usage API total validation (PR #474): the declared total gates pagination
+// termination, so a malformed value must fail closed as a schema error -
+// never be coerced into a legal-looking stop condition that silently
+// truncates the snapshot after page 1.
+// ---------------------------------------------------------------------------
+
+test("fetchTraeCnUsagePage rejects a malformed declared total", async () => {
+  const badTotals = [
+    -1,           // negative: 20 >= -1 would stop pagination after page 1
+    -0.5,         // negative fraction
+    2.5,          // fractional row count
+    "45",         // quoted digits: the API speaks JSON numbers (see the
+                  // start_time convention above - string digits are a schema
+                  // anomaly, not a numeric representation we accept)
+    "",           // empty string
+    true,         // wrong primitive
+  ];
+  for (const total of badTotals) {
+    await assert.rejects(
+      fetchTraeCnUsagePage({
+        jwt: JWT, start_time: START, end_time: END, page_num: 1,
+        fetchImpl: async () => jsonResponse(200, { user_usage_group_by_sessions: [{ id: 1 }], total }),
+      }),
+      (error) => {
+        assert.match(error.message, /invalid total/);
+        assert.ok(!error.message.includes(JWT), "schema error must not leak the JWT");
+        return true;
+      },
+      `total ${JSON.stringify(total)} must be rejected`,
+    );
+  }
+});
+
+test("fetchTraeCnUsagePage still accepts valid totals (0, exact page multiple) and absent total", async () => {
+  const zero = await fetchTraeCnUsagePage({
+    jwt: JWT, start_time: START, end_time: END, page_num: 1,
+    fetchImpl: async () => jsonResponse(200, { user_usage_group_by_sessions: [], total: 0 }),
+  });
+  assert.equal(zero.total, 0);
+
+  const big = await fetchTraeCnUsagePage({
+    jwt: JWT, start_time: START, end_time: END, page_num: 1,
+    fetchImpl: async () => jsonResponse(200, { user_usage_group_by_sessions: [{ id: 1 }], total: 9007199254740991 }),
+  });
+  assert.equal(big.total, Number.MAX_SAFE_INTEGER);
+
+  const absent = await fetchTraeCnUsagePage({
+    jwt: JWT, start_time: START, end_time: END, page_num: 1,
+    fetchImpl: async () => jsonResponse(200, { user_usage_group_by_sessions: [{ id: 1 }] }),
+  });
+  assert.equal(absent.total, null);
+});
+
+test("fetchTraeCnUsage fails closed on a malformed total instead of returning a partial snapshot", async () => {
+  // Page 1 is full (20 rows) and declares total = -1: the pre-fix code
+  // evaluated 20 >= -1 and silently stopped, returning a truncated snapshot.
+  const rows = Array.from({ length: 20 }, (_, i) => ({ id: i + 1 }));
+  const fetchImpl = async () => jsonResponse(200, { user_usage_group_by_sessions: rows, total: -1 });
+  await assert.rejects(
+    fetchTraeCnUsage({ jwt: JWT, start_time: START, end_time: END, fetchImpl, delayMs: 0 }),
+    /invalid total/,
+  );
+});
+
+// ---------------------------------------------------------------------------
+// Auth storage IO errors (PR #474): a missing file is "not signed in", but a
+// real IO failure (EACCES / EISDIR / I/O error) must fail closed with a
+// generic, credential-safe error - never be reported as "not signed in" and
+// never leak the OS detail, the path, or the storage contents.
+// ---------------------------------------------------------------------------
+
+test("readTraeCnAuthFromStorage: ENOENT / ENOTDIR mean absent (null), other IO errors fail closed", () => {
+  const home = "/Users/tester";
+  const env = { [TRAE_CN_HOME_ENV]: home };
+
+  const ioError = (code) => ({
+    readFileSync: () => {
+      const err = new Error(`os-level detail ${code} /Users/tester/secret-path`);
+      err.code = code;
+      throw err;
+    },
+  });
+
+  // Absent file / absent path component -> not signed in.
+  assert.equal(readTraeCnAuthFromStorage({ env, platform: "darwin", fsModule: ioError("ENOENT") }), null);
+  assert.equal(readTraeCnAuthFromStorage({ env, platform: "darwin", fsModule: ioError("ENOTDIR") }), null);
+
+  // Real IO failures -> distinct unreadable error, credential-safe message.
+  for (const code of ["EACCES", "EISDIR", "EIO"]) {
+    assert.throws(
+      () => readTraeCnAuthFromStorage({ env, platform: "darwin", fsModule: ioError(code) }),
+      (error) => {
+        assert.equal(error.code, "TRAE_CN_STORAGE_UNREADABLE", code);
+        assert.match(error.message, /could not be read/);
+        // No OS detail, no filesystem path, no synthetic-JWT leak.
+        assert.ok(!error.message.includes(code), "must not surface the OS error code");
+        assert.ok(!error.message.includes("secret-path"), "must not surface the storage path");
+        return true;
+      },
+      code,
+    );
+  }
+});

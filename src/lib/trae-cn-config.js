@@ -212,8 +212,10 @@ function parseTraeCnAuthValue(value) {
 
 /**
  * Read + decrypt the auth object from storage.json. Returns null when the
- * file or the auth key is absent (not configured). Throws a credential-safe
- * error when present data is malformed.
+ * file or the auth key is absent (not signed in). Throws a credential-safe
+ * error when present data is malformed, and a distinct unreadable error for
+ * real IO failures (permission denied, I/O error) - an unreadable storage
+ * file must not be reported as "not signed in".
  */
 function readTraeCnAuthFromStorage({ env, home, platform, fsModule = fs } = {}) {
   const storagePath = resolveTraeCnStoragePath({ env, home, platform });
@@ -221,8 +223,18 @@ function readTraeCnAuthFromStorage({ env, home, platform, fsModule = fs } = {}) 
   let raw;
   try {
     raw = fsModule.readFileSync(storagePath, "utf8");
-  } catch (_error) {
-    return null;
+  } catch (error) {
+    // A missing file (or missing path component) simply means the app is not
+    // installed / not signed in. Any other failure - EACCES, EISDIR, a real
+    // I/O error - fails closed with a generic, credential-safe error. Only a
+    // stable machine-readable code is attached, never the OS detail, so
+    // storage contents cannot leak through logs or error messages.
+    if (error && (error.code === "ENOENT" || error.code === "ENOTDIR")) {
+      return null;
+    }
+    const unreadable = new Error("Trae CN storage.json could not be read.");
+    unreadable.code = "TRAE_CN_STORAGE_UNREADABLE";
+    throw unreadable;
   }
   let parsed;
   try {
@@ -299,7 +311,15 @@ async function fetchTraeCnUsagePage({
   try {
     let response;
     try {
-      // The locally stored TRAE JWT goes only to the fixed official HTTPS endpoint; never logged or persisted.
+      // Security note (CodeQL "File data -> outbound network request"):
+      // the credential read from TRAE's local storage.json is sent ONLY to
+      // TRAE_CN_USAGE_URL, a compile-time constant HTTPS endpoint of the
+      // official API - callers cannot redirect the destination (the url
+      // parameter is ignored; pinned by the "sends the exact request" test).
+      // The whole flow is behind the explicit TOKENTRACKER_TRAE_CN_USAGE
+      // opt-in, the JWT is never logged, never written to the queue/cursor
+      // state, and never uploaded to the TokenTracker cloud (queue rows carry
+      // token counters only; transport exceptions are sanitized).
       response = await fetchImpl(TRAE_CN_USAGE_URL, {
         method: "POST",
         headers: {
@@ -347,8 +367,25 @@ async function fetchTraeCnUsagePage({
       throw new Error("Trae CN usage API response is missing the session list.");
     }
     const sessions = data.user_usage_group_by_sessions;
+    // The declared total gates pagination termination (sessions.length >=
+    // total stops the walk), so a malformed value must fail closed as a
+    // schema error - never be coerced into a legal-looking stop condition.
+    // A negative, fractional, non-finite, or non-number total (the API
+    // speaks JSON numbers; a quoted digit string is a schema anomaly) would
+    // otherwise silently truncate the snapshot after page 1 and still look
+    // authoritative.
     const rawTotal = data?.total;
-    const total = rawTotal === undefined || rawTotal === null ? null : Number(rawTotal);
+    let total = null;
+    if (rawTotal !== undefined && rawTotal !== null) {
+      if (
+        typeof rawTotal !== "number" ||
+        !Number.isSafeInteger(rawTotal) ||
+        rawTotal < 0
+      ) {
+        throw new Error("Trae CN usage API returned an invalid total.");
+      }
+      total = rawTotal;
+    }
     return { sessions, total, page_num, page_size };
   } finally {
     clearTimeout(timer);

@@ -12,10 +12,11 @@
 // that v0.44 fixed. This test fails loudly on any mismatch.
 //
 // NOT covered here: scripts/ops/leaderboard-usage-grouped-rpc.sql (SUPERSEDED
-// rollback reference — do not edit or verify) and the live
-// leaderboard_hourly_dedup_v2 function's account_sources array, which lives
-// only in the deployed database (maintainer-side; a PR adding an account-level
-// source must call it out in its deployment notes).
+// rollback reference — do not edit or verify). Since the account-sync
+// watermark work, leaderboard_hourly_dedup_v2's account_sources array IS
+// versioned in migrations/20260817120000_account-sync-watermarks.sql, so it
+// is verified below; applying that migration to production stays a
+// maintainer-side deployment step.
 
 const fs = require("node:fs");
 const path = require("node:path");
@@ -64,6 +65,9 @@ test("account-level source list is identical across source-metadata, the account
   const others = {
     "account-usage-grouped-rpc.sql": extractSqlAccountSources(
       readFile("scripts/ops/account-usage-grouped-rpc.sql"),
+    ),
+    "20260817120000_account-sync-watermarks.sql (leaderboard_hourly_dedup_v2)": extractSqlAccountSources(
+      readFile("migrations/20260817120000_account-sync-watermarks.sql"),
     ),
     "tokentracker-leaderboard-profile.ts": extractJsSet(
       readFile("dashboard/edge-patches/tokentracker-leaderboard-profile.ts"),

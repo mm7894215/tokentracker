@@ -1717,8 +1717,12 @@ async function cmdSync(argv, context = {}) {
             home,
           });
           const traeCnSessions = Array.isArray(traeCnUsage?.sessions) ? traeCnUsage.sessions : [];
-          if (traeCnSessions.length > 0) {
-            if (progress?.enabled) {
+          // Parse even an empty payload: the parser is a local no-op but
+          // still appends the account-sync watermark asserting this window
+          // was verified, which is what displaces stale cross-device tuples
+          // for the covered hours (fresh-device invariant).
+          {
+            if (progress?.enabled && traeCnSessions.length > 0) {
               progress.start(
                 `Parsing TRAE Work CN ${renderBar(0)} 0/${formatNumber(
                   traeCnSessions.length,
@@ -1731,6 +1735,7 @@ async function cmdSync(argv, context = {}) {
               queuePath,
               onProgress: makeProviderProgress("TRAE Work CN"),
               windowStartMs: startTime * 1000,
+              windowEndMs: endTime * 1000,
             });
             // Row-level isolation means a malformed row is skipped, not fatal;
             // surface the skip count even on auto runs (warnProviderParseFailure
@@ -3529,7 +3534,11 @@ async function drainQueueToCloud({ baseUrl, deviceToken, queuePath, queueStatePa
   for (let batch = 0; batch < maxBatches; batch++) {
     if (offset >= queueSize) break;
     const result = await readQueueBatch(queuePath, offset, limit);
-    if (result.buckets.length === 0) break;
+    // A watermark-only tail (e.g. a sync whose reconciled buckets were all
+    // unchanged, or a verified-empty window) is still a meaningful upload:
+    // it advances the account-sync coverage that displaces stale
+    // cross-device tuples cloud-side.
+    if (result.buckets.length === 0 && result.watermarks.length === 0) break;
 
     const root = baseUrl.replace(/\/$/, "");
     const anonKey = process.env.TOKENTRACKER_INSFORGE_ANON_KEY || "";
@@ -3542,7 +3551,10 @@ async function drainQueueToCloud({ baseUrl, deviceToken, queuePath, queueStatePa
     const res = await fetch(`${root}/functions/${INGEST_SLUG}`, {
       method: "POST",
       headers,
-      body: JSON.stringify({ hourly: result.buckets }),
+      body: JSON.stringify({
+        hourly: result.buckets,
+        ...(result.watermarks.length > 0 ? { account_watermarks: result.watermarks } : {}),
+      }),
     });
 
     const rawText = await res.text().catch(() => "");
@@ -3579,6 +3591,12 @@ async function readQueueBatch(queuePath, startOffset, maxBuckets) {
   const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
 
   const bucketMap = new Map();
+  // Account-sync watermarks (kind: "account_sync_watermark") are queue
+  // control records, not usage rows: collect them separately so they ride
+  // the same upload (after the bucket rows in file order) without entering
+  // the bucket stream. Last record per source wins - records are appended
+  // chronologically, one per verified sync window.
+  const watermarkMap = new Map();
   let offset = startOffset;
   let linesRead = 0;
   for await (const line of rl) {
@@ -3589,6 +3607,16 @@ async function readQueueBatch(queuePath, startOffset, maxBuckets) {
     try {
       bucket = JSON.parse(line);
     } catch (_e) {
+      continue;
+    }
+    if (bucket?.kind === "account_sync_watermark") {
+      if (typeof bucket.source === "string" && bucket.source.trim()) {
+        watermarkMap.set(bucket.source.trim().toLowerCase(), {
+          source: bucket.source.trim().toLowerCase(),
+          window_start: bucket.window_start,
+          window_end: bucket.window_end,
+        });
+      }
       continue;
     }
     const hourStart = typeof bucket?.hour_start === "string" ? bucket.hour_start : null;
@@ -3610,7 +3638,11 @@ async function readQueueBatch(queuePath, startOffset, maxBuckets) {
 
   rl.close();
   stream.close?.();
-  return { buckets: Array.from(bucketMap.values()), nextOffset: offset };
+  return {
+    buckets: Array.from(bucketMap.values()),
+    watermarks: Array.from(watermarkMap.values()),
+    nextOffset: offset,
+  };
 }
 
 function normalizeGrokRepairSource(value) {

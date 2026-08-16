@@ -105,7 +105,39 @@ export default async function (req: Request): Promise<Response> {
     : Array.isArray(body.hourly)
       ? body.hourly
       : [];
-  if (!Array.isArray(buckets) || buckets.length === 0) {
+
+  // Account-sync watermarks (kind: "account_sync_watermark" queue records)
+  // assert the closed window this device just verified against an
+  // account-level source API (trae-cn). The cloud aggregation
+  // (account_usage_grouped / leaderboard_hourly_dedup_v2) picks, per hour,
+  // the freshest covering watermark device as the canonical owner, so a
+  // newer snapshot displaces stale tuples from devices holding older
+  // versions. A watermark-only batch is a meaningful upload (e.g. a
+  // verified-empty window) and must not fall into the no-buckets reject.
+  const rawWatermarks = Array.isArray(body.account_watermarks)
+    ? body.account_watermarks
+    : [];
+  if (rawWatermarks.length > 50) {
+    return json({ error: "Too many account watermarks (max 50)" }, 400);
+  }
+  const watermarks = [];
+  for (const w of rawWatermarks) {
+    const source = typeof w?.source === "string" ? w.source.trim().toLowerCase() : "";
+    const start = Date.parse(String(w?.window_start ?? ""));
+    const end = Date.parse(String(w?.window_end ?? ""));
+    // Fail closed on a malformed watermark: writing a bogus window would
+    // corrupt cross-device ownership for the whole account.
+    if (!source || !Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+      return json({ error: "Invalid account watermark" }, 400);
+    }
+    watermarks.push({
+      source,
+      window_start: new Date(start).toISOString(),
+      window_end: new Date(end).toISOString(),
+    });
+  }
+
+  if ((!Array.isArray(buckets) || buckets.length === 0) && watermarks.length === 0) {
     return json({ error: "No usage buckets provided" }, 400);
   }
   if (buckets.length > 500) {
@@ -156,6 +188,27 @@ export default async function (req: Request): Promise<Response> {
     });
 
   if (upsertErr) return json({ error: upsertErr.message }, 500);
+
+  if (watermarks.length > 0) {
+    // Upsert AFTER the bucket rows of the same upload landed, so a watermark
+    // never covers hours whose owning rows failed to write. updated_at is
+    // set explicitly: freshness ordering (window_end DESC, updated_at DESC)
+    // must see this sync as newer than the previous one from this device.
+    const wmRows = watermarks.map((w) => ({
+      user_id: userId,
+      device_id: deviceId,
+      source: w.source,
+      window_start: w.window_start,
+      window_end: w.window_end,
+      updated_at: new Date().toISOString(),
+    }));
+    const { error: wmErr } = await client.database
+      .from("tokentracker_account_sync_watermarks")
+      .upsert(wmRows, {
+        onConflict: "user_id,device_id,source",
+      });
+    if (wmErr) return json({ error: wmErr.message }, 500);
+  }
 
   return json({ ok: true, inserted: rows.length, skipped: 0 });
 }

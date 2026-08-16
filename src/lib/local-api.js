@@ -338,6 +338,9 @@ function readQueueData(queuePath) {
       if (!line.trim()) continue;
       try {
         const row = JSON.parse(line);
+        // Account-sync watermarks are queue control records (cloud-side
+        // cross-device dedup), not usage rows - never surface them locally.
+        if (row?.kind === "account_sync_watermark") continue;
         // Deduplicate: each sync appends cumulative totals per bucket, so for
         // each (source, model, hour_start) keep only the latest (last) entry.
         const key = `${row.source || ""}|${row.model || ""}|${row.hour_start || ""}`;

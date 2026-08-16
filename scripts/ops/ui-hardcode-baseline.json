@@ -1,12 +1,12 @@
 {
-  "generatedAt": "2026-07-27T14:57:17.435Z",
+  "generatedAt": "2026-08-16T19:09:24.612Z",
   "root": "dashboard/src",
   "rules": {
     "colors": "hex/rgb(a) literals",
     "rawText": "JSX text nodes containing letters or digits"
   },
   "totals": {
-    "colors": 377,
+    "colors": 384,
     "rawText": 160
   },
   "files": {
@@ -370,7 +370,7 @@
       ]
     },
     "dashboard/src/ui/dashboard/components/ProviderIcon.jsx": {
-      "colors": 2,
+      "colors": 9,
       "rawText": 0,
       "rawTextTokens": []
     },

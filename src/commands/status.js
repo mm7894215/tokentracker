@@ -647,8 +647,13 @@ async function cmdStatus(argv = []) {
   // official API, so status surfaces the opt-in flag, the resolved storage
   // path, and whether the auth blob decrypts — the three inputs a "why is my
   // TRAE CN data missing" diagnosis needs.
+  // A resolvable default path does NOT mean the app is installed - the macOS
+  // resolver always derives one. Match the sync path semantics exactly:
+  // installed iff the storage file actually exists on disk.
   const traeCnStoragePath = resolveTraeCnStoragePath({ env: process.env, home });
-  const traeCnInstalled = Boolean(traeCnStoragePath);
+  const traeCnInstalled = Boolean(
+    traeCnStoragePath && fssync.existsSync(traeCnStoragePath),
+  );
   let traeCnAuthState = "not-signed-in";
   if (traeCnInstalled) {
     try {
@@ -657,8 +662,10 @@ async function cmdStatus(argv = []) {
         extractTraeCnToken(traeCnAuth);
         traeCnAuthState = "readable";
       }
-    } catch (_error) {
-      traeCnAuthState = "malformed";
+    } catch (error) {
+      // Distinguish a real IO failure (unreadable) from present-but-bad
+      // data (malformed); neither ever carries storage contents.
+      traeCnAuthState = error?.code === "TRAE_CN_STORAGE_UNREADABLE" ? "unreadable" : "malformed";
     }
   }
   const traeCnUsageOptIn = isTraeCnUsageEnabled(process.env);

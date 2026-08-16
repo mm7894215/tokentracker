@@ -16395,7 +16395,13 @@ const TRAE_CN_UNKNOWN_MODEL = "trae-cn-unknown";
 
 function normalizeTraeCnState(raw) {
   if (raw === undefined || raw === null) {
-    return { version: TRAE_CN_STATE_VERSION, sessions: {}, prunedBeforeMs: 0, updatedAt: null };
+    return {
+      version: TRAE_CN_STATE_VERSION,
+      sessions: {},
+      prunedBeforeMs: 0,
+      updatedAt: null,
+      lastWatermark: null,
+    };
   }
   if (typeof raw !== "object" || Array.isArray(raw)) {
     throw new Error("Trae CN cursor state is malformed.");
@@ -16412,7 +16418,20 @@ function normalizeTraeCnState(raw) {
     prunedBeforeMs:
       Number.isFinite(raw.prunedBeforeMs) && raw.prunedBeforeMs > 0 ? raw.prunedBeforeMs : 0,
     updatedAt: typeof raw.updatedAt === "string" ? raw.updatedAt : null,
+    lastWatermark: normalizeTraeCnLastWatermark(raw.lastWatermark),
   };
+}
+
+// Advisory watermark echo of the last appended account_sync_watermark. An
+// older CLI build silently drops it on state rewrite (it re-normalizes with
+// its own field list), which only costs one redundant watermark append -
+// cloud upserts are idempotent - so no state-version bump is needed.
+function normalizeTraeCnLastWatermark(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const start = typeof raw.window_start === "string" ? Date.parse(raw.window_start) : NaN;
+  const end = typeof raw.window_end === "string" ? Date.parse(raw.window_end) : NaN;
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return null;
+  return { window_start: raw.window_start, window_end: raw.window_end };
 }
 
 function isValidTraeCnTotals(totals) {
@@ -16594,12 +16613,60 @@ function assertTraeCnBucketCovers(bucketTotals, previousTotals) {
   }
 }
 
+// Account-sync watermark: a queue record (kind: "account_sync_watermark")
+// asserting that this device has just verified the account snapshot for the
+// closed window [window_start, window_end] against the TRAE CN API. The
+// cloud aggregation (account-usage-grouped RPC / leaderboard_hourly_dedup_v2,
+// mirrored by src/lib/account-usage-dedup.js) uses it to pick, per hour, ONE
+// canonical owning device - the freshest watermark whose window covers that
+// hour - so cross-device downward/model/bucket corrections displace stale
+// tuples from devices holding older snapshot versions, and a fresh device
+// with no prior cursor state still displaces tuples it has never seen.
+// Appended AFTER the bucket rows of the same sync so the queue ordering
+// guarantees a device's rows always land before the watermark covering them.
+// Bucket-row readers skip this record via its kind field (it carries no
+// hour_start and is not a usage row).
+function watermarkWindow(windowStartMs, windowEndMs) {
+  return {
+    window_start: new Date(windowStartMs).toISOString(),
+    window_end: new Date(windowEndMs).toISOString(),
+  };
+}
+
+function isSameTraeCnWatermark(lastWatermark, windowStartMs, windowEndMs) {
+  if (!lastWatermark) return false;
+  if (!Number.isFinite(windowStartMs) || !Number.isFinite(windowEndMs)) return false;
+  return (
+    Date.parse(lastWatermark.window_start) === windowStartMs &&
+    Date.parse(lastWatermark.window_end) === windowEndMs
+  );
+}
+
+async function appendTraeCnSyncWatermark({ queuePath, windowStartMs, windowEndMs }) {
+  if (
+    !Number.isFinite(windowStartMs) ||
+    !Number.isFinite(windowEndMs) ||
+    windowEndMs <= windowStartMs
+  ) {
+    return false;
+  }
+  const record = JSON.stringify({
+    kind: "account_sync_watermark",
+    source: TRAE_CN_SOURCE,
+    window_start: new Date(windowStartMs).toISOString(),
+    window_end: new Date(windowEndMs).toISOString(),
+  });
+  await fs.appendFile(queuePath, record + "\n", "utf8");
+  return true;
+}
+
 async function parseTraeCnApiIncremental({
   sessions,
   cursors,
   queuePath,
   onProgress,
   windowStartMs,
+  windowEndMs,
 } = {}) {
   if (!Array.isArray(sessions)) {
     throw new Error("Trae CN sessions must be an array.");
@@ -16617,7 +16684,24 @@ async function parseTraeCnApiIncremental({
   const traeCnState = structuredClone(normalizeTraeCnState(cursors?.traeCn));
 
   if (sessions.length === 0) {
-    // Empty payload is a successful no-op: it never erases prior contributions.
+    // Empty payload is a successful no-op for usage state: it never erases
+    // prior contributions. The verified-empty window is still asserted
+    // cloud-side via the watermark so stale cross-device tuples inside the
+    // window are displaced (fresh-device invariant D) without rewriting any
+    // usage rows locally. Re-asserting the SAME window as the last sync is
+    // redundant (the cloud upsert is idempotent), so skip it to keep a
+    // fixed-now no-change sync byte-identical; a window that ADVANCED (the
+    // production rolling window moves with now) is always re-asserted.
+    if (!isSameTraeCnWatermark(traeCnState.lastWatermark, windowStartMs, windowEndMs)) {
+      const appended = await appendTraeCnSyncWatermark({ queuePath, windowStartMs, windowEndMs });
+      if (appended) {
+        traeCnState.lastWatermark = watermarkWindow(windowStartMs, windowEndMs);
+        traeCnState.updatedAt = new Date().toISOString();
+        // Sessions/prunedBeforeMs pass through the clone untouched, so this
+        // commits ONLY the watermark echo - prior contributions survive.
+        cursors.traeCn = traeCnState;
+      }
+    }
     return { recordsProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
   }
 
@@ -16738,6 +16822,17 @@ async function parseTraeCnApiIncremental({
   }
 
   const bucketsQueued = await enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets });
+  // Assert the verified window only after the reconciled bucket rows are
+  // durably queued; a failure here aborts before cursor commit, so the next
+  // sync replays the (idempotent) reconciliation and re-appends both. As in
+  // the empty-payload branch, re-asserting the SAME window as the last sync
+  // is redundant - skip it so a fixed-now no-change sync stays byte-identical.
+  if (!isSameTraeCnWatermark(traeCnState.lastWatermark, windowStartMs, windowEndMs)) {
+    const watermarkAppended = await appendTraeCnSyncWatermark({ queuePath, windowStartMs, windowEndMs });
+    if (watermarkAppended) {
+      traeCnState.lastWatermark = watermarkWindow(windowStartMs, windowEndMs);
+    }
+  }
   const updatedAt = new Date().toISOString();
   hourlyState.updatedAt = updatedAt;
   traeCnState.updatedAt = updatedAt;

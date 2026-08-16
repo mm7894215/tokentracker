@@ -36,7 +36,9 @@ export const AGENT_LOGOS = [
   { id: 31, name: "DeepSeek Harness", provider: "dsh" },
   {
     id: 32,
-    name: "TRAE Work CN",
+    // No hardcoded English fallback name: every consumer renders through
+    // copy() (LogoCarousel prefers nameKey; see LogoCarousel.test.jsx), so a
+    // parallel "name" string would just duplicate the copy.csv entry.
     nameKey: "provider.display.trae_work_cn",
     provider: "trae-cn",
   },

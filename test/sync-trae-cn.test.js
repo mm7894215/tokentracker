@@ -101,6 +101,10 @@ function writeTraeCnStorage(traeCnHome, auth = { token: "fake-jwt-token", refres
   );
 }
 
+function readWatermarkRows(home) {
+  return readQueueRows(home).filter((row) => row.kind === "account_sync_watermark");
+}
+
 function readQueueRows(home) {
   const queuePath = path.join(home, ".tokentracker", "tracker", "queue.jsonl");
   if (!fs.existsSync(queuePath)) return [];
@@ -170,7 +174,9 @@ test("non-background auto trae-cn sync fetches the exact rolling range and queue
     assert.equal(body.page_num, 1);
     assert.equal(body.page_size, 20);
 
-    const traeRows = readQueueRows(home).filter((row) => row.source === "trae-cn");
+    const traeRows = readQueueRows(home).filter(
+      (row) => row.source === "trae-cn" && row.kind !== "account_sync_watermark",
+    );
     assert.equal(traeRows.length, 1);
     assert.equal(traeRows[0].model, "doubao-pro");
     assert.equal(traeRows[0].input_tokens, 100);
@@ -178,6 +184,20 @@ test("non-background auto trae-cn sync fetches the exact rolling range and queue
     assert.equal(traeRows[0].total_tokens, 110);
     assert.equal(traeRows[0].conversation_count, 1);
     assert.equal(traeRows[0].hour_start, halfHourBucket(usageTime));
+
+    // The sync appends exactly one account-sync watermark asserting the full
+    // verified window (bucket row first, watermark after - queue order).
+    const queueLines = fs
+      .readFileSync(path.join(home, ".tokentracker", "tracker", "queue.jsonl"), "utf8")
+      .trim()
+      .split("\n");
+    assert.equal(queueLines.length, 2, "bucket row then watermark");
+    const watermarks = readWatermarkRows(home);
+    assert.equal(watermarks.length, 1);
+    assert.equal(watermarks[0].source, "trae-cn");
+    assert.equal(Date.parse(watermarks[0].window_start), startTime * 1000);
+    assert.equal(Date.parse(watermarks[0].window_end), endTime * 1000);
+    assert.equal(readCursors(home).traeCn.lastWatermark.window_end, watermarks[0].window_end);
 
     const cursors = readCursors(home);
     assert.equal(cursors.traeCn.version, 1);
@@ -202,9 +222,14 @@ test("repeated fixed-now sync is idempotent (no token growth / no new queue row)
     await cmdSync(["--auto", "--source=trae-cn"], { traeCnFetchImpl: fetchImpl, traeCnNowMs: NOW_MS });
     assert.equal(fs.readFileSync(queuePath, "utf8"), before, "queue unchanged on repeat");
 
-    const traeRows = readQueueRows(home).filter((row) => row.source === "trae-cn");
+    const traeRows = readQueueRows(home).filter(
+      (row) => row.source === "trae-cn" && row.kind !== "account_sync_watermark",
+    );
     assert.equal(traeRows.length, 1);
     assert.equal(traeRows[0].total_tokens, 110);
+    // The repeat neither re-appends the watermark nor grows the queue: the
+    // cursor lastWatermark echo suppresses the redundant re-assertion.
+    assert.equal(readWatermarkRows(home).length, 1);
   });
 });
 
@@ -357,10 +382,18 @@ test("over-capacity TRAE CN window is split and the staggered halves import atom
       }),
       [[startTime, endTime], [startTime, mid], [mid + 1, endTime]],
     );
-    const traeRows = readQueueRows(home).filter((row) => row.source === "trae-cn");
+    const traeRows = readQueueRows(home).filter(
+      (row) => row.source === "trae-cn" && row.kind !== "account_sync_watermark",
+    );
     assert.equal(traeRows.length, 2, "both halves queue their row");
     const cursorSessions = readCursors(home).traeCn.sessions;
     assert.deepEqual(Object.keys(cursorSessions).sort(), ["split-left", "split-right"]);
+    // Split sub-windows union back to ONE watermark over the full window -
+    // ownership cloud-side must cover the whole requested range.
+    const watermarks = readWatermarkRows(home);
+    assert.equal(watermarks.length, 1);
+    assert.equal(Date.parse(watermarks[0].window_start), startTime * 1000);
+    assert.equal(Date.parse(watermarks[0].window_end), endTime * 1000);
   });
 });
 
