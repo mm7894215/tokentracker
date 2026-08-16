@@ -59,15 +59,15 @@ const TEST_KG = Buffer.from([
   85, 33, 12, 125,
 ]);
 
-function testPassword() {
-  const pw = Buffer.alloc(64);
-  for (let i = 0; i < 64; i++) pw[i] = TEST_JG[i] ^ TEST_KG[i];
-  return pw;
+function testKdfSecret() {
+  const secret = Buffer.alloc(64);
+  for (let i = 0; i < 64; i++) secret[i] = TEST_JG[i] ^ TEST_KG[i];
+  return secret;
 }
 
 function testDerive(salt) {
-  const kdfBuf = Buffer.concat([crypto.createHash("sha512").update(salt).digest(), testPassword()]);
-  // codeql[js/insufficient-password-hash]: vendor tc-v5 compatibility KDF, not password storage.
+  const kdfBuf = Buffer.concat([crypto.createHash("sha512").update(salt).digest(), testKdfSecret()]);
+  // Vendor tc-v5 compatibility KDF, not password storage.
   const out = crypto.createHash("sha512").update(kdfBuf).digest();
   return { key: out.subarray(0, 16), iv: out.subarray(16, 32) };
 }

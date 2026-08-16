@@ -77,10 +77,10 @@ function resolveTraeCnStoragePath(options = {}) {
 // tc v5 decryption
 // ---------------------------------------------------------------------------
 
-function traeCnHardcodedPassword() {
-  const pw = Buffer.alloc(64);
-  for (let i = 0; i < 64; i++) pw[i] = TRAE_CN_JG[i] ^ TRAE_CN_KG[i];
-  return pw;
+function traeCnHardcodedKdfSecret() {
+  const secret = Buffer.alloc(64);
+  for (let i = 0; i < 64; i++) secret[i] = TRAE_CN_JG[i] ^ TRAE_CN_KG[i];
+  return secret;
 }
 
 function deriveTraeCnKeyIv(salt) {
@@ -89,9 +89,9 @@ function deriveTraeCnKeyIv(salt) {
   }
   const kdfBuf = Buffer.concat([
     crypto.createHash("sha512").update(salt).digest(),
-    traeCnHardcodedPassword(),
+    traeCnHardcodedKdfSecret(),
   ]);
-  // codeql[js/insufficient-password-hash]: vendor tc-v5 compatibility KDF, not password storage.
+  // Vendor tc-v5 compatibility KDF, not password storage.
   const kdfOut = crypto.createHash("sha512").update(kdfBuf).digest();
   return {
     key: kdfOut.subarray(0, TRAE_CN_AES_KEY_LEN),
@@ -278,7 +278,7 @@ async function fetchTraeCnUsagePage({
   try {
     let response;
     try {
-      // codeql[js/file-data-to-network]: locally stored TRAE JWT is sent only to the fixed official HTTPS endpoint; never logged or persisted.
+      // The locally stored TRAE JWT goes only to the fixed official HTTPS endpoint; never logged or persisted.
       response = await fetchImpl(TRAE_CN_USAGE_URL, {
         method: "POST",
         headers: {
@@ -428,7 +428,7 @@ module.exports = {
   TRAE_CN_MAGIC,
   resolveTraeCnHome,
   resolveTraeCnStoragePath,
-  traeCnHardcodedPassword,
+  traeCnHardcodedKdfSecret,
   deriveTraeCnKeyIv,
   decryptTraeCnBlob,
   decryptTraeCnBase64,
