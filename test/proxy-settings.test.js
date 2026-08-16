@@ -89,6 +89,11 @@ test("normalizeProxyConfig falls back to system on dirty values", () => {
     { raw: { mode: "manual", protocol: "http", host: "", port: 7890 }, reason: "invalid host" },
     { raw: { mode: "manual", protocol: "http", host: "http://127.0.0.1", port: 7890 }, reason: "invalid host" },
     { raw: { mode: "manual", protocol: "http", host: "127.0.0.1/proxy", port: 7890 }, reason: "invalid host" },
+    { raw: { mode: "manual", protocol: "http", host: "user@127.0.0.1", port: 7890 }, reason: "invalid host" },
+    { raw: { mode: "manual", protocol: "http", host: "127.0.0.1?x=1", port: 7890 }, reason: "invalid host" },
+    { raw: { mode: "manual", protocol: "http", host: "127.0.0.1#frag", port: 7890 }, reason: "invalid host" },
+    { raw: { mode: "manual", protocol: "http", host: "127.0.0.1\\proxy", port: 7890 }, reason: "invalid host" },
+    { raw: { mode: "manual", protocol: "http", host: "127.0.0.1 1", port: 7890 }, reason: "invalid host" },
     { raw: { mode: "manual", protocol: "http", host: "127.0.0.1", port: 0 }, reason: "invalid port" },
     { raw: { mode: "manual", protocol: "http", host: "127.0.0.1", port: 65536 }, reason: "invalid port" },
     { raw: { mode: "manual", protocol: "http", host: "127.0.0.1", port: 80.5 }, reason: "invalid port" },
@@ -121,6 +126,11 @@ test("parseProxyPayload rejects illegal POST bodies instead of coercing", () => 
   assert.equal(parseProxyPayload({ mode: "auto" }).ok, false);
   assert.equal(parseProxyPayload({ mode: "manual", protocol: "http", host: "http://x", port: 1 }).ok, false);
   assert.equal(parseProxyPayload({ mode: "manual", protocol: "http", host: "x", port: 0 }).ok, false);
+  assert.equal(parseProxyPayload({ mode: "manual", protocol: "http", host: "user@host", port: 1 }).ok, false);
+  assert.equal(parseProxyPayload({ mode: "manual", protocol: "http", host: "host?x", port: 1 }).ok, false);
+  assert.equal(parseProxyPayload({ mode: "manual", protocol: "http", host: "host#x", port: 1 }).ok, false);
+  assert.equal(parseProxyPayload({ mode: "manual", protocol: "http", host: "host\\x", port: 1 }).ok, false);
+  assert.equal(parseProxyPayload({ mode: "manual", protocol: "http", host: "ho st", port: 1 }).ok, false);
   assert.equal(parseProxyPayload({ mode: "system" }).ok, true);
   assert.deepEqual(parseProxyPayload({
     mode: "manual",
@@ -144,6 +154,12 @@ test("buildProxyUrl builds a URL only for valid manual configs", () => {
     buildProxyUrl({ mode: "manual", protocol: "http", host: "::1", port: 8080 }),
     "http://[::1]:8080",
   );
+  assert.equal(
+    buildProxyUrl({ mode: "manual", protocol: "http", host: "[::1]", port: 8080 }),
+    "http://[::1]:8080",
+  );
+  assert.equal(buildProxyUrl({ mode: "manual", protocol: "http", host: "foo:bar", port: 8080 }), null);
+  assert.equal(buildProxyUrl({ mode: "manual", protocol: "http", host: "127.0.0.1:8080", port: 8080 }), null);
   assert.equal(buildProxyUrl({ mode: "system", protocol: "http", host: "127.0.0.1", port: 7890 }), null);
   assert.equal(buildProxyUrl({ mode: "off" }), null);
   assert.equal(buildProxyUrl({ mode: "manual", protocol: "http", host: "http://x", port: 1 }), null);

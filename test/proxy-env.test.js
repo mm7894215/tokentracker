@@ -2,6 +2,8 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 
 const http = require("node:http");
+const fs = require("node:fs");
+const path = require("node:path");
 const {
   parseMacProxyOutput,
   pickProxyUrl,
@@ -12,6 +14,8 @@ const {
   runProxyConnectivityTest,
   getLastProxyApplyError,
   resetProxyApplyStateForTests,
+  invalidateSystemProxyCache,
+  resolveEffectiveProxySource,
 } = require("../src/lib/proxy-env");
 
 test("parseMacProxyOutput extracts enabled HTTPS system proxy", () => {
@@ -37,6 +41,7 @@ test("resolveSystemProxyEnv enables Node env proxy for explicit proxy env", () =
 });
 
 test("resolveSystemProxyEnv reads macOS system proxy when no proxy env exists", () => {
+  resetProxyApplyStateForTests();
   const result = resolveSystemProxyEnv({
     env: {},
     platform: "darwin",
@@ -58,6 +63,7 @@ test("resolveSystemProxyEnv reads macOS system proxy when no proxy env exists", 
 });
 
 test("relaunchWithProxyEnvIfNeeded only relaunches serve-like commands once", () => {
+  resetProxyApplyStateForTests();
   const calls = [];
   const result = relaunchWithProxyEnvIfNeeded({
     argv: ["serve", "--no-open"],
@@ -131,11 +137,15 @@ test("applyUndiciProxyIfNeeded sets a ProxyAgent dispatcher when proxy env exist
   assert.equal(captured.url, "http://127.0.0.1:7897");
 });
 
-test("applyUndiciProxyIfNeeded is a no-op when no proxy env var is set", () => {
+test("applyUndiciProxyIfNeeded is a no-op when no env and no system proxy exist", () => {
   resetProxyApplyStateForTests();
   let called = false;
   const result = applyUndiciProxyIfNeeded({
     env: {},
+    platform: "linux",
+    commandRunner() {
+      throw new Error("scutil must not run off darwin");
+    },
     setGlobalDispatcher: () => {
       called = true;
     },
@@ -143,6 +153,37 @@ test("applyUndiciProxyIfNeeded is a no-op when no proxy env var is set", () => {
   });
   assert.equal(result, null);
   assert.equal(called, false);
+});
+
+test("applyUndiciProxyIfNeeded in system mode uses the scutil proxy when env is empty", () => {
+  resetProxyApplyStateForTests();
+  let captured = null;
+  let probes = 0;
+  function FakeAgent(url) {
+    this.url = url;
+    captured = this;
+  }
+  const result = applyUndiciProxyIfNeeded({
+    env: {},
+    platform: "darwin",
+    commandRunner() {
+      probes += 1;
+      return {
+        status: 0,
+        stdout: "HTTPSEnable : 1\nHTTPSProxy : 192.168.1.1\nHTTPSPort : 8118\n",
+      };
+    },
+    setGlobalDispatcher: (dispatcher) => {
+      captured = dispatcher;
+    },
+    ProxyAgent: FakeAgent,
+    Agent: function () {},
+    proxyConfig: { mode: "system" },
+  });
+  assert.deepEqual(result, { ok: true, proxyUrl: "http://192.168.1.1:8118" });
+  assert.ok(captured instanceof FakeAgent);
+  assert.equal(captured.url, "http://192.168.1.1:8118");
+  assert.equal(probes, 1);
 });
 
 test("applyUndiciProxyIfNeeded swallows ProxyAgent construction errors in env mode", () => {
@@ -374,17 +415,20 @@ function closeQuietlyForTest(dispatcher) {
 test("applyUndiciProxyIfNeeded actually swaps the real undici dispatcher", () => {
   const undici = require("undici");
   const previous = undici.getGlobalDispatcher();
+  let created = null;
   try {
     resetProxyApplyStateForTests();
     const result = applyUndiciProxyIfNeeded({
       env: { HTTPS_PROXY: "http://127.0.0.1:7897" },
     });
     assert.deepEqual(result, { ok: true, proxyUrl: "http://127.0.0.1:7897" });
-    const dispatcher = undici.getGlobalDispatcher();
-    assert.notEqual(dispatcher, previous);
-    assert.ok(dispatcher instanceof undici.ProxyAgent);
+    created = undici.getGlobalDispatcher();
+    assert.notEqual(created, previous);
+    assert.ok(created instanceof undici.ProxyAgent);
   } finally {
     undici.setGlobalDispatcher(previous);
+    closeQuietlyForTest(created);
+    resetProxyApplyStateForTests();
   }
 });
 
@@ -412,7 +456,7 @@ test("resolveSystemProxyEnv returns null in manual mode and does not relaunch", 
   assert.equal(result, null);
 });
 
-test("switching from manual to system does not keep using the manual proxy", () => {
+test("switching from manual to system uses the scutil proxy, not the leftover manual URL", () => {
   resetProxyApplyStateForTests();
   const env = {};
   let installed = null;
@@ -444,6 +488,45 @@ test("switching from manual to system does not keep using the manual proxy", () 
 
   applyUndiciProxyIfNeeded({
     env,
+    platform: "darwin",
+    commandRunner() {
+      return {
+        status: 0,
+        stdout: "HTTPSEnable : 1\nHTTPSProxy : 192.168.1.1\nHTTPSPort : 8118\n",
+      };
+    },
+    setGlobalDispatcher: setter,
+    ProxyAgent: FakeProxy,
+    Agent: DirectAgent,
+    proxyConfig: { mode: "system" },
+  });
+  assert.ok(installed instanceof FakeProxy);
+  assert.equal(installed.url, "http://192.168.1.1:8118");
+  assert.notEqual(installed.url, "http://10.0.0.1:1080");
+});
+
+test("switching from manual to system without a system proxy installs a direct Agent", () => {
+  resetProxyApplyStateForTests();
+  let installed = null;
+  function FakeProxy(url) {
+    this.url = url;
+  }
+  function DirectAgent() {
+    this.direct = true;
+  }
+  const setter = (dispatcher) => {
+    installed = dispatcher;
+  };
+  applyUndiciProxyIfNeeded({
+    env: {},
+    setGlobalDispatcher: setter,
+    ProxyAgent: FakeProxy,
+    Agent: DirectAgent,
+    proxyConfig: { mode: "manual", protocol: "http", host: "10.0.0.1", port: 1080 },
+  });
+  applyUndiciProxyIfNeeded({
+    env: {},
+    platform: "linux",
     setGlobalDispatcher: setter,
     ProxyAgent: FakeProxy,
     Agent: DirectAgent,
@@ -493,4 +576,121 @@ test("manual construction failure replaces a live direct dispatcher and blocks r
     resetProxyApplyStateForTests();
     await new Promise((resolve) => server.close(resolve));
   }
+});
+
+test("scutil system-proxy probe is cached within the TTL including null results", () => {
+  resetProxyApplyStateForTests();
+  let probes = 0;
+  const runner = () => {
+    probes += 1;
+    return {
+      status: 0,
+      stdout: "HTTPSEnable : 1\nHTTPSProxy : 10.0.0.9\nHTTPSPort : 9\n",
+    };
+  };
+  const first = applyUndiciProxyIfNeeded({
+    env: {},
+    platform: "darwin",
+    commandRunner: runner,
+    setGlobalDispatcher: () => {},
+    ProxyAgent: function (url) { this.url = url; },
+    Agent: function () {},
+    proxyConfig: { mode: "system" },
+  });
+  const second = resolveEffectiveProxySource({
+    env: {},
+    platform: "darwin",
+    commandRunner: runner,
+    proxyConfig: { mode: "system" },
+  });
+  assert.deepEqual(first, { ok: true, proxyUrl: "http://10.0.0.9:9" });
+  assert.equal(second.proxyUrl, "http://10.0.0.9:9");
+  assert.equal(second.source, "system");
+  assert.equal(probes, 1);
+
+  invalidateSystemProxyCache();
+  resolveEffectiveProxySource({
+    env: {},
+    platform: "darwin",
+    commandRunner: runner,
+    proxyConfig: { mode: "system" },
+  });
+  assert.equal(probes, 2);
+});
+
+test("scutil cache stores a negative result so missing system proxy is not re-probed", () => {
+  resetProxyApplyStateForTests();
+  let probes = 0;
+  const runner = () => {
+    probes += 1;
+    return { status: 0, stdout: "HTTPSEnable : 0\n" };
+  };
+  const first = resolveEffectiveProxySource({
+    env: {},
+    platform: "darwin",
+    commandRunner: runner,
+    proxyConfig: { mode: "system" },
+  });
+  const second = resolveEffectiveProxySource({
+    env: {},
+    platform: "darwin",
+    commandRunner: runner,
+    proxyConfig: { mode: "system" },
+  });
+  assert.equal(first.source, "none");
+  assert.equal(second.source, "none");
+  assert.equal(probes, 1);
+});
+
+test("invalid persisted manual config fail-closes and records applyError", () => {
+  resetProxyApplyStateForTests();
+  const warnings = [];
+  let installed = null;
+  function DirectAgent() {
+    this.direct = true;
+  }
+  const result = applyUndiciProxyIfNeeded({
+    env: {},
+    platform: "linux",
+    setGlobalDispatcher: (dispatcher) => {
+      installed = dispatcher;
+    },
+    ProxyAgent: function (url) { this.url = url; },
+    Agent: DirectAgent,
+    warn: (msg) => warnings.push(msg),
+    proxyConfig: { mode: "manual", protocol: "http", host: "127.0.0.1", port: 99999 },
+  });
+  assert.equal(result.ok, false);
+  assert.equal(result.unprotected, undefined);
+  assert.match(result.error, /invalid port|invalid manual proxy config/);
+  assert.equal(installed instanceof DirectAgent, false);
+  assert.equal(typeof installed.dispatch, "function");
+  assert.ok(getLastProxyApplyError());
+  assert.equal(warnings.length, 1);
+});
+
+test("fail-closed install failure returns unprotected: true", () => {
+  resetProxyApplyStateForTests();
+  const result = applyUndiciProxyIfNeeded({
+    env: {},
+    setGlobalDispatcher: () => {
+      throw new Error("cannot install dispatcher");
+    },
+    ProxyAgent: function (url) { this.url = url; },
+    Agent: function () {},
+    warn: () => {},
+    proxyConfig: { mode: "manual", protocol: "http", host: "127.0.0.1", port: 7890 },
+  });
+  assert.equal(result.ok, false);
+  assert.equal(result.unprotected, true);
+  assert.ok(result.error);
+  assert.ok(getLastProxyApplyError());
+});
+
+test("bin/tracker.js aborts when apply reports unprotected", () => {
+  const src = fs.readFileSync(path.join(__dirname, "../bin/tracker.js"), "utf8");
+  assert.match(src, /unprotected\s*===\s*true/);
+  assert.match(src, /process\.exit\(1\)/);
+  assert.match(src, /手动代理无法生效且无法阻断出站流量，已中止/);
+  assert.match(src, /outbound traffic could not be blocked/);
 });

@@ -11,6 +11,7 @@ const {
   applyUndiciProxyIfNeeded,
   resetProxyApplyStateForTests,
   readPersistedProxyConfig,
+  getLastProxyApplyError,
 } = require("../src/lib/proxy-env");
 
 let tmpHome;
@@ -277,8 +278,9 @@ test("GET proxy-config falls back to system for truly invalid persisted proxy va
   assert.notEqual(body.effective, "manual");
 
   let installed = null;
-  applyUndiciProxyIfNeeded({
+  const applyResult = applyUndiciProxyIfNeeded({
     env: {},
+    platform: "linux",
     setGlobalDispatcher: (dispatcher) => {
       installed = dispatcher;
     },
@@ -290,9 +292,17 @@ test("GET proxy-config falls back to system for truly invalid persisted proxy va
       this.direct = true;
       installed = this;
     },
+    warn: () => {},
     proxyConfig: readPersistedProxyConfig(),
   });
-  assert.equal(installed, null);
+  assert.equal(applyResult.ok, false);
+  assert.ok(applyResult.error);
+  assert.ok(installed);
+  assert.equal(typeof installed.dispatch, "function");
+  assert.ok(getLastProxyApplyError());
+
+  const after = await call(handler, { endpoint: "/functions/tokentracker-proxy-config" });
+  assert.ok(after.json().applyError);
 });
 
 test("POST proxy-config writes atomically and leaves no tmp file", async () => {
@@ -310,7 +320,7 @@ test("POST proxy-config writes atomically and leaves no tmp file", async () => {
   });
   assert.equal(ok.statusCode, 200);
   const dir = path.dirname(configPath());
-  const leftovers = fs.readdirSync(dir).filter((name) => name.endsWith(".tmp"));
+  const leftovers = fs.readdirSync(dir).filter((name) => name.includes(".tmp"));
   assert.deepEqual(leftovers, []);
   const saved = JSON.parse(fs.readFileSync(configPath(), "utf8"));
   assert.equal(saved.machineId, "machine-abcdef12");
@@ -348,8 +358,97 @@ test("POST system after manual apply stops using the manual proxy URL", async ()
   });
   assert.equal(system.statusCode, 200);
   assert.notEqual(system.json().effective, "manual");
-  const afterSystem = undici.getGlobalDispatcher();
-  assert.equal(afterSystem instanceof undici.ProxyAgent, false);
+  assert.ok(["none", "env", "system"].includes(system.json().effective));
+});
+
+test("POST proxy-config returns ok:false when apply fails after a successful save", async () => {
+  const queuePath = path.join(tmpHome, ".tokentracker", "tracker", "queue.jsonl");
+  fs.mkdirSync(path.dirname(queuePath), { recursive: true });
+  fs.writeFileSync(queuePath, "");
+  fs.writeFileSync(configPath(), JSON.stringify({ machineId: "machine-abcdef12" }));
+  const handler = freshHandler(queuePath);
+  const token = await authToken(handler);
+
+  const orig = undici.ProxyAgent;
+  undici.ProxyAgent = function () {
+    throw new Error("apply exploded");
+  };
+  try {
+    const res = await call(handler, {
+      method: "POST",
+      endpoint: "/functions/tokentracker-proxy-config",
+      headers: { "content-type": "application/json", "x-tokentracker-local-auth": token },
+      body: JSON.stringify({ mode: "manual", protocol: "http", host: "127.0.0.1", port: 7890 }),
+    });
+    assert.equal(res.statusCode, 200);
+    const body = res.json();
+    assert.equal(body.ok, false);
+    assert.ok(body.applyError);
+    const saved = JSON.parse(fs.readFileSync(configPath(), "utf8"));
+    assert.equal(saved.proxy.mode, "manual");
+    assert.equal(saved.proxy.host, "127.0.0.1");
+  } finally {
+    undici.ProxyAgent = orig;
+  }
+});
+
+test("POST proxy-config keeps config.json at 0600 and preserves other keys", async () => {
+  const queuePath = path.join(tmpHome, ".tokentracker", "tracker", "queue.jsonl");
+  fs.mkdirSync(path.dirname(queuePath), { recursive: true });
+  fs.writeFileSync(queuePath, "");
+  fs.writeFileSync(configPath(), JSON.stringify({
+    machineId: "machine-abcdef12",
+    deviceToken: "secret-token",
+    telemetry: true,
+  }));
+  fs.chmodSync(configPath(), 0o600);
+  const handler = freshHandler(queuePath);
+  const token = await authToken(handler);
+  const res = await call(handler, {
+    method: "POST",
+    endpoint: "/functions/tokentracker-proxy-config",
+    headers: { "content-type": "application/json", "x-tokentracker-local-auth": token },
+    body: JSON.stringify({ mode: "off" }),
+  });
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.json().ok, true);
+  const saved = JSON.parse(fs.readFileSync(configPath(), "utf8"));
+  assert.equal(saved.machineId, "machine-abcdef12");
+  assert.equal(saved.deviceToken, "secret-token");
+  assert.equal(saved.telemetry, true);
+  assert.equal(saved.proxy.mode, "off");
+  if (process.platform !== "win32") {
+    const mode = fs.statSync(configPath()).mode & 0o777;
+    assert.equal(mode, 0o600);
+  }
+});
+
+test("POST proxy-config invalidates the scutil system-proxy cache", async () => {
+  const proxyEnv = require("../src/lib/proxy-env");
+  let invalidated = 0;
+  const orig = proxyEnv.invalidateSystemProxyCache;
+  proxyEnv.invalidateSystemProxyCache = () => {
+    invalidated += 1;
+    orig();
+  };
+  try {
+    const queuePath = path.join(tmpHome, ".tokentracker", "tracker", "queue.jsonl");
+    fs.mkdirSync(path.dirname(queuePath), { recursive: true });
+    fs.writeFileSync(queuePath, "");
+    fs.writeFileSync(configPath(), JSON.stringify({ machineId: "machine-abcdef12" }));
+    const handler = freshHandler(queuePath);
+    const token = await authToken(handler);
+    const res = await call(handler, {
+      method: "POST",
+      endpoint: "/functions/tokentracker-proxy-config",
+      headers: { "content-type": "application/json", "x-tokentracker-local-auth": token },
+      body: JSON.stringify({ mode: "off" }),
+    });
+    assert.equal(res.statusCode, 200);
+    assert.ok(invalidated >= 1);
+  } finally {
+    proxyEnv.invalidateSystemProxyCache = orig;
+  }
 });
 
 test("GET proxy-config reports the last manual apply failure", async () => {

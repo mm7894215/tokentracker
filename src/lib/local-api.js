@@ -2630,7 +2630,9 @@ function createLocalApiHandler({ queuePath }) {
         applyUndiciProxyIfNeeded,
         getLastProxyApplyError,
         resolveEffectiveProxySource,
+        invalidateSystemProxyCache,
       } = require("./proxy-env");
+      const { writeFileAtomic, chmod600IfPossible } = require("./fs");
       const configPath = path.join(path.dirname(qp), "config.json");
       const readConfig = () => {
         try {
@@ -2640,11 +2642,9 @@ function createLocalApiHandler({ queuePath }) {
           return {};
         }
       };
-      const writeConfig = (next) => {
-        fs.mkdirSync(path.dirname(configPath), { recursive: true });
-        const tmpPath = `${configPath}.${process.pid}.tmp`;
-        fs.writeFileSync(tmpPath, JSON.stringify(next, null, 2));
-        fs.renameSync(tmpPath, configPath);
+      const writeConfig = async (next) => {
+        await writeFileAtomic(configPath, JSON.stringify(next, null, 2));
+        await chmod600IfPossible(configPath);
       };
       const toResponse = (configObj) => {
         const normalized = normalizeProxyConfig(configObj?.proxy);
@@ -2694,9 +2694,19 @@ function createLocalApiHandler({ queuePath }) {
           host: parsed.value.host,
           port: parsed.value.port,
         };
-        writeConfig(current);
-        applyUndiciProxyIfNeeded({ proxyConfig: current.proxy });
-        json(res, { ok: true, ...toResponse(current) });
+        try {
+          await writeConfig(current);
+        } catch (error) {
+          json(res, { ok: false, error: error?.message || "failed to save proxy config" }, 500);
+          return true;
+        }
+        invalidateSystemProxyCache();
+        const applyResult = applyUndiciProxyIfNeeded({ proxyConfig: current.proxy });
+        json(res, {
+          ok: applyResult?.ok !== false,
+          unprotected: applyResult?.unprotected === true,
+          ...toResponse(current),
+        });
         return true;
       }
       json(res, { error: "Method Not Allowed" }, 405);

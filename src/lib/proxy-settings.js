@@ -1,5 +1,7 @@
 "use strict";
 
+const net = require("node:net");
+
 const PROXY_MODES = new Set(["system", "manual", "off"]);
 const PROXY_PROTOCOLS = new Set(["http", "https", "socks5"]);
 
@@ -30,6 +32,9 @@ function normalizeHost(value) {
   const host = value.trim();
   if (!host) return null;
   if (/:\/\//.test(host) || host.includes("/")) return null;
+  // Reject credentials, query/hash fragments, Windows-style paths, and
+  // internal whitespace so a host cannot reshape the assembled proxy URL.
+  if (/[@?#\\]/.test(host) || /\s/.test(host)) return null;
   return host;
 }
 
@@ -123,13 +128,25 @@ function parseProxyPayload(raw) {
   return { ok: true, value: { mode, protocol, host, port } };
 }
 
+function bracketProxyHost(host) {
+  if (net.isIPv6(host)) return `[${host}]`;
+  if (host.startsWith("[") && host.endsWith("]")) {
+    const inner = host.slice(1, -1);
+    if (net.isIPv6(inner)) return `[${inner}]`;
+  }
+  // Bare or malformed hosts that merely contain a colon are not IPv6.
+  if (host.includes(":")) return null;
+  return host;
+}
+
 function buildProxyUrl(normalized) {
   if (!normalized || normalized.mode !== "manual") return null;
   const protocol = normalizeProtocol(normalized.protocol);
   const host = normalizeHost(normalized.host);
   const port = normalizePort(normalized.port);
   if (!protocol || !host || port == null) return null;
-  const hostPart = host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
+  const hostPart = bracketProxyHost(host);
+  if (!hostPart) return null;
   return `${protocol}://${hostPart}:${port}`;
 }
 

@@ -4,6 +4,23 @@ const os = require("node:os");
 const path = require("node:path");
 const { normalizeProxyConfig, buildProxyUrl } = require("./proxy-settings");
 
+// scutil --proxy is a sync spawn (2s timeout) that blocks the event loop.
+// resolveEffectiveProxySource runs on GET /proxy-config, and
+// applyUndiciProxyIfNeeded now uses the same probe on the system-mode path.
+// A 30s TTL (including negative / null results) keeps the settings UI and
+// the dispatcher aligned without re-spawning on every request.
+const SYSTEM_PROXY_CACHE_TTL_MS = 30_000;
+
+let systemProxyCache = { filled: false, at: 0, value: null };
+
+function invalidateSystemProxyCache() {
+  systemProxyCache = { filled: false, at: 0, value: null };
+}
+
+function resetSystemProxyCacheForTests() {
+  invalidateSystemProxyCache();
+}
+
 function hasProxyEnv(env = process.env) {
   return Boolean(
     env.HTTPS_PROXY ||
@@ -25,6 +42,34 @@ function parseMacProxyOutput(output) {
   return `http://${values.HTTPSProxy}:${values.HTTPSPort}`;
 }
 
+function probeMacSystemProxyUrl(commandRunner) {
+  const result = commandRunner("scutil", ["--proxy"], {
+    encoding: "utf8",
+    timeout: 2000,
+  });
+  if (result?.error || result?.status !== 0) return null;
+  return parseMacProxyOutput(result.stdout);
+}
+
+function getCachedMacSystemProxyUrl({
+  platform = process.platform,
+  commandRunner = cp.spawnSync,
+} = {}) {
+  if (platform !== "darwin") return null;
+  const now = Date.now();
+  if (systemProxyCache.filled && now - systemProxyCache.at < SYSTEM_PROXY_CACHE_TTL_MS) {
+    return systemProxyCache.value;
+  }
+  const value = probeMacSystemProxyUrl(commandRunner);
+  systemProxyCache = { filled: true, at: now, value };
+  return value;
+}
+
+function isDeclaredManual(raw) {
+  if (raw == null || typeof raw !== "object" || Array.isArray(raw)) return false;
+  return String(raw.mode || "").trim().toLowerCase() === "manual";
+}
+
 function defaultConfigPath() {
   return path.join(os.homedir(), ".tokentracker", "tracker", "config.json");
 }
@@ -39,6 +84,59 @@ function readPersistedProxyConfig({ configPath } = {}) {
   }
 }
 
+function pickProxyUrl(env = process.env) {
+  return (
+    env.HTTPS_PROXY ||
+    env.https_proxy ||
+    env.HTTP_PROXY ||
+    env.http_proxy ||
+    env.ALL_PROXY ||
+    env.all_proxy ||
+    null
+  );
+}
+
+/**
+ * Shared resolution of the currently effective proxy URL.
+ * Used by both applyUndiciProxyIfNeeded (dispatcher) and
+ * resolveEffectiveProxySource (UI label) so the two cannot drift.
+ *
+ * System-mode order: process env (pickProxyUrl) → macOS scutil.
+ */
+function resolveEffectiveProxyUrl({
+  env = process.env,
+  proxyConfig,
+  platform = process.platform,
+  commandRunner = cp.spawnSync,
+} = {}) {
+  const config = normalizeProxyConfig(proxyConfig);
+  if (config.mode === "off") {
+    return { source: "none", proxyUrl: null, config };
+  }
+  // Dirty persisted "manual" normalizes to system; do not pretend a system
+  // proxy is in effect — apply() fail-closes this case separately.
+  if (isDeclaredManual(proxyConfig) && config.mode !== "manual") {
+    return { source: "none", proxyUrl: null, config };
+  }
+  if (config.mode === "manual") {
+    const proxyUrl = buildProxyUrl(config);
+    return { source: proxyUrl ? "manual" : "none", proxyUrl, config };
+  }
+  const envUrl = pickProxyUrl(env);
+  if (envUrl) return { source: "env", proxyUrl: envUrl, config };
+  const systemUrl = getCachedMacSystemProxyUrl({ platform, commandRunner });
+  if (systemUrl) return { source: "system", proxyUrl: systemUrl, config };
+  return { source: "none", proxyUrl: null, config };
+}
+
+/**
+ * Display-only resolution of the currently effective proxy source.
+ * Includes macOS scutil so the settings UI can label "system".
+ */
+function resolveEffectiveProxySource(opts) {
+  return resolveEffectiveProxyUrl(opts);
+}
+
 function resolveSystemProxyEnv({
   env = process.env,
   platform = process.platform,
@@ -49,28 +147,24 @@ function resolveSystemProxyEnv({
   // Manual mode is applied only via applyUndiciProxyIfNeeded's ProxyAgent.
   // Injecting HTTPS_PROXY here would relaunch serve and leak the URL into
   // process.env, so a later switch back to system still picks the old proxy.
-  if (normalized.mode === "off" || normalized.mode === "manual") return null;
-
-  const out = {};
-  if (hasProxyEnv(env)) {
-    out.NODE_USE_ENV_PROXY = env.NODE_USE_ENV_PROXY || "1";
-    return out;
+  // Invalid persisted "manual" still counts as declared-manual so we do not
+  // relaunch into a system-proxy env while apply() is about to fail-closed.
+  if (normalized.mode === "off" || normalized.mode === "manual" || isDeclaredManual(proxyConfig)) {
+    return null;
   }
 
-  if (platform !== "darwin") return null;
-  const result = commandRunner("scutil", ["--proxy"], {
-    encoding: "utf8",
-    timeout: 2000,
-  });
-  if (result?.error || result?.status !== 0) return null;
-  const proxyUrl = parseMacProxyOutput(result.stdout);
-  if (!proxyUrl) return null;
-
-  return {
-    NODE_USE_ENV_PROXY: "1",
-    HTTPS_PROXY: proxyUrl,
-    HTTP_PROXY: proxyUrl,
-  };
+  const resolved = resolveEffectiveProxyUrl({ env, proxyConfig, platform, commandRunner });
+  if (resolved.source === "env") {
+    return { NODE_USE_ENV_PROXY: env.NODE_USE_ENV_PROXY || "1" };
+  }
+  if (resolved.source === "system" && resolved.proxyUrl) {
+    return {
+      NODE_USE_ENV_PROXY: "1",
+      HTTPS_PROXY: resolved.proxyUrl,
+      HTTP_PROXY: resolved.proxyUrl,
+    };
+  }
+  return null;
 }
 
 function shouldRelaunchForProxy(argv, env = process.env) {
@@ -103,18 +197,6 @@ function relaunchWithProxyEnvIfNeeded({
   });
 }
 
-function pickProxyUrl(env = process.env) {
-  return (
-    env.HTTPS_PROXY ||
-    env.https_proxy ||
-    env.HTTP_PROXY ||
-    env.http_proxy ||
-    env.ALL_PROXY ||
-    env.all_proxy ||
-    null
-  );
-}
-
 // Dispatchers created by this module. setGlobalDispatcher only swaps the
 // global symbol and does not recycle the previous agent, so we keep our own
 // handle and close() it after a successful replacement.
@@ -128,6 +210,7 @@ function getLastProxyApplyError() {
 function resetProxyApplyStateForTests() {
   ownedDispatcher = null;
   lastManualApplyError = null;
+  resetSystemProxyCacheForTests();
 }
 
 function closeDispatcherQuietly(dispatcher) {
@@ -192,6 +275,17 @@ function installFailClosedDispatcher(parts, reason) {
   }
 }
 
+/**
+ * Build an undici ProxyAgent for a user-configured proxy URL.
+ *
+ * CodeQL "Outbound network request depends on file data"
+ * (security/code-scanning/227): proxyUrl is the hop the user explicitly
+ * configured in Settings / config.json `proxy` (or HTTPS_PROXY / scutil).
+ * It reaches this function only after parseProxyPayload or
+ * normalizeProxyConfig + buildProxyUrl (manual) or pickProxyUrl /
+ * parseMacProxyOutput (system). This is the intended CONNECT/SOCKS target,
+ * not an unsanitized server-side request URL.
+ */
 function createProxyDispatcher(proxyUrl, { ProxyAgent } = {}) {
   if (!proxyUrl) return null;
   if (typeof ProxyAgent !== "function") return null;
@@ -216,37 +310,16 @@ function loadUndiciParts({ setGlobalDispatcher, ProxyAgent, Agent } = {}) {
   return { setter, ProxyAgent: Proxy, Agent: Direct };
 }
 
-/**
- * Display-only resolution of the currently effective proxy source.
- * Includes macOS scutil so the settings UI can label "system".
- */
-function resolveEffectiveProxySource({
-  env = process.env,
-  proxyConfig,
-  platform = process.platform,
-  commandRunner = cp.spawnSync,
-} = {}) {
-  const config = normalizeProxyConfig(proxyConfig);
-  if (config.mode === "off") {
-    return { source: "none", proxyUrl: null, config };
+function resolveFetchImpl(fetchImpl) {
+  if (typeof fetchImpl === "function") return fetchImpl;
+  try {
+    // eslint-disable-next-line global-require
+    const undiciFetch = require("undici").fetch;
+    if (typeof undiciFetch === "function") return undiciFetch;
+  } catch (_e) {
+    /* fall through to the global */
   }
-  if (config.mode === "manual") {
-    const proxyUrl = buildProxyUrl(config);
-    return { source: proxyUrl ? "manual" : "none", proxyUrl, config };
-  }
-  const envUrl = pickProxyUrl(env);
-  if (envUrl) return { source: "env", proxyUrl: envUrl, config };
-  if (platform === "darwin") {
-    const result = commandRunner("scutil", ["--proxy"], {
-      encoding: "utf8",
-      timeout: 2000,
-    });
-    if (!result?.error && result?.status === 0) {
-      const proxyUrl = parseMacProxyOutput(result.stdout);
-      if (proxyUrl) return { source: "system", proxyUrl, config };
-    }
-  }
-  return { source: "none", proxyUrl: null, config };
+  return fetch;
 }
 
 const PROXY_TEST_TIMEOUT_MS = 5000;
@@ -272,7 +345,9 @@ async function runProxyConnectivityTest({
     if (!dispatcher) {
       return { ok: false, error: "unsupported proxy protocol", latencyMs: latency() };
     }
-    const doFetch = fetchImpl || fetch;
+    // Prefer undici.fetch: global fetch on some Node versions ignores the
+    // `dispatcher` option and would probe via the process-global agent.
+    const doFetch = resolveFetchImpl(fetchImpl);
     const res = await doFetch(targetUrl, {
       method: "GET",
       dispatcher,
@@ -318,8 +393,9 @@ function installDirectAgent(parts) {
 
 function failManual(message, warn, parts) {
   lastManualApplyError = message;
-  installFailClosedDispatcher(parts, message);
+  const installed = installFailClosedDispatcher(parts, message);
   warnManualApplyFailure(message, warn);
+  if (!installed) return { ok: false, error: message, unprotected: true };
   return { ok: false, error: message };
 }
 
@@ -330,10 +406,15 @@ function applyUndiciProxyIfNeeded({
   Agent,
   proxyConfig,
   warn,
+  platform = process.platform,
+  commandRunner = cp.spawnSync,
 } = {}) {
   const normalized = normalizeProxyConfig(proxyConfig);
-  const manual = normalized.mode === "manual";
   const parts = loadUndiciParts({ setGlobalDispatcher, ProxyAgent, Agent });
+
+  if (isDeclaredManual(proxyConfig) && normalized.mode !== "manual") {
+    return failManual(normalized.reason || "invalid manual proxy config", warn, parts);
+  }
 
   if (normalized.mode === "off") {
     if (typeof parts.setter !== "function") return null;
@@ -342,7 +423,14 @@ function applyUndiciProxyIfNeeded({
     return null;
   }
 
-  const proxyUrl = manual ? buildProxyUrl(normalized) : pickProxyUrl(env);
+  const resolved = resolveEffectiveProxyUrl({ env, proxyConfig, platform, commandRunner });
+  const proxyUrl = resolved.proxyUrl;
+  const manual = normalized.mode === "manual";
+
+  if (manual && !proxyUrl) {
+    return failManual("invalid manual proxy config", warn, parts);
+  }
+
   if (!proxyUrl) {
     if (ownedDispatcher) installDirectAgent(parts);
     lastManualApplyError = null;
@@ -389,4 +477,6 @@ module.exports = {
   runProxyConnectivityTest,
   getLastProxyApplyError,
   resetProxyApplyStateForTests,
+  invalidateSystemProxyCache,
+  resetSystemProxyCacheForTests,
 };
