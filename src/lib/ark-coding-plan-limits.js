@@ -273,7 +273,7 @@ async function fetchArkCodingPlanLimits({
   signal,
   globalBinDirs,
 } = {}) {
-  const searchDirs = Array.isArray(globalBinDirs)
+  const searchDirs = () => Array.isArray(globalBinDirs)
     ? globalBinDirs
     : commonGlobalBinDirectories({ home, platform });
 
@@ -290,7 +290,7 @@ async function fetchArkCodingPlanLimits({
     // CLI may keep its config somewhere we don't know about). Only when
     // that also misses do we bail, so machines without the CLI still pay
     // zero spawns per poll.
-    arkcliPath = statBinaryInDirs("arkcli", searchDirs, platform);
+    arkcliPath = statBinaryInDirs("arkcli", searchDirs(), platform);
   }
   if (!arkcliPath) return { configured: false };
 
@@ -361,13 +361,21 @@ async function fetchArkCodingPlanLimits({
     return failWithCache(error?.message || "Ark Coding Plan response could not be parsed.");
   }
   if (!limits) {
-    // The live response is authoritative: there is no subscription right
-    // now. Drop any cache left over from the subscribed era, or a later
-    // transient CLI failure would resurrect the retired plan's numbers
-    // through failWithCache.
-    try {
-      fs.unlinkSync(arkCodingPlanCachePath({ home }));
-    } catch (_error) {}
+    // Only a response that explicitly carries the coding-plan entry with
+    // `subscribed: false` confirms the plan was retired — drop the cache
+    // then, or a later transient CLI failure would resurrect the retired
+    // plan's numbers through failWithCache. A payload with *no*
+    // coding-plan entry at all (`{}`, `{"items":[]}` — not logged in,
+    // backend degraded, product key renamed) is ambiguous and must NOT
+    // destroy the cache: transient signals never drive persistent state.
+    const entry = Array.isArray(body?.items)
+      ? body.items.find((candidate) => candidate?.product === "coding-plan")
+      : null;
+    if (entry && entry.subscribed === false) {
+      try {
+        fs.unlinkSync(arkCodingPlanCachePath({ home }));
+      } catch (_error) {}
+    }
     return { configured: false };
   }
 

@@ -52,9 +52,10 @@ function runCommand(commandRunner, command, args, options = {}) {
     // argument carrying shell metacharacters (e.g. a powershell -Command
     // script with `|`) would be split. Default false keeps direct spawns,
     // which is what every pre-existing usage-limits call site expects.
-    // With shell execution cmd.exe would also split an unquoted command
-    // path that contains spaces, so quote it ourselves.
-    const shellCommand = useShell && /\s/.test(command) && !command.startsWith('"')
+    // Under shell execution quote the command unconditionally: cmd.exe
+    // metacharacters are not limited to whitespace (`C:\Users\a&b\...`
+    // has none yet splits at `&`), and Windows account names allow them.
+    const shellCommand = useShell && !command.startsWith('"')
       ? `"${command}"`
       : command;
     let child;
@@ -203,10 +204,10 @@ async function isBinaryAvailable(binary, { commandRunner, platform, signal } = {
 // directories. Returns [] when the root does not exist.
 function versionedBinDirs(root, inner) {
   try {
-    return fs.readdirSync(root)
-      .filter((entry) => !entry.startsWith("."))
-      .sort((a, b) => b.localeCompare(a, "en", { numeric: true }))
-      .map((version) => path.join(root, version, ...inner));
+    return fs.readdirSync(root, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
+      .sort((a, b) => b.name.localeCompare(a.name, "en", { numeric: true }))
+      .map((entry) => path.join(root, entry.name, ...inner));
   } catch (_error) {
     return [];
   }

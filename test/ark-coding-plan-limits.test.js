@@ -621,12 +621,43 @@ test("fetchArkCodingPlanLimits drops the cache once the plan is unsubscribed", a
   assert.match(hung.error, /ETIMEDOUT/);
 });
 
+test("fetchArkCodingPlanLimits keeps the cache when the payload carries no coding-plan entry", async (t) => {
+  const home = tmpHome(t);
+  const nowMs = Date.now();
+  const cachePath = path.join(home, ".tokentracker", "tracker", "ark-coding-plan-limits-cache.json");
+  writeArkCodingPlanLimitsCache({
+    configured: true,
+    plan_label: "Lite",
+    primary_window: { used_percent: 42, reset_at: new Date(nowMs + 3600_000).toISOString(), unit: "calls" },
+  }, { home, nowMs });
+
+  // `{}`, empty items, or a renamed product key can all be transient states
+  // (not logged in, backend degraded) — none of them is a confirmed
+  // unsubscribe, so none may destroy the disk cache.
+  const ambiguous = [
+    {},
+    { items: [] },
+    { items: [{ product: "some-other-plan", subscribed: true }] },
+  ];
+  for (const body of ambiguous) {
+    const result = await fetchArkCodingPlanLimits({
+      commandRunner: mockRunner({ usageStdout: JSON.stringify(body) }),
+      home,
+      nowMs,
+    });
+    assert.deepEqual(result, { configured: false });
+  }
+  assert.equal(fs.existsSync(cachePath), true, "ambiguous payloads must not destroy the cache");
+});
+
 test("commonGlobalBinDirectories expands nvm and fnm version directories", (t) => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "ark-bin-home-"));
   t.after(() => fs.rmSync(home, { recursive: true, force: true }));
   fs.mkdirSync(path.join(home, ".nvm", "versions", "node", "v22.1.0", "bin"), { recursive: true });
   fs.mkdirSync(path.join(home, ".nvm", "versions", "node", "v18.0.0", "bin"), { recursive: true });
   fs.mkdirSync(path.join(home, ".local", "share", "fnm", "node-versions", "v22.1.0", "installation", "bin"), { recursive: true });
+  // A stray file inside the versions root must not become a bin candidate.
+  fs.writeFileSync(path.join(home, ".nvm", "versions", "node", "release-notes.txt"), "not a version");
 
   const dirs = commonGlobalBinDirectories({ home, platform: "linux" });
   // nvm entries are expanded newest-first so the active Node's global bin
