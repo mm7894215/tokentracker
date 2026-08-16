@@ -5,12 +5,17 @@
 // devices) is hardcoded in several places that MUST agree:
 //   - src/lib/source-metadata.js               (authoritative, used by the CLI)
 //   - scripts/ops/account-usage-grouped-rpc.sql (account view RPC)
-//   - scripts/ops/leaderboard-usage-grouped-rpc.sql (leaderboard RPC)
 //   - dashboard/edge-patches/tokentracker-leaderboard-profile.ts (profile edge)
 //   - dashboard/edge-patches/tokentracker-account-devices.ts (device breakdown edge)
 // A drift (e.g. adding a new account-level source to source-metadata.js but
 // forgetting the SQL) silently re-introduces the cross-device double-count bug
 // that v0.44 fixed. This test fails loudly on any mismatch.
+//
+// NOT covered here: scripts/ops/leaderboard-usage-grouped-rpc.sql (SUPERSEDED
+// rollback reference — do not edit or verify) and the live
+// leaderboard_hourly_dedup_v2 function's account_sources array, which lives
+// only in the deployed database (maintainer-side; a PR adding an account-level
+// source must call it out in its deployment notes).
 
 const fs = require("node:fs");
 const path = require("node:path");
@@ -46,7 +51,7 @@ function extractSqlAccountSources(content) {
     .sort();
 }
 
-test("account-level source list is identical across source-metadata, both RPCs, and the profile edge", () => {
+test("account-level source list is identical across source-metadata, the account RPC, and the profile edge", () => {
   const authoritative = extractJsSet(
     readFile("src/lib/source-metadata.js"),
     "ACCOUNT_LEVEL_SOURCES",
@@ -59,9 +64,6 @@ test("account-level source list is identical across source-metadata, both RPCs, 
   const others = {
     "account-usage-grouped-rpc.sql": extractSqlAccountSources(
       readFile("scripts/ops/account-usage-grouped-rpc.sql"),
-    ),
-    "leaderboard-usage-grouped-rpc.sql": extractSqlAccountSources(
-      readFile("scripts/ops/leaderboard-usage-grouped-rpc.sql"),
     ),
     "tokentracker-leaderboard-profile.ts": extractJsSet(
       readFile("dashboard/edge-patches/tokentracker-leaderboard-profile.ts"),

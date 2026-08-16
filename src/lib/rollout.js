@@ -16395,7 +16395,7 @@ const TRAE_CN_UNKNOWN_MODEL = "trae-cn-unknown";
 
 function normalizeTraeCnState(raw) {
   if (raw === undefined || raw === null) {
-    return { version: TRAE_CN_STATE_VERSION, sessions: {}, updatedAt: null };
+    return { version: TRAE_CN_STATE_VERSION, sessions: {}, prunedBeforeMs: 0, updatedAt: null };
   }
   if (typeof raw !== "object" || Array.isArray(raw)) {
     throw new Error("Trae CN cursor state is malformed.");
@@ -16409,6 +16409,8 @@ function normalizeTraeCnState(raw) {
   return {
     version: TRAE_CN_STATE_VERSION,
     sessions: { ...raw.sessions },
+    prunedBeforeMs:
+      Number.isFinite(raw.prunedBeforeMs) && raw.prunedBeforeMs > 0 ? raw.prunedBeforeMs : 0,
     updatedAt: typeof raw.updatedAt === "string" ? raw.updatedAt : null,
   };
 }
@@ -16523,18 +16525,36 @@ function normalizeTraeCnSession(row) {
     throw new Error("Trae CN session row has an invalid usage_time.");
   }
   const extra = traeCnExtraInfo(row);
+  // Cache fields may be absent for models without a prompt-cache concept
+  // (Doubao / DeepSeek on TRAE CN) — an absent cache field means "no cache
+  // activity", i.e. 0, NOT a malformed row. input/output stay mandatory.
+  //
+  // `input_token` is cache-INCLUSIVE: verifying real rows against TRAE CN's
+  // own credit billing, credits = fresh_input*p + cache_read*(p/4) + output*q
+  // fits every row with zero residual only under this reading (same
+  // convention as Codex / Qoder). Peel the cache subsets off into their own
+  // columns and report only the remainder as ordinary input, otherwise cached
+  // context is double-counted in dashboards and cost calculations. cache_write
+  // was 0 across all observed rows; it is treated as a further subset of the
+  // cache-inclusive input (clamped so the buckets always sum back to it).
+  const cacheRead = traeCnTokenField(row, extra, "cache_read_token");
+  const cacheWrite = traeCnTokenField(row, extra, "cache_write_token");
   const fields = [
     ["input_token", traeCnTokenField(row, extra, "input_token")],
     ["output_token", traeCnTokenField(row, extra, "output_token")],
-    ["cache_read_token", traeCnTokenField(row, extra, "cache_read_token")],
-    ["cache_write_token", traeCnTokenField(row, extra, "cache_write_token")],
+    ["cache_read_token", cacheRead === undefined || cacheRead === null ? 0 : cacheRead],
+    ["cache_write_token", cacheWrite === undefined || cacheWrite === null ? 0 : cacheWrite],
   ];
   for (const [label, value] of fields) {
     if (!Number.isSafeInteger(value) || value < 0) {
       throw new Error(`Trae CN session row has an invalid ${label}.`);
     }
   }
-  const total = fields[0][1] + fields[1][1] + fields[2][1] + fields[3][1];
+  const rawInput = fields[0][1];
+  const outputTokens = fields[1][1];
+  const cachedInput = Math.min(rawInput, fields[2][1]);
+  const cacheCreation = Math.min(rawInput - cachedInput, fields[3][1]);
+  const total = rawInput + outputTokens;
   if (!Number.isSafeInteger(total)) {
     throw new Error("Trae CN session row token totals overflow.");
   }
@@ -16543,10 +16563,10 @@ function normalizeTraeCnSession(row) {
     model,
     bucketStart,
     totals: {
-      input_tokens: fields[0][1],
-      output_tokens: fields[1][1],
-      cached_input_tokens: fields[2][1],
-      cache_creation_input_tokens: fields[3][1],
+      input_tokens: rawInput - cachedInput - cacheCreation,
+      output_tokens: outputTokens,
+      cached_input_tokens: cachedInput,
+      cache_creation_input_tokens: cacheCreation,
       reasoning_output_tokens: 0,
       total_tokens: total,
       billable_total_tokens: total,
@@ -16574,7 +16594,13 @@ function assertTraeCnBucketCovers(bucketTotals, previousTotals) {
   }
 }
 
-async function parseTraeCnApiIncremental({ sessions, cursors, queuePath, onProgress } = {}) {
+async function parseTraeCnApiIncremental({
+  sessions,
+  cursors,
+  queuePath,
+  onProgress,
+  windowStartMs,
+} = {}) {
   if (!Array.isArray(sessions)) {
     throw new Error("Trae CN sessions must be an array.");
   }
@@ -16596,9 +16622,23 @@ async function parseTraeCnApiIncremental({ sessions, cursors, queuePath, onProgr
   }
 
   // Full prevalidation + in-payload dedupe BEFORE any cursor/bucket mutation.
+  // Row-level schema failures are isolated per row: one malformed row (e.g. a
+  // negative or non-integer token count) is skipped and counted instead of
+  // discarding the whole payload — but structural failures (non-array
+  // sessions, unwritable cursors) and conflicting duplicate contributions
+  // still fail closed above/below.
   const bySession = new Map();
+  let skippedRows = 0;
+  let firstSkipReason = "";
   for (const row of sessions) {
-    const normalized = normalizeTraeCnSession(row);
+    let normalized;
+    try {
+      normalized = normalizeTraeCnSession(row);
+    } catch (error) {
+      skippedRows += 1;
+      if (!firstSkipReason) firstSkipReason = error?.message || "unknown";
+      continue;
+    }
     const existing = bySession.get(normalized.sessionId);
     if (existing) {
       const identical =
@@ -16612,6 +16652,13 @@ async function parseTraeCnApiIncremental({ sessions, cursors, queuePath, onProgr
     }
     bySession.set(normalized.sessionId, normalized);
   }
+  if (bySession.size === 0 && skippedRows > 0) {
+    // Every row was malformed: fail closed rather than enqueue an empty,
+    // authoritative-looking snapshot that would read as "no usage".
+    throw new Error(
+      `Trae CN session rows are all malformed (${skippedRows} skipped; first: ${firstSkipReason}).`,
+    );
+  }
 
   const touchedBuckets = new Set();
   const cb = typeof onProgress === "function" ? onProgress : null;
@@ -16624,6 +16671,26 @@ async function parseTraeCnApiIncremental({ sessions, cursors, queuePath, onProgr
   // closed before any reconciliation mutation.
   for (const sessionId of Object.keys(traeCnState.sessions)) {
     validateTraeCnStoredContribution(traeCnState.sessions[sessionId]);
+  }
+
+  // Monotonic prune (same watermark pattern as the kiroCli cap above): the
+  // sync caller fetches a fixed trailing window, so a session whose entire
+  // half-hour bucket sits before windowStartMs can never reappear in a later
+  // payload — its stored contribution is dead reconciliation weight. Prune
+  // only when the window start moved FORWARD past the persisted watermark:
+  // an entry evicted under window W1 and re-fetched under an earlier window
+  // would find previousEntry undefined and count twice. The +30min margin
+  // matches bucketStart's half-hour floor, which can trail the row's
+  // usage_time by up to 30 minutes.
+  if (Number.isFinite(windowStartMs) && windowStartMs > traeCnState.prunedBeforeMs) {
+    const pruneCutoffMs = windowStartMs - 30 * 60 * 1000;
+    for (const sessionId of Object.keys(traeCnState.sessions)) {
+      const bucketMs = Date.parse(traeCnState.sessions[sessionId].bucketStart);
+      if (Number.isFinite(bucketMs) && bucketMs <= pruneCutoffMs) {
+        delete traeCnState.sessions[sessionId];
+      }
+    }
+    traeCnState.prunedBeforeMs = windowStartMs;
   }
 
   // Deterministic: process unique session ids in sorted order.
@@ -16678,7 +16745,7 @@ async function parseTraeCnApiIncremental({ sessions, cursors, queuePath, onProgr
   cursors.hourly = hourlyState;
   cursors.traeCn = traeCnState;
 
-  return { recordsProcessed: total, eventsAggregated, bucketsQueued };
+  return { recordsProcessed: total, eventsAggregated, bucketsQueued, skippedRows };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

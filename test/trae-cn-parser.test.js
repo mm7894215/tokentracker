@@ -116,21 +116,49 @@ test("first insert maps direct and extra_info shapes into canonical buckets", as
       billable: pro.billable_total_tokens,
       conv: pro.conversation_count,
     },
-    { input: 100, cached: 30, cacheCreation: 40, output: 10, reasoning: 0, total: 180, billable: 180, conv: 1 },
+    // input_token is cache-inclusive: fresh = 100-30-40, total = 100+10.
+    { input: 30, cached: 30, cacheCreation: 40, output: 10, reasoning: 0, total: 110, billable: 110, conv: 1 },
   );
 
   assert.equal(lite.hour_start, B2);
-  assert.equal(lite.input_tokens, 5);
+  // Clamped to the cache-inclusive input: cached=min(5,7)=5, creation
+  // gets no room left (min(0,8)=0), fresh=0, total=5+6.
+  assert.equal(lite.input_tokens, 0);
   assert.equal(lite.output_tokens, 6);
-  assert.equal(lite.cached_input_tokens, 7);
-  assert.equal(lite.cache_creation_input_tokens, 8);
-  assert.equal(lite.total_tokens, 26);
+  assert.equal(lite.cached_input_tokens, 5);
+  assert.equal(lite.cache_creation_input_tokens, 0);
+  assert.equal(lite.total_tokens, 11);
 
   assert.equal(cursors.traeCn.version, 1);
   assert.equal(cursors.traeCn.sessions["s-direct"].model, "doubao-pro");
   assert.equal(cursors.traeCn.sessions["s-direct"].bucketStart, B1);
-  assert.equal(cursors.traeCn.sessions["s-direct"].totals.input_tokens, 100);
+  assert.equal(cursors.traeCn.sessions["s-direct"].totals.input_tokens, 30);
   assert.equal(cursors.traeCn.sessions["s-extra"].bucketStart, B2);
+});
+
+test("cache-inclusive input_token is peeled into subset columns (real-data shape)", async (t) => {
+  const { dir, queuePath } = tempQueue();
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const cursors = {};
+  // Shape observed on real GLM rows: every prompt token hit the cache, so
+  // input_token equals cache_read_token exactly (ratio floor 1.0 across 135
+  // real rows). Ordinary input must be 0, not input_token again.
+  const fullHit = sessionRow({ session_id: "full-hit", input_token: 500, output_token: 7, cache_read_token: 500 });
+  // Partial hit: 200 of 500 cached -> fresh 300, total = 500 + 7.
+  const partial = sessionRow({ session_id: "partial", input_token: 500, output_token: 7, cache_read_token: 200 });
+  // No cache activity at all (Doubao/DeepSeek shape): columns stay as-is.
+  const noCache = sessionRow({ session_id: "no-cache", input_token: 500, output_token: 7 });
+
+  await parseTraeCnApiIncremental({ sessions: [fullHit, partial, noCache], cursors, queuePath });
+  assert.equal(cursors.traeCn.sessions["full-hit"].totals.input_tokens, 0);
+  assert.equal(cursors.traeCn.sessions["full-hit"].totals.cached_input_tokens, 500);
+  assert.equal(cursors.traeCn.sessions["full-hit"].totals.total_tokens, 507);
+  assert.equal(cursors.traeCn.sessions["partial"].totals.input_tokens, 300);
+  assert.equal(cursors.traeCn.sessions["partial"].totals.cached_input_tokens, 200);
+  assert.equal(cursors.traeCn.sessions["partial"].totals.total_tokens, 507);
+  assert.equal(cursors.traeCn.sessions["no-cache"].totals.input_tokens, 500);
+  assert.equal(cursors.traeCn.sessions["no-cache"].totals.cached_input_tokens, 0);
+  assert.equal(cursors.traeCn.sessions["no-cache"].totals.total_tokens, 507);
 });
 
 test("identical payload twice appends no queue row and no token growth", async (t) => {
@@ -281,20 +309,45 @@ test("conflicting duplicate ids and malformed rows fail before any mutation", as
   assert.equal(cursors.traeCn, undefined, "no traeCn state assigned");
   assert.equal(fs.existsSync(queuePath), false, "no queue rows written");
 
-  // Malformed rows: missing token field must not be coerced to zero.
+  // Cache fields are optional: models without a prompt-cache concept (Doubao /
+  // DeepSeek on TRAE CN) legitimately omit them — absent means 0, not malformed.
+  // Uses its own queue dir so the no-mutation assertions below stay meaningful.
+  const optionalQueue = tempQueue();
+  const cursorsOptional = {};
   const missing = sessionRow({ session_id: canary });
   delete missing.cache_read_token;
-  await assert.rejects(
-    parseTraeCnApiIncremental({ sessions: [missing], cursors, queuePath }),
-    (error) => {
-      assert.match(error.message, /invalid cache_read_token/);
-      assert.ok(!error.message.includes(canary));
-      return true;
-    },
-  );
+  delete missing.cache_write_token;
+  const optionalResult = await parseTraeCnApiIncremental({
+    sessions: [missing],
+    cursors: cursorsOptional,
+    queuePath: optionalQueue.queuePath,
+  });
+  assert.equal(optionalResult.skippedRows, 0);
+  assert.equal(cursorsOptional.traeCn.sessions[canary].totals.cached_input_tokens, 0);
+  fs.rmSync(optionalQueue.dir, { recursive: true, force: true });
+
+  // A malformed row is isolated: skipped and counted, the rest still imports.
+  const mixedQueue = tempQueue();
+  const cursorsMixed = {};
+  const mixedResult = await parseTraeCnApiIncremental({
+    sessions: [
+      sessionRow({ session_id: canary, cache_read_token: "lots" }),
+      sessionRow({ session_id: "healthy-row" }),
+    ],
+    cursors: cursorsMixed,
+    queuePath: mixedQueue.queuePath,
+  });
+  assert.equal(mixedResult.skippedRows, 1);
+  assert.equal(cursorsMixed.traeCn.sessions[canary], undefined, "bad row never imported");
+  assert.ok(cursorsMixed.traeCn.sessions["healthy-row"], "healthy row imported");
+  fs.rmSync(mixedQueue.dir, { recursive: true, force: true });
+
+  // A payload where EVERY row is malformed fails closed (never an empty,
+  // authoritative-looking snapshot) and the reason stays diagnosable + id-free.
   await assert.rejects(
     parseTraeCnApiIncremental({ sessions: [sessionRow({ session_id: canary, cache_read_token: "lots" })], cursors, queuePath }),
     (error) => {
+      assert.match(error.message, /all malformed/);
       assert.match(error.message, /invalid cache_read_token/);
       assert.ok(!error.message.includes(canary));
       return true;
@@ -304,6 +357,7 @@ test("conflicting duplicate ids and malformed rows fail before any mutation", as
   await assert.rejects(
     parseTraeCnApiIncremental({ sessions: [sessionRow({ session_id: canary, model_name: "bad|model" })], cursors, queuePath }),
     (error) => {
+      assert.match(error.message, /all malformed/);
       assert.match(error.message, /unsupported model name/);
       assert.ok(!error.message.includes(canary));
       return true;
@@ -501,4 +555,45 @@ test("an unrelated malformed stored session fails a new valid payload before mut
   );
   assert.equal(JSON.stringify(cursors), before, "no mutation on malformed stored state");
   assert.equal(fs.existsSync(queuePath), false, "no queue rows written");
+});
+
+test("window prune drops pre-window sessions monotonically and never rewinds", async (t) => {
+  const { dir, queuePath } = tempQueue();
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const cursors = {};
+  await parseTraeCnApiIncremental({
+    sessions: [
+      sessionRow({ session_id: "old-s" }), // bucket B1 = 22:00
+      sessionRow({ session_id: "new-s", usage_time: T2 }), // bucket B2 = 22:30
+    ],
+    cursors,
+    queuePath,
+  });
+  assert.ok(cursors.traeCn.sessions["old-s"]);
+  assert.ok(cursors.traeCn.sessions["new-s"]);
+  assert.equal(cursors.traeCn.prunedBeforeMs, 0, "no prune before a window is supplied");
+
+  // Window starts at 22:33:20 (T1 + 20min): old-s's whole bucket (22:00) is
+  // before it and can never reappear; new-s (22:46:40, bucket 22:30) is in-window.
+  const windowStartMs = (T1 + 20 * 60) * 1000;
+  await parseTraeCnApiIncremental({
+    sessions: [sessionRow({ session_id: "new-s", usage_time: T2, output_token: 20 })],
+    cursors,
+    queuePath,
+    windowStartMs,
+  });
+  assert.equal(cursors.traeCn.sessions["old-s"], undefined, "pre-window entry pruned");
+  assert.ok(cursors.traeCn.sessions["new-s"], "in-window entry kept");
+  assert.equal(cursors.traeCn.prunedBeforeMs, windowStartMs);
+
+  // An earlier window start must not rewind the watermark or re-prune; a
+  // re-reported in-window session still reconciles against its stored entry.
+  await parseTraeCnApiIncremental({
+    sessions: [sessionRow({ session_id: "new-s", usage_time: T2 })],
+    cursors,
+    queuePath,
+    windowStartMs: (T1 + 60) * 1000,
+  });
+  assert.equal(cursors.traeCn.prunedBeforeMs, windowStartMs, "watermark never rewinds");
+  assert.ok(cursors.traeCn.sessions["new-s"]);
 });

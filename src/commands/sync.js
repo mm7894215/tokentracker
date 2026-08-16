@@ -136,6 +136,7 @@ const { purgeProjectUsage } = require("../lib/project-usage-purge");
 const {
   fetchTraeCnUsageWithAuth,
   resolveTraeCnStoragePath,
+  isTraeCnUsageEnabled,
 } = require("../lib/trae-cn-config");
 const {
   isCodexSessionCursorPath,
@@ -1677,56 +1678,70 @@ async function cmdSync(argv, context = {}) {
     }
 
     // ── Trae Work CN (国内版) — account-level usage API ──
-    // Phase C: a simple explicit rolling 30-day window captured once per sync
-    // (no cursor checkpoints / full-history import / adaptive splitting / page
-    // retries / background requests in this phase). Runs only for non-lightweight
-    // syncs where the source is allowed AND the CN storage path resolves — which
-    // excludes both ordinary background and `--auto --background
-    // --all-local-sources`. Fetching goes through the storage-backed Phase A
-    // helper so its single 401/403 reread/retry is used; an empty response is a
-    // successful no-op; each window is bounded to 100 pages/2,000 rows and an
-    // over-capacity window is split into staggered sub-windows (still over
-    // capacity at the finest allowed granularity, or any other fetch/page/
-    // schema/auth failure) skips the parser and leaves prior data untouched
-    // while unrelated providers continue.
+    // A simple explicit rolling 30-day window captured once per sync (no
+    // cursor checkpoints / full-history import / page retries / background
+    // requests). Runs only when the user has opted in via
+    // TOKENTRACKER_TRAE_CN_USAGE=1 (the read transmits the locally stored
+    // sign-in JWT to TRAE's official endpoint, so it is never default-on),
+    // the sync is non-lightweight, the source is allowed, and the CN storage
+    // file exists — which excludes both ordinary background and `--auto
+    // --background --all-local-sources`. Fetching goes through the
+    // storage-backed helper so its single 401/403 reread/retry is used; an
+    // empty response is a successful no-op; each window is bounded to 100
+    // pages/2,000 rows and an over-capacity window is split into staggered
+    // sub-windows (still over capacity at the finest allowed granularity, or
+    // any other fetch/page/schema/auth failure) skips the parser and leaves
+    // prior data untouched while unrelated providers continue.
     let traeCnResult = { recordsProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
-    const traeCnStoragePath = resolveTraeCnStoragePath({ env: process.env, home });
     if (
       !isBackgroundLightweightSync &&
-      sourceAllowed("trae-cn") &&
-      traeCnStoragePath &&
-      fssync.existsSync(traeCnStoragePath)
+      isTraeCnUsageEnabled(process.env) &&
+      sourceAllowed("trae-cn")
     ) {
       const nowMs = Number.isFinite(traeCnNowMs) ? traeCnNowMs : Date.now();
       const fetchImpl = typeof traeCnFetchImpl === "function" ? traeCnFetchImpl : fetch;
       const endTime = Math.floor(nowMs / 1000);
       const startTime = Math.max(1, endTime - 30 * 24 * 60 * 60);
       try {
-        if (progress?.enabled) {
-          progress.start(`Fetching TRAE Work CN usage...`);
-        }
-        const traeCnUsage = await fetchTraeCnUsageWithAuth({
-          start_time: startTime,
-          end_time: endTime,
-          fetchImpl,
-          env: process.env,
-          home,
-        });
-        const traeCnSessions = Array.isArray(traeCnUsage?.sessions) ? traeCnUsage.sessions : [];
-        if (traeCnSessions.length > 0) {
+        // Absent storage means "not signed in" — a silent skip, not an error.
+        const traeCnStoragePath = resolveTraeCnStoragePath({ env: process.env, home });
+        if (traeCnStoragePath && fssync.existsSync(traeCnStoragePath)) {
           if (progress?.enabled) {
-            progress.start(
-              `Parsing TRAE Work CN ${renderBar(0)} 0/${formatNumber(
-                traeCnSessions.length,
-              )} records | buckets 0`,
-            );
+            progress.start(`Fetching TRAE Work CN usage...`);
           }
-          traeCnResult = await parseTraeCnApiIncremental({
-            sessions: traeCnSessions,
-            cursors,
-            queuePath,
-            onProgress: makeProviderProgress("TRAE Work CN"),
+          const traeCnUsage = await fetchTraeCnUsageWithAuth({
+            start_time: startTime,
+            end_time: endTime,
+            fetchImpl,
+            env: process.env,
+            home,
           });
+          const traeCnSessions = Array.isArray(traeCnUsage?.sessions) ? traeCnUsage.sessions : [];
+          if (traeCnSessions.length > 0) {
+            if (progress?.enabled) {
+              progress.start(
+                `Parsing TRAE Work CN ${renderBar(0)} 0/${formatNumber(
+                  traeCnSessions.length,
+                )} records | buckets 0`,
+              );
+            }
+            traeCnResult = await parseTraeCnApiIncremental({
+              sessions: traeCnSessions,
+              cursors,
+              queuePath,
+              onProgress: makeProviderProgress("TRAE Work CN"),
+              windowStartMs: startTime * 1000,
+            });
+            // Row-level isolation means a malformed row is skipped, not fatal;
+            // surface the skip count even on auto runs (warnProviderParseFailure
+            // is silenced there) so it stays diagnosable.
+            const skipped = Number(traeCnResult?.skippedRows) || 0;
+            if (skipped > 0) {
+              process.stderr.write(
+                `TRAE Work CN sync: skipped ${skipped} malformed session row${skipped !== 1 ? "s" : ""}.\n`,
+              );
+            }
+          }
         }
       } catch (err) {
         warnProviderParseFailure("TRAE Work CN", err, opts);

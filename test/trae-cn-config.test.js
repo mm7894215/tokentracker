@@ -524,7 +524,13 @@ test("fetchTraeCnUsage fails closed when maxPages is reached and more is needed"
   const { fetchImpl, requestedPages } = pagedFetch({ rowsPerPage: () => 20 });
   await assert.rejects(
     fetchTraeCnUsage({ jwt: JWT, start_time: START, end_time: END, fetchImpl, delayMs: 0, maxPages: 3 }),
-    /exceeded the maximum page count/,
+    (error) => {
+      assert.match(error.message, /exceeded the maximum page count/);
+      // Same capacity tag as the declared-total path so window splitting
+      // engages even when the API omits total.
+      assert.equal(error.code, "TRAE_CN_USAGE_CAPACITY_EXCEEDED");
+      return true;
+    },
   );
   // Never returns a partial snapshot: all 3 cap pages were fetched, then it
   // throws because page 4 would still be needed.
@@ -675,6 +681,38 @@ test("fetchTraeCnUsageWindowed fails closed at the split-depth ceiling", async (
   // probed: at most 2^9 - 1 first-page requests before failing closed.
   assert.ok(requests.length <= 511, `probe count ${requests.length} exceeds the ceiling`);
   assert.ok(requests.length > 1, "splitting was attempted");
+});
+
+test("fetchTraeCnUsageWindowed splits when cap exhaustion signals capacity without a declared total", async () => {
+  const mid = START + Math.floor((END - START) / 2);
+  const fullPage = Array.from({ length: 20 }, (_, i) => ({ session_id: `row-${i}` }));
+  const { fetchImpl, requests } = windowedFetch((body) => {
+    if (body.start_time === START && body.end_time === END) {
+      // Full pages with total omitted: the ONLY over-capacity signal is
+      // maxPages exhaustion, which must carry the capacity code too.
+      return { user_usage_group_by_sessions: fullPage };
+    }
+    return { user_usage_group_by_sessions: [{ session_id: "ok" }], total: 1 };
+  });
+  const result = await fetchTraeCnUsageWindowed({
+    jwt: JWT,
+    start_time: START,
+    end_time: END,
+    fetchImpl,
+    delayMs: 0,
+    maxPages: 2,
+  });
+  assert.deepEqual(
+    requests.map((b) => [b.start_time, b.end_time]),
+    [
+      [START, END], // page 1
+      [START, END], // page 2 -> cap exhausted, split
+      [START, mid],
+      [mid + 1, END],
+    ],
+  );
+  assert.equal(result.sessions.length, 2);
+  assert.equal(result.total, 2);
 });
 
 test("fetchTraeCnUsageWindowed rethrows non-capacity errors untouched", async () => {

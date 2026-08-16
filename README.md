@@ -6,9 +6,7 @@
 
 ### Track every AI token — then bring your usage to life
 
-An accurate, local-first token usage and cost dashboard for **32 AI coding tools** — plus a desktop pet, **4 native widgets**, and **15 achievement tracks**. No TokenTracker account, no API keys, no setup.
-
-> **TRAE Work CN note:** On macOS, during eligible non-background sync when local TRAE Work CN auth exists, TokenTracker reads usage metadata from the locally signed-in app; no prompts are sent, and its internal API may change.
+An accurate, local-first token usage and cost dashboard for **32 AI coding tools** — plus a desktop pet, **4 native widgets**, and **15 achievement tracks**. No cloud account, no API keys, no setup.
 
 [![npm version](https://img.shields.io/npm/v/tokentracker-cli.svg?color=blue)](https://www.npmjs.com/package/tokentracker-cli)
 [![npm downloads](https://img.shields.io/npm/dm/tokentracker-cli.svg?color=brightgreen)](https://www.npmjs.com/package/tokentracker-cli)
@@ -87,7 +85,7 @@ That's it. First run installs hooks, syncs your data, and opens the dashboard at
 **What you get in 30 seconds:**
 - 📊 A local dashboard at `localhost:7680` with usage trends, model breakdown, cost analysis
 - 🔌 Auto-detected hooks for every supported AI tool you have installed
-- 🏠 Local-first — no TokenTracker account or API keys; optional network requests include the leaderboard and the read-only TRAE Work CN usage request
+- 🏠 100% local — no account, no API keys, no network calls (except optional leaderboard)
 - 🧩 *Optional:* a Skills tab that browses 250+ public skills and syncs them across Claude · Codex · Grok · Antigravity · Gemini · OpenCode · Hermes
 
 > **Want a native desktop app?**
@@ -141,7 +139,7 @@ An Arch `PKGBUILD` for a local pacman install lives in `TokenTrackerLinux/packag
 ## ✨ Features
 
 - 🔌 **32 AI tools out of the box** — Claude Code, Codex CLI, Cursor, Gemini CLI, Antigravity, Kiro, OpenCode, OpenClaw, Every Code, Hermes Agent, GitHub Copilot, Kimi Code, CodeBuddy, WorkBuddy, Grok Build, oh-my-pi, pi, Craft Agents, Reasonix, Kilo CLI, Kilo Code, Roo Code, Zed Agent, Goose, Droid, Mimo Code, ZCode, Qoder, AnythingLLM Desktop, Claude Science, DeepSeek Harness, TRAE Work CN
-- 🏠 **Local-first** — Token data stays on your machine except for the read-only TRAE Work CN usage request. No TokenTracker account, no API keys; the request uses the locally signed-in app session and reads usage metadata only.
+- 🏠 **100% local** — Token data never leaves your machine. No account, no API keys.
 - 🚀 **Zero config** — Hooks auto-install on first run. From zero to dashboard in 30 seconds.
 - 📊 **Beautiful dashboard** — Usage trends, cost breakdowns by model, GitHub-style activity heatmap, project attribution
 - 🖥️ **Native desktop app** — macOS menu bar (+ widgets) and Windows system tray, each with an embedded server and the dashboard in a native webview

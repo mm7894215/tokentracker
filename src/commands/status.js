@@ -87,6 +87,13 @@ const {
   resolveCopilotAppDbPaths,
   probeWslDistros,
 } = require("../lib/rollout");
+const {
+  TRAE_CN_USAGE_ENV,
+  isTraeCnUsageEnabled,
+  resolveTraeCnStoragePath,
+  readTraeCnAuthFromStorage,
+  extractTraeCnToken,
+} = require("../lib/trae-cn-config");
 const wsl = require("../lib/wsl-probe");
 const { getWslMode, isInvalidWslMode, shouldProbeWsl, discoverWslHome } = wsl;
 const { resolveInstallPaths, resolveZcodeNativeDbPath } = require("../lib/install-resolver");
@@ -635,6 +642,27 @@ async function cmdStatus(argv = []) {
     ? readTraeEntitlementFromStorage(traeStoragePath)
     : null;
 
+  // Trae SOLO CN — opt-in usage-API reader. Unlike the passive entitlement
+  // reader above, this source sends the locally stored sign-in JWT to TRAE's
+  // official API, so status surfaces the opt-in flag, the resolved storage
+  // path, and whether the auth blob decrypts — the three inputs a "why is my
+  // TRAE CN data missing" diagnosis needs.
+  const traeCnStoragePath = resolveTraeCnStoragePath({ env: process.env, home });
+  const traeCnInstalled = Boolean(traeCnStoragePath);
+  let traeCnAuthState = "not-signed-in";
+  if (traeCnInstalled) {
+    try {
+      const traeCnAuth = readTraeCnAuthFromStorage({ env: process.env, home, platform: process.platform });
+      if (traeCnAuth) {
+        extractTraeCnToken(traeCnAuth);
+        traeCnAuthState = "readable";
+      }
+    } catch (_error) {
+      traeCnAuthState = "malformed";
+    }
+  }
+  const traeCnUsageOptIn = isTraeCnUsageEnabled(process.env);
+
   // Grok Build (xAI TUI)
   const grokHookState = await probeGrokHookState({ home, trackerDir, env: process.env });
   const grokSessions = grokHookState.hasGrokInstall || grokHookState.sessionsDir
@@ -923,6 +951,14 @@ async function cmdStatus(argv = []) {
               ...(traeEntitlement ? { entitlement: traeEntitlement } : {}),
             }
           : { installed: false },
+        "trae-cn": traeCnInstalled
+          ? {
+              installed: true,
+              detail: traeCnStoragePath,
+              auth: traeCnAuthState,
+              usage_opt_in: traeCnUsageOptIn,
+            }
+          : { installed: false },
         grok_build: grokInstalled
           ? {
               installed: true,
@@ -1091,6 +1127,9 @@ async function cmdStatus(argv = []) {
         : null,
       traeEntitlement
         ? `- Trae SOLO plan: ${formatTraeEntitlementLine(traeEntitlement)}`
+        : null,
+      traeCnInstalled
+        ? `- Trae SOLO CN: usage sync ${traeCnUsageOptIn ? "opted in" : `off (set ${TRAE_CN_USAGE_ENV}=1 to enable)`}, auth ${traeCnAuthState} (${traeCnStoragePath})`
         : null,
       ...(() => {
         if (!hermesInstalled) return [];

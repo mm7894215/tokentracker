@@ -61,6 +61,7 @@ async function withTempTraeEnv(fn) {
     TOKENTRACKER_OPENCLAW_PREV_SESSION_ID: process.env.TOKENTRACKER_OPENCLAW_PREV_SESSION_ID,
     TOKENTRACKER_OPENCLAW_SESSION_KEY: process.env.TOKENTRACKER_OPENCLAW_SESSION_KEY,
     TOKENTRACKER_TRAE_CN_HOME: process.env.TOKENTRACKER_TRAE_CN_HOME,
+    TOKENTRACKER_TRAE_CN_USAGE: process.env.TOKENTRACKER_TRAE_CN_USAGE,
     TOKENTRACKER_WSL_MODE: process.env.TOKENTRACKER_WSL_MODE,
   };
   try {
@@ -73,6 +74,7 @@ async function withTempTraeEnv(fn) {
     process.env.XDG_DATA_HOME = path.join(home, ".local", "share");
     process.env.TOKENTRACKER_OPENCLAW_HOME = path.join(home, ".openclaw");
     process.env.TOKENTRACKER_TRAE_CN_HOME = traeCnHome;
+    process.env.TOKENTRACKER_TRAE_CN_USAGE = "1";
     delete process.env.TOKENTRACKER_REASONIX_HOME;
     delete process.env.REASONIX_STATE_HOME;
     delete process.env.TOKENTRACKER_DEVICE_TOKEN;
@@ -227,6 +229,32 @@ test("background and all-local syncs never call the TRAE CN fetch", async () => 
       readQueueRows(home).some((row) => row.source === "trae-cn"),
       false,
     );
+  });
+});
+
+test("TRAE CN usage read stays off unless TOKENTRACKER_TRAE_CN_USAGE opts in", async () => {
+  await withTempTraeEnv(async ({ home }) => {
+    writeTraeCnStorage(path.join(home, "trae-cn-data"));
+    let fetchCalls = 0;
+    const fetchImpl = async () => {
+      fetchCalls += 1;
+      throw new Error("should not fetch");
+    };
+
+    const savedFlag = process.env.TOKENTRACKER_TRAE_CN_USAGE;
+    delete process.env.TOKENTRACKER_TRAE_CN_USAGE;
+    try {
+      await cmdSync(["--auto", "--source=trae-cn"], {
+        traeCnFetchImpl: fetchImpl,
+        traeCnNowMs: NOW_MS,
+      });
+    } finally {
+      if (savedFlag !== undefined) process.env.TOKENTRACKER_TRAE_CN_USAGE = savedFlag;
+    }
+
+    assert.equal(fetchCalls, 0, "no request without the opt-in flag");
+    assert.equal(readQueueRows(home).some((row) => row.source === "trae-cn"), false);
+    assert.equal(readCursors(home).traeCn, undefined);
   });
 });
 

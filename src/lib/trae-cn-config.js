@@ -21,10 +21,23 @@ const os = require("node:os");
 const path = require("node:path");
 
 const TRAE_CN_HOME_ENV = "TOKENTRACKER_TRAE_CN_HOME";
+// The TRAE CN usage read transmits the locally stored sign-in JWT to TRAE's
+// official endpoint, so it is strictly opt-in: nothing is sent unless the
+// user explicitly sets this flag. Any value other than 1/true keeps it off.
+const TRAE_CN_USAGE_ENV = "TOKENTRACKER_TRAE_CN_USAGE";
+
+function isTraeCnUsageEnabled(env = process.env) {
+  const value = env ? env[TRAE_CN_USAGE_ENV] : undefined;
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  return normalized === "1" || normalized === "true";
+}
 const TRAE_CN_APP_DIR = "TRAE SOLO CN";
 const TRAE_CN_AUTH_KEY = "iCubeAuthInfo://icube.cloudide";
 
 const TRAE_CN_USAGE_URL = "https://api.trae.cn/trae/api/v1/pay/query_user_usage_group_by_session";
+// usage_type [7] mirrors the constant the official TRAE client sends when its
+// usage page queries this endpoint (observed in the client's outbound
+// requests; the enum is undocumented server-side). Other values unverified.
 const TRAE_CN_USAGE_TYPE = [7];
 const TRAE_CN_USAGE_PAGE_SIZE = 20;
 const TRAE_CN_USAGE_MAX_PAGES = 100;
@@ -42,7 +55,11 @@ const TRAE_CN_AES_KEY_LEN = 16;
 const TRAE_CN_IV_LEN = 16;
 
 // JG / KG — the two halves of the hardcoded (obfuscated) password in the TRAE
-// client's byteCrypto.js. Changing these breaks every existing blob.
+// client's byteCrypto.js (XOR the pair to recover the KDF secret). Failure
+// signature when TRAE ships a new key: readTraeCnAuthFromStorage throws
+// "Trae CN auth payload is malformed", sync skips the source, and
+// `tokentracker status` reports auth "malformed" — re-extract the pair
+// from the updated client to restore decryption.
 const TRAE_CN_JG = Buffer.from([
   82, 9, 106, 213, 48, 54, 165, 56, 191, 64, 163, 158, 129, 243, 215, 251, 124, 227, 57, 130,
   155, 47, 255, 135, 52, 142, 67, 68, 196, 222, 233, 203, 84, 123, 148, 50, 166, 194, 35, 61,
@@ -362,12 +379,17 @@ async function fetchTraeCnUsage({
   for (;;) {
     if (pagesFetched >= maxPages) {
       // A further page would be needed but the cap prevents it: fail closed
-      // rather than return a partial snapshot that looks authoritative.
-      throw new Error("Trae CN usage pagination exceeded the maximum page count.");
+      // rather than return a partial snapshot that looks authoritative. Cap
+      // exhaustion is the same over-capacity signal as the declared-total
+      // check below (which the API may omit) — tag it identically so window
+      // splitting engages either way.
+      const error = new Error("Trae CN usage pagination exceeded the maximum page count.");
+      error.code = "TRAE_CN_USAGE_CAPACITY_EXCEEDED";
+      throw error;
     }
     const result = await pageFetcher({ jwt, start_time, end_time, page_num: page, page_size, fetchImpl });
     pagesFetched += 1;
-    total = result.total;
+    total = result.total ?? null;
     if (pagesFetched === 1 && Number.isFinite(total) && total > page_size * maxPages) {
       const error = new Error("Trae CN usage snapshot exceeds the supported capacity.");
       error.code = "TRAE_CN_USAGE_CAPACITY_EXCEEDED";
@@ -454,6 +476,8 @@ async function fetchTraeCnUsageWithAuth({
 
 module.exports = {
   TRAE_CN_HOME_ENV,
+  TRAE_CN_USAGE_ENV,
+  isTraeCnUsageEnabled,
   TRAE_CN_APP_DIR,
   TRAE_CN_AUTH_KEY,
   TRAE_CN_USAGE_URL,

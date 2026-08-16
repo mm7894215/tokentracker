@@ -6,7 +6,7 @@
 
 ### 跨所有 CLI，看清你到底在 AI 上花了多少钱
 
-自动采集 **32 款 AI 编码工具** 的 token 用量，全程本地聚合，用一套漂亮的 Dashboard 看真实成本与趋势。不需要 TokenTracker 账号、不需要 API Key、不需要任何配置 —— 一条命令搞定。
+自动采集 **32 款 AI 编码工具** 的 token 用量，全程本地聚合，用一套漂亮的 Dashboard 看真实成本与趋势。不需要云账号、不需要 API Key、不需要任何配置 —— 一条命令搞定。
 
 [![npm version](https://img.shields.io/npm/v/tokentracker-cli.svg?color=blue)](https://www.npmjs.com/package/tokentracker-cli)
 [![npm downloads](https://img.shields.io/npm/dm/tokentracker-cli.svg?color=brightgreen)](https://www.npmjs.com/package/tokentracker-cli)
@@ -50,7 +50,7 @@ npx tokentracker-cli
 **30 秒能看到什么：**
 - 📊 本地 Dashboard（`localhost:7680`）—— 用量趋势、模型明细、成本分析
 - 🔌 自动识别并挂接你电脑上所有已安装的 AI 工具
-- 🏠 本地优先运行 —— 无需 TokenTracker 账号或 API Key；可选网络请求包括排行榜和 TRAE Work CN 的只读用量请求
+- 🏠 100% 本地运行 —— 无账号、无 API Key、无网络请求（排行榜是可选的）
 - 🧩 *可选：* Skills 面板——浏览 250+ 公开 skill，并在 Claude · Codex · Grok · Antigravity · Gemini · OpenCode · Hermes 之间同步
 
 > **想要原生桌面 App？**
@@ -91,7 +91,7 @@ brew install xiufengsun/tokentracker/tokentracker
 ## ✨ 特性
 
 - 🔌 **开箱即用支持 32 款 AI 工具** —— Claude Code、Codex CLI、Cursor、Gemini CLI、Kiro、OpenCode、OpenClaw、Every Code、Hermes Agent、GitHub Copilot、Kimi Code、CodeBuddy、WorkBuddy、Grok Build、oh-my-pi、pi、Craft Agents、Reasonix、Kilo CLI、Kilo Code、Roo Code、Antigravity、Zed Agent、Goose、Droid、Mimo Code、ZCode、Qoder、AnythingLLM Desktop、Claude Science、DeepSeek Harness、TRAE Work CN
-- 🏠 **本地优先** —— Token 数据留在你的机器上，TRAE Work CN 的只读用量请求除外。无需 TokenTracker 账号或 API Key；该请求使用本地已登录应用的现有会话授权，仅读取用量元数据。
+- 🏠 **100% 本地** —— Token 数据绝不离开你的机器。无账号、无 API Key
 - 🚀 **零配置** —— 首次运行自动安装所有 hook。30 秒从零到 Dashboard
 - 📊 **漂亮的 Dashboard** —— 用量趋势、按模型的成本分解、GitHub 风格活跃度热力图、按项目归因
 - 🖥️ **原生桌面 App** —— macOS 菜单栏（含桌面小组件）与 Windows 系统托盘，各自内嵌服务 + 原生 WebView Dashboard
