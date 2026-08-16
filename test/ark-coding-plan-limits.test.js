@@ -232,21 +232,53 @@ test("fetchArkCodingPlanLimits succeeds with real payloads", async (t) => {
   assert.equal(fs.existsSync(cachePath), true);
 });
 
-test("fetchArkCodingPlanLimits skips every spawn when ~/.arkcli is absent", async (t) => {
+test("fetchArkCodingPlanLimits skips every spawn without install evidence", async (t) => {
   const calls = [];
   const runner = (command, args) => {
     calls.push({ command, args });
     return mockRunner()(command, args);
   };
-  // No ~/.arkcli → arkcli was never installed on this machine; the provider
-  // must bail out before the `which` probe so the 5s poll cadence never pays
-  // a spawn for it.
+  // No config-dir evidence AND no arkcli in any global bin dir → arkcli was
+  // never installed on this machine; the provider must bail out before any
+  // probe so the 5s poll cadence never pays a spawn for it.
   const result = await fetchArkCodingPlanLimits({
     commandRunner: runner,
     home: tmpHome(t, { arkcliDir: false }),
+    globalBinDirs: [],
   });
   assert.deepEqual(result, { configured: false });
   assert.equal(calls.length, 0);
+});
+
+test("fetchArkCodingPlanLimits accepts a global-bin arkcli without config-dir evidence", async (t) => {
+  // arkcli may keep its config outside ~/.arkcli (e.g. ~/.config/arkcli on
+  // Linux): a binary found in a global bin directory still counts as
+  // install evidence, resolved spawn-free.
+  const binDir = fs.mkdtempSync(path.join(os.tmpdir(), "ark-plan-bindir-"));
+  const fakeArkcli = path.join(binDir, "arkcli");
+  fs.writeFileSync(fakeArkcli, "#!/bin/sh\n");
+  t.after(() => fs.rmSync(binDir, { recursive: true, force: true }));
+
+  const calls = [];
+  const runner = (command, args) => {
+    calls.push({ command, args });
+    return mockRunner({
+      which: false,
+      // Tier on the usage payload keeps `plans get` out of this test —
+      // the assertion below expects exactly one spawn.
+      usageStdout: usageJsonFor({ withTier: true }),
+    })(command, args);
+  };
+  const result = await fetchArkCodingPlanLimits({
+    commandRunner: runner,
+    home: tmpHome(t, { arkcliDir: false }),
+    globalBinDirs: [binDir],
+  });
+  assert.equal(result.configured, true);
+  assert.equal(result.plan_label, "Lite");
+  // The stat-resolved absolute path is spawned directly — no `which` spawn
+  // was spent to find it.
+  assert.deepEqual(calls.map(({ command }) => command), [fakeArkcli]);
 });
 
 test("fetchArkCodingPlanLimits reports configured:false when arkcli is missing", async (t) => {
@@ -479,4 +511,56 @@ test("fetchArkCodingPlanLimits refuses a cache from another profile", async (t) 
   const result = await fetchArkCodingPlanLimits({ commandRunner: runner, home, nowMs });
   assert.equal(result.stale, undefined);
   assert.match(result.error, /ETIMEDOUT/);
+});
+
+test("fetchArkCodingPlanLimits opts into shell execution only for arkcli spawns on Windows", async (t) => {
+  const seen = [];
+  const runner = (command, args, options) => {
+    seen.push({ command, args, options });
+    return mockRunner()(command, args);
+  };
+  const result = await fetchArkCodingPlanLimits({
+    commandRunner: runner,
+    home: tmpHome(t),
+    platform: "win32",
+  });
+  assert.equal(result.configured, true);
+
+  // where.exe is a real executable: a direct spawn resolves it fine, and
+  // shell execution would hand its arguments to cmd.exe for re-parsing.
+  const whereCall = seen.find(({ command }) => command === "where");
+  assert.ok(whereCall, "expected a where.exe discovery probe");
+  assert.equal(whereCall.options.useShell, false);
+
+  // npm installs arkcli as a .cmd shim on Windows, which only a shell
+  // spawn can execute. Every argument is a constant, so this is safe.
+  const arkCalls = seen.filter(({ command }) => isArkCommand(command));
+  assert.ok(arkCalls.length > 0);
+  for (const call of arkCalls) {
+    assert.equal(call.options.useShell, true, `expected shell for ${call.args.join(" ")}`);
+  }
+});
+
+test("fetchArkCodingPlanLimits bounds profile show with a short timeout on the cache path", async (t) => {
+  const seen = [];
+  const runner = (command, args, options) => {
+    seen.push({ command, args, options });
+    return mockRunner({ usageStatus: 1 })(command, args);
+  };
+  const result = await fetchArkCodingPlanLimits({
+    commandRunner: runner,
+    home: tmpHome(t),
+    globalBinDirs: [],
+  });
+  // usage plan failed and no cache exists — but the profile guard still ran.
+  assert.equal(result.configured, true);
+  assert.match(result.error, /exited with code 1/);
+
+  const usageCall = seen.find(({ args }) => args[0] === "usage");
+  assert.equal(usageCall.options.timeout, 10_000);
+  // `profile show` runs after `usage plan` already failed; a slow arkcli
+  // here must not starve the disk-cache read waiting behind it.
+  const profileCall = seen.find(({ args }) => args[0] === "profile");
+  assert.ok(profileCall, "expected profile show on the cache-guard path");
+  assert.equal(profileCall.options.timeout, 2_500);
 });

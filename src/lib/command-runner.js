@@ -19,6 +19,7 @@ function runCommand(commandRunner, command, args, options = {}) {
   const merged = {
     encoding: "utf8",
     maxBuffer: 10 * 1024 * 1024,
+    useShell: false,
     ...options,
   };
   if (typeof commandRunner === "function") {
@@ -33,6 +34,7 @@ function runCommand(commandRunner, command, args, options = {}) {
     killProcessGroup = false,
     platform = process.platform,
     signal,
+    useShell = false,
     ...spawnOptions
   } = merged;
   return new Promise((resolve) => {
@@ -44,11 +46,15 @@ function runCommand(commandRunner, command, args, options = {}) {
     }
 
     const useProcessGroup = killProcessGroup && platform !== "win32";
-    // npm installs CLI entrypoints as .cmd shims on Windows. Node's spawn
-    // cannot execute those shims directly, whereas shell execution can.
-    // With shell execution cmd.exe would split an unquoted command path
-    // that contains spaces, so quote it ourselves.
-    const shellCommand = platform === "win32" && /\s/.test(command) && !command.startsWith('"')
+    // `useShell` is opt-in per call site. It exists for npm's Windows .cmd
+    // shims, which Node's spawn cannot execute directly — but shell
+    // execution means cmd.exe re-parses the joined command line, so any
+    // argument carrying shell metacharacters (e.g. a powershell -Command
+    // script with `|`) would be split. Default false keeps direct spawns,
+    // which is what every pre-existing usage-limits call site expects.
+    // With shell execution cmd.exe would also split an unquoted command
+    // path that contains spaces, so quote it ourselves.
+    const shellCommand = useShell && /\s/.test(command) && !command.startsWith('"')
       ? `"${command}"`
       : command;
     let child;
@@ -56,7 +62,7 @@ function runCommand(commandRunner, command, args, options = {}) {
       child = cp.spawn(shellCommand, args, {
         ...spawnOptions,
         detached: useProcessGroup || spawnOptions.detached,
-        shell: platform === "win32",
+        shell: useShell,
         stdio: ["ignore", "pipe", "pipe"],
       });
     } catch (error) {
@@ -204,6 +210,21 @@ function commonGlobalBinDirectories({ home = os.homedir(), platform = process.pl
   ];
 }
 
+// Probe `binary` inside the given directories with statSync — no spawn.
+// Exported so providers can treat a hit as install evidence without
+// paying for a `which` process.
+function statBinaryInDirs(binary, searchDirs, platform = process.platform) {
+  for (const dir of searchDirs) {
+    const candidate = path.join(dir, binary);
+    for (const suffix of platform === "win32" ? ["", ".cmd", ".exe"] : [""]) {
+      try {
+        if (fs.statSync(candidate + suffix).isFile()) return candidate + suffix;
+      } catch (_error) {}
+    }
+  }
+  return null;
+}
+
 /**
  * Resolve a binary to an absolute path: `which`/`where` first, then a
  * spawn-free probe of the common global-install directories above. Returns
@@ -223,15 +244,7 @@ async function resolveBinaryPath(binary, { commandRunner, home, platform = proce
   const searchDirs = Array.isArray(globalBinDirs)
     ? globalBinDirs
     : commonGlobalBinDirectories({ home, platform });
-  for (const dir of searchDirs) {
-    const candidate = path.join(dir, binary);
-    for (const suffix of platform === "win32" ? ["", ".cmd", ".exe"] : [""]) {
-      try {
-        if (fs.statSync(candidate + suffix).isFile()) return candidate + suffix;
-      } catch (_error) {}
-    }
-  }
-  return null;
+  return statBinaryInDirs(binary, searchDirs, platform);
 }
 
 module.exports = {
@@ -239,5 +252,6 @@ module.exports = {
   whichBinary,
   isBinaryAvailable,
   commonGlobalBinDirectories,
+  statBinaryInDirs,
   resolveBinaryPath,
 };

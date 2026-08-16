@@ -21,11 +21,16 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 
-const { runCommand, resolveBinaryPath } = require("./command-runner");
+const { runCommand, resolveBinaryPath, statBinaryInDirs, commonGlobalBinDirectories } = require("./command-runner");
 
 const ARK_LIMITS_CACHE_FILE = "ark-coding-plan-limits-cache.json";
 const ARK_LIMITS_CACHE_UNKNOWN_RESET_TTL_MS = 12 * 60 * 60 * 1000;
 const ARK_USAGE_PLAN_TIMEOUT_MS = 10_000;
+// `profile show` only runs on the cache-guard path, after `usage plan`
+// already failed. It must not push the total past the outer provider
+// timeout (the whole point of the fallback is to still serve the disk
+// cache), so it gets a much shorter leash.
+const ARK_PROFILE_SHOW_TIMEOUT_MS = 2_500;
 const ARK_CLI_STDERR_TRIM = 400;
 
 // arkcli period label -> canonical window slot. `session` is the 5-hour
@@ -211,17 +216,26 @@ function writeArkCodingPlanLimitsCache(limits, { home = os.homedir(), nowMs = Da
 // runCommand / whichBinary / resolveBinaryPath now live in ./command-runner,
 // shared with usage-limits.js (single implementation, no forked copies).
 
-// arkcli keeps its config and credentials under ~/.arkcli. Checking for the
-// directory is a spawn-free way to tell "arkcli has never been installed"
-// apart from "installed but the quota call failed" — machines without the
-// CLI skip the binary probe entirely on every poll, so the 5s refresh
-// cadence never pays a `which` spawn for a provider they cannot use.
-function hasArkCliInstallEvidence({ home = os.homedir() } = {}) {
-  try {
-    return fs.statSync(path.join(home, ".arkcli")).isDirectory();
-  } catch (_error) {
-    return false;
+// arkcli keeps its config and credentials under ~/.arkcli (plus a couple of
+// platform-typical alternates). Checking for these directories is a
+// spawn-free way to tell "arkcli has never been installed" apart from
+// "installed but the quota call failed" — machines without the CLI skip the
+// binary probe entirely on every poll, so the 5s refresh cadence never pays
+// a `which` spawn for a provider they cannot use.
+function hasArkCliInstallEvidence({ home = os.homedir(), platform = process.platform } = {}) {
+  const candidates = [
+    path.join(home, ".arkcli"),
+    path.join(home, ".config", "arkcli"),
+  ];
+  if (platform === "win32") {
+    candidates.push(path.join(home, "AppData", "Roaming", "arkcli"));
   }
+  for (const dir of candidates) {
+    try {
+      if (fs.statSync(dir).isDirectory()) return true;
+    } catch (_error) {}
+  }
+  return false;
 }
 
 function trimStderr(stderr) {
@@ -236,7 +250,8 @@ function trimStderr(stderr) {
  * Fetch Ark Coding Plan quota windows from the local `arkcli` binary.
  *
  * Resolution order:
- *  1. no ~/.arkcli (arkcli never installed on this machine)   -> { configured: false }, zero spawns
+ *  1. no config-dir evidence AND no arkcli in the global bin dirs
+ *                                                             -> { configured: false }, zero spawns
  *  2. arkcli binary not resolvable                            -> { configured: false }
  *  3. `arkcli usage plan` succeeds but no subscription        -> { configured: false }
  *  4. live success                                            -> { configured: true, ...windows }
@@ -255,13 +270,24 @@ async function fetchArkCodingPlanLimits({
   signal,
   globalBinDirs,
 } = {}) {
-  if (!hasArkCliInstallEvidence({ home })) return { configured: false };
+  const searchDirs = Array.isArray(globalBinDirs)
+    ? globalBinDirs
+    : commonGlobalBinDirectories({ home, platform });
 
   let arkcliPath;
-  try {
-    arkcliPath = await resolveBinaryPath("arkcli", { commandRunner, home, platform, signal, globalBinDirs });
-  } catch (_error) {
-    arkcliPath = null;
+  if (hasArkCliInstallEvidence({ home, platform })) {
+    try {
+      arkcliPath = await resolveBinaryPath("arkcli", { commandRunner, home, platform, signal, globalBinDirs });
+    } catch (_error) {
+      arkcliPath = null;
+    }
+  } else {
+    // No config-dir evidence — still resolve spawn-free first: an arkcli
+    // found in a global bin directory counts as install evidence too (the
+    // CLI may keep its config somewhere we don't know about). Only when
+    // that also misses do we bail, so machines without the CLI still pay
+    // zero spawns per poll.
+    arkcliPath = statBinaryInDirs("arkcli", searchDirs, platform);
   }
   if (!arkcliPath) return { configured: false };
 
@@ -270,6 +296,11 @@ async function fetchArkCodingPlanLimits({
     signal,
     killProcessGroup: true,
     platform,
+    // npm installs CLI entrypoints as .cmd shims on Windows, which a direct
+    // spawn cannot execute. Every argument here is a constant with no shell
+    // metacharacters, so shell execution is safe for this call site only —
+    // it must stay opt-in (see command-runner.js).
+    useShell: platform === "win32",
   };
   // Spawn the resolved absolute path, never the bare name: on Windows
   // cmd.exe searches the current directory before PATH, so a bare
@@ -287,7 +318,10 @@ async function fetchArkCodingPlanLimits({
       commandRunner,
       arkcliPath,
       ["profile", "show", "--format", "json"],
-      commandOptions,
+      // Short leash: this runs after `usage plan` already burned most of
+      // the provider budget; a slow/hung arkcli here must not starve the
+      // cache read that the caller is actually waiting for.
+      { ...commandOptions, timeout: ARK_PROFILE_SHOW_TIMEOUT_MS },
     ).then((profileResult) => {
       if (profileResult?.error || profileResult?.status !== 0) return null;
       try {

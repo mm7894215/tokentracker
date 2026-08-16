@@ -3074,8 +3074,8 @@ lang      123 me    23u  IPv4 0x124                0t0  TCP 127.0.0.1:51235 (LIS
 
   it("detects Antigravity from native Windows process enumeration", async () => {
     const calls = [];
-    const commandRunner = (command, args) => {
-      calls.push({ command, args });
+    const commandRunner = (command, args, options) => {
+      calls.push({ command, args, options });
       return {
         stdout: JSON.stringify([
           { ProcessId: 321, CommandLine: "C:\\Program Files\\Windsurf\\language_server_windows_x64.exe --app_data_dir windsurf" },
@@ -3089,6 +3089,10 @@ lang      123 me    23u  IPv4 0x124                0t0  TCP 127.0.0.1:51235 (LIS
 
     assert.equal(calls[0].command, "powershell.exe");
     assert.deepEqual(calls[0].args.slice(0, 3), ["-NoProfile", "-NonInteractive", "-Command"]);
+    // Regression guard: the -Command script contains a literal `|`; with
+    // shell execution cmd.exe would split it there and break the query.
+    // Direct spawn is the contract for every pre-existing call site.
+    assert.equal(calls[0].options.useShell, false);
     assert.equal(result.configured, true);
     assert.equal(result.pid, 654);
     assert.equal(result.csrfToken, "win-token");
