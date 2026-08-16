@@ -467,6 +467,45 @@ internal sealed class DashboardWindow : Window
         // the window's DWM acrylic shows through. Solid cards keep their own bg.
         const string css = """
             ::-webkit-scrollbar{display:none!important}
+            html.native-windows-app .tt-leaderboard-scroll::-webkit-scrollbar{
+              display:block!important;
+              height:15px!important;
+              width:15px!important;
+              background:var(--oai-gray-100)!important;
+            }
+            html.native-windows-app .tt-leaderboard-scroll{
+              scrollbar-color:var(--oai-gray-400) var(--oai-gray-100)!important;
+              scrollbar-width:auto!important;
+            }
+            html.native-windows-app .tt-leaderboard-scroll::-webkit-scrollbar-track{
+              background:var(--oai-gray-100)!important;
+            }
+            html.native-windows-app .tt-leaderboard-scroll::-webkit-scrollbar-thumb{
+              background:var(--oai-gray-400)!important;
+              border:0!important;
+              border-radius:0!important;
+            }
+            html.native-windows-app .tt-leaderboard-scroll::-webkit-scrollbar-thumb:hover{
+              background:var(--oai-gray-500)!important;
+            }
+            html.native-windows-app .tt-leaderboard-scroll::-webkit-scrollbar-button{
+              display:block!important;
+              width:15px!important;
+              height:15px!important;
+              background-color:var(--oai-gray-100)!important;
+            }
+            html.native-windows-app .tt-leaderboard-scroll::-webkit-scrollbar-button:horizontal:decrement{
+              background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M9 4 5 8l4 4' fill='none' stroke='%236f726f' stroke-width='1.5'/%3E%3C/svg%3E")!important;
+              background-position:center!important;
+              background-repeat:no-repeat!important;
+              background-size:12px 12px!important;
+            }
+            html.native-windows-app .tt-leaderboard-scroll::-webkit-scrollbar-button:horizontal:increment{
+              background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M7 4 11 8l-4 4' fill='none' stroke='%236f726f' stroke-width='1.5'/%3E%3C/svg%3E")!important;
+              background-position:center!important;
+              background-repeat:no-repeat!important;
+              background-size:12px 12px!important;
+            }
             *{-webkit-user-select:none;user-select:none}
             input,textarea{-webkit-user-select:text;user-select:text}
 

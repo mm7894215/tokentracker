@@ -797,7 +797,7 @@ export function LeaderboardPage({
         modifiers={[restrictToHorizontalAxis]}
         onDragEnd={handleDragEnd}
       >
-      <div className="hidden w-full overflow-x-auto sm:block">
+      <div className="tt-leaderboard-scroll hidden w-full overflow-x-auto sm:block">
         <table className="min-w-full w-full text-left text-sm sm:min-w-max">
           <thead className="border-b border-oai-gray-200 dark:border-oai-gray-800">
             <tr>

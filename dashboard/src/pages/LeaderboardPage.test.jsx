@@ -144,6 +144,21 @@ describe("LeaderboardPage window-session cache reuse", () => {
     expect(tokenCell.className).not.toContain("dark:group-hover:bg-oai-gray-900/60");
   });
 
+  it("marks the desktop table as the native horizontal-scroll exception", () => {
+    const contextKey = getLeaderboardPreloadContextKey({
+      accessMode: "cloud",
+      baseUrl: "https://edge.example",
+      mockEnabled: false,
+      userId: "user-1",
+    });
+    publishLeaderboardPreloadState(preloadedData, { contextKey });
+    getLeaderboard.mockReturnValue(new Promise(() => {}));
+
+    const { container } = renderLeaderboard();
+
+    expect(container.querySelector(".tt-leaderboard-scroll")).not.toBeNull();
+  });
+
   it("renders snapshot freshness as a readable localized date instead of raw ISO", () => {
     const generatedAt = "2026-07-20T01:20:43.517Z";
     const contextKey = getLeaderboardPreloadContextKey({

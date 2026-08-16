@@ -99,7 +99,7 @@ function MobileSkeletonRow({ index }) {
 export function LeaderboardSkeleton({ rows = 10 }) {
   return (
     <>
-    <div className="hidden w-full overflow-x-auto sm:block">
+    <div className="tt-leaderboard-scroll hidden w-full overflow-x-auto sm:block">
       <table className="min-w-max w-full text-left text-sm">
         <thead className="border-b border-oai-gray-200 dark:border-oai-gray-800">
           <tr>
