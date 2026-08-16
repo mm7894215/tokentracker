@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { isLocalDashboardHost } from "../lib/host-mode";
 
 const PROXY_CONFIG_PATH = "/functions/tokentracker-proxy-config";
 const PROXY_TEST_PATH = "/functions/tokentracker-proxy-test";
@@ -45,9 +46,11 @@ async function authHeaders() {
 /**
  * Probe / read / save / test the CLI-side outbound proxy settings.
  *
- * `available` stays false until GET /functions/tokentracker-proxy-config
- * succeeds. Failures (404 on www.tokentracker.cc, network errors) are
- * silent — they must not print to the console.
+ * Only runs on a local dashboard host (see `isLocalDashboardHost()`) — on a
+ * public deploy (e.g. www.tokentracker.cc) there is no local CLI server to
+ * talk to, so no request is made at all. `available` stays false until GET
+ * /functions/tokentracker-proxy-config succeeds. Failures (network errors,
+ * malformed JSON) are silent — they must not print to the console.
  */
 export function useProxySettings() {
   const [available, setAvailable] = useState(false);
@@ -55,6 +58,11 @@ export function useProxySettings() {
   const [config, setConfig] = useState(DEFAULT_CONFIG);
 
   useEffect(() => {
+    if (!isLocalDashboardHost()) {
+      setAvailable(false);
+      setLoading(false);
+      return;
+    }
     let cancelled = false;
     (async () => {
       try {
@@ -100,6 +108,15 @@ export function useProxySettings() {
     }
     const loaded = normalizeLoaded(data);
     if (loaded) setConfig(loaded);
+    if (data && data.ok === false) {
+      const message =
+        (data && typeof data.applyError === "string" && data.applyError) ||
+        (data && typeof data.error === "string" && data.error) ||
+        `HTTP ${res.status}`;
+      const err = new Error(message);
+      if (data.unprotected === true) err.unprotected = true;
+      throw err;
+    }
     return loaded || data;
   }, []);
 

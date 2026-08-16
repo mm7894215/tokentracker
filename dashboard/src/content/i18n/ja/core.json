@@ -257,6 +257,8 @@
   "settings.network.effective.system": "システムのプロキシを使用しています。",
   "settings.network.effective.none": "現在は直接接続しています。",
   "settings.network.apply_error": "保存したプロキシを適用できませんでした: {{error}}。プロキシは無効で、送信通信は遮断されています。プロキシ設定を確認してください。",
+  "settings.network.save_error": "プロキシ設定を保存できませんでした: {{error}}",
+  "settings.network.save_error_unprotected": "プロキシ設定を保存できませんでした: {{error}}。送信通信は現在保護されておらず、遮断にも失敗しています。",
   "settings.limits.providers": "プロバイダー",
   "settings.appearance.theme.label": "テーマ",
   "settings.appearance.theme.hint": "Token Tracker のダッシュボードでの表示方法を選択します。",

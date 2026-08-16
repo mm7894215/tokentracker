@@ -19,7 +19,7 @@ const hookMock = vi.hoisted(() => ({
 }));
 
 vi.mock("../../lib/copy", () => ({
-  copy: (key) => key,
+  copy: (key, params) => (params ? `${key}:${JSON.stringify(params)}` : key),
 }));
 
 describe("NetworkSection", () => {
@@ -80,5 +80,92 @@ describe("NetworkSection", () => {
     };
     render(<NetworkSection proxySettings={hookMock} />);
     expect(screen.getByRole("alert")).toHaveTextContent("settings.network.apply_error");
+  });
+
+  it("shows saved feedback for system mode (outside the manual-only branch)", async () => {
+    const user = userEvent.setup();
+    hookMock.config = {
+      mode: "system",
+      protocol: "http",
+      host: "",
+      port: "",
+      effective: "system",
+      applyError: null,
+    };
+    hookMock.save.mockResolvedValue({});
+    render(<NetworkSection proxySettings={hookMock} />);
+
+    await act(async () => {
+      await user.click(screen.getByRole("button", { name: "settings.network.save" }));
+    });
+
+    expect(hookMock.save).toHaveBeenCalled();
+    expect(screen.getByText("settings.network.saved")).toBeInTheDocument();
+  });
+
+  it("shows saved feedback for off mode", async () => {
+    const user = userEvent.setup();
+    hookMock.config = {
+      mode: "off",
+      protocol: "http",
+      host: "",
+      port: "",
+      effective: "none",
+      applyError: null,
+    };
+    hookMock.save.mockResolvedValue({});
+    render(<NetworkSection proxySettings={hookMock} />);
+
+    await act(async () => {
+      await user.click(screen.getByRole("button", { name: "settings.network.save" }));
+    });
+
+    expect(screen.getByText("settings.network.saved")).toBeInTheDocument();
+  });
+
+  it("shows an error alert with the backend reason when save() throws", async () => {
+    const user = userEvent.setup();
+    hookMock.config = {
+      mode: "manual",
+      protocol: "http",
+      host: "127.0.0.1",
+      port: "7890",
+      effective: "none",
+      applyError: null,
+    };
+    hookMock.save.mockRejectedValue(new Error("bind failed"));
+    render(<NetworkSection proxySettings={hookMock} />);
+
+    await act(async () => {
+      await user.click(screen.getByRole("button", { name: "settings.network.save" }));
+    });
+
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent("settings.network.save_error");
+    expect(alert).toHaveTextContent("bind failed");
+  });
+
+  it("uses the unprotected copy key when the thrown error is flagged unprotected", async () => {
+    const user = userEvent.setup();
+    hookMock.config = {
+      mode: "manual",
+      protocol: "http",
+      host: "127.0.0.1",
+      port: "7890",
+      effective: "none",
+      applyError: null,
+    };
+    const err = new Error("blocking failed too");
+    err.unprotected = true;
+    hookMock.save.mockRejectedValue(err);
+    render(<NetworkSection proxySettings={hookMock} />);
+
+    await act(async () => {
+      await user.click(screen.getByRole("button", { name: "settings.network.save" }));
+    });
+
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent("settings.network.save_error_unprotected");
+    expect(alert).toHaveTextContent("blocking failed too");
   });
 });

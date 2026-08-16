@@ -489,6 +489,8 @@ settings.network.effective.env,ui,SettingsPage,NetworkSection,effective_env,"Cur
 settings.network.effective.system,ui,SettingsPage,NetworkSection,effective_system,"Currently using the system proxy.",,active
 settings.network.effective.none,ui,SettingsPage,NetworkSection,effective_none,"Currently connecting directly.",,active
 settings.network.apply_error,ui,SettingsPage,NetworkSection,apply_error,"The saved proxy could not be applied: {{error}}. The proxy is not in effect and outbound traffic is blocked. Check your proxy settings.",,active
+settings.network.save_error,ui,SettingsPage,NetworkSection,save_error,"Could not save proxy settings: {{error}}",,active
+settings.network.save_error_unprotected,ui,SettingsPage,NetworkSection,save_error_unprotected,"Could not save proxy settings: {{error}}. Outbound traffic is currently unprotected — even blocking it failed.",,active
 settings.limits.providers,ui,SettingsPage,SettingsPage,limits_providers,"Providers",,active
 settings.labs.island.label,ui,SettingsPage,LabsSection,island_label,"Dynamic Island",,active
 settings.labs.island.hint,ui,SettingsPage,LabsSection,island_hint,"Turn the MacBook notch into a Dynamic Island: today's tokens and spend at a glance, hover for spend and limit details.",,active

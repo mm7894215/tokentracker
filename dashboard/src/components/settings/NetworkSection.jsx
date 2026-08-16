@@ -44,6 +44,7 @@ export function NetworkSection({ proxySettings }) {
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
   const [saveState, setSaveState] = useState("");
+  const [saveError, setSaveError] = useState(null);
   const [testing, setTesting] = useState(false);
   const [testState, setTestState] = useState(null);
 
@@ -67,6 +68,7 @@ export function NetworkSection({ proxySettings }) {
     setDraft((prev) => ({ ...prev, ...patch }));
     setErrors({});
     setSaveState("");
+    setSaveError(null);
     setTestState(null);
   };
 
@@ -80,11 +82,13 @@ export function NetworkSection({ proxySettings }) {
     }
     setSaving(true);
     setSaveState("");
+    setSaveError(null);
     try {
       await save(draft);
       setSaveState("saved");
-    } catch {
+    } catch (error) {
       setSaveState("error");
+      setSaveError(error);
     } finally {
       setSaving(false);
     }
@@ -212,11 +216,6 @@ export function NetworkSection({ proxySettings }) {
                   : copy("settings.network.test.fail", { error: testState.error || "" })}
               </p>
             ) : null}
-            {saveState === "saved" ? (
-              <p className="py-2 text-xs text-oai-gray-500 dark:text-oai-gray-400">
-                {copy("settings.network.saved")}
-              </p>
-            ) : null}
           </motion.div>
         ) : (
           <div key="non-manual-save" className="flex justify-end py-3">
@@ -231,6 +230,22 @@ export function NetworkSection({ proxySettings }) {
           </div>
         )}
       </AnimatePresence>
+      {saveState === "saved" ? (
+        <p className="py-2 text-xs text-oai-gray-500 dark:text-oai-gray-400">
+          {copy("settings.network.saved")}
+        </p>
+      ) : null}
+      {saveState === "error" ? (
+        <p role="alert" className="py-2 text-xs text-red-600 dark:text-red-400">
+          {saveError?.unprotected
+            ? copy("settings.network.save_error_unprotected", {
+                error: saveError?.message || String(saveError || ""),
+              })
+            : copy("settings.network.save_error", {
+                error: saveError?.message || String(saveError || ""),
+              })}
+        </p>
+      ) : null}
     </SectionCard>
   );
 }
