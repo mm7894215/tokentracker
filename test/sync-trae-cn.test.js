@@ -249,7 +249,7 @@ test("an absent TRAE CN storage file does not call the fetch", async () => {
   });
 });
 
-test("over-capacity TRAE CN fetch preserves the prior queue and cursor bytes", async () => {
+test("perpetually over-capacity TRAE CN fetch (split depth exhausted) preserves the prior queue and cursor bytes", async () => {
   await withTempTraeEnv(async ({ home, traeCnHome }) => {
     writeTraeCnStorage(traeCnHome);
     const initialFetch = traeFetchOnce({
@@ -279,10 +279,60 @@ test("over-capacity TRAE CN fetch preserves the prior queue and cursor bytes", a
       traeCnNowMs: NOW_MS,
     });
 
-    assert.equal(overCapacityRequests.length, 1, "capacity failure stops after page one");
+    // Every window (down to the split-depth ceiling) declares 2001 rows, so
+    // the fetch fails closed after probing the bounded split tree.
+    assert.ok(overCapacityRequests.length > 1, "window splitting was attempted");
+    assert.ok(overCapacityRequests.length <= 511, "probe count stays within the depth ceiling");
     assert.equal(fs.readFileSync(queuePath, "utf8"), queueBefore, "prior queue remains byte-identical");
     const traeCursorAfter = JSON.stringify(JSON.parse(fs.readFileSync(cursorsPath, "utf8")).traeCn);
     assert.equal(traeCursorAfter, traeCursorBefore, "prior TRAE cursor remains byte-identical");
+  });
+});
+
+test("over-capacity TRAE CN window is split and the staggered halves import atomically", async () => {
+  await withTempTraeEnv(async ({ home, traeCnHome }) => {
+    writeTraeCnStorage(traeCnHome);
+    const endTime = Math.floor(NOW_MS / 1000);
+    const startTime = Math.max(1, endTime - ROLLING_DAYS);
+    const mid = startTime + Math.floor((endTime - startTime) / 2);
+    const requests = [];
+    const fetchImpl = async (url, options) => {
+      requests.push({ url, options });
+      const body = JSON.parse(options.body);
+      const overCapacity = body.start_time === startTime && body.end_time === endTime;
+      if (overCapacity) {
+        return { status: 200, ok: true, json: async () => ({ user_usage_group_by_sessions: [], total: 2001 }) };
+      }
+      const side = body.start_time === startTime ? "left" : "right";
+      return {
+        status: 200,
+        ok: true,
+        json: async () => ({
+          user_usage_group_by_sessions: [
+            {
+              ...sampleSession(body.end_time),
+              session_id: `split-${side}`,
+            },
+          ],
+          total: 1,
+        }),
+      };
+    };
+
+    await cmdSync(["--auto", "--source=trae-cn"], { traeCnFetchImpl: fetchImpl, traeCnNowMs: NOW_MS });
+
+    // Full window probes once, then the two staggered halves each paginate.
+    assert.deepEqual(
+      requests.map(({ options }) => {
+        const body = JSON.parse(options.body);
+        return [body.start_time, body.end_time];
+      }),
+      [[startTime, endTime], [startTime, mid], [mid + 1, endTime]],
+    );
+    const traeRows = readQueueRows(home).filter((row) => row.source === "trae-cn");
+    assert.equal(traeRows.length, 2, "both halves queue their row");
+    const cursorSessions = readCursors(home).traeCn.sessions;
+    assert.deepEqual(Object.keys(cursorSessions).sort(), ["split-left", "split-right"]);
   });
 });
 

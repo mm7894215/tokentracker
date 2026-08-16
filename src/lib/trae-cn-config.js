@@ -30,6 +30,10 @@ const TRAE_CN_USAGE_PAGE_SIZE = 20;
 const TRAE_CN_USAGE_MAX_PAGES = 100;
 const TRAE_CN_USAGE_DELAY_MS = 300;
 const TRAE_CN_USAGE_TIMEOUT_MS = 30 * 1000;
+// Capacity-adaptive window splitting: 30 days halves at most 8 times
+// (finest sub-window ~2.8h, aggregate ceiling ~512k sessions/30d). A window
+// still over capacity at that depth fails closed — never a partial import.
+const TRAE_CN_USAGE_MAX_SPLIT_DEPTH = 8;
 
 const TRAE_CN_MAGIC = Buffer.from([0x74, 0x63, 0x05, 0x10, 0x00, 0x00]);
 const TRAE_CN_SALT_LEN = 32;
@@ -379,6 +383,38 @@ async function fetchTraeCnUsage({
 }
 
 /**
+ * Capacity-adaptive window fetch. Probing the official API confirmed the
+ * start_time/end_time range is closed on both ends ([a,b] and [b,c] both
+ * return the row at b) and that a row returned by two overlapping windows is
+ * byte-identical (idempotent duplicate, never cumulative). Splitting therefore
+ * staggers adjacent sub-windows by one second ([start,mid] + [mid+1,end]) so
+ * the union equals the full window exactly; any residual duplicate would be
+ * absorbed by the session-level reconciliation. On TRAE_CN_USAGE_CAPACITY_
+ * EXCEEDED the window halves recursively up to maxSplitDepth levels; a window
+ * still over capacity at the finest allowed granularity re-throws so the
+ * caller keeps its fail-closed guarantee.
+ */
+async function fetchTraeCnUsageWindowed(options = {}, depth = 0) {
+  const { start_time, end_time } = options;
+  try {
+    return await fetchTraeCnUsage(options);
+  } catch (error) {
+    if (error?.code !== "TRAE_CN_USAGE_CAPACITY_EXCEEDED") throw error;
+    if (end_time - start_time < 1 || depth >= TRAE_CN_USAGE_MAX_SPLIT_DEPTH) throw error;
+    const mid = start_time + Math.floor((end_time - start_time) / 2);
+    const left = await fetchTraeCnUsageWindowed({ ...options, end_time: mid }, depth + 1);
+    const right = await fetchTraeCnUsageWindowed({ ...options, start_time: mid + 1 }, depth + 1);
+    const total =
+      Number.isFinite(left.total) && Number.isFinite(right.total) ? left.total + right.total : null;
+    return {
+      sessions: [...left.sessions, ...right.sessions],
+      total,
+      pages_fetched: left.pages_fetched + right.pages_fetched,
+    };
+  }
+}
+
+/**
  * High-level storage-backed fetch: read the JWT from storage.json, fetch
  * usage, and on a 401/403 re-read + re-decrypt storage.json and retry exactly
  * once. Never persists or logs the JWT / refresh token; no refreshToken flow.
@@ -392,7 +428,7 @@ async function fetchTraeCnUsageWithAuth({
   delayMs = TRAE_CN_USAGE_DELAY_MS,
   maxPages = TRAE_CN_USAGE_MAX_PAGES,
   readAuth = readTraeCnAuthFromStorage,
-  usageFetcher = fetchTraeCnUsage,
+  usageFetcher = fetchTraeCnUsageWindowed,
   ...storageOptions
 } = {}) {
   let auth = readAuth(storageOptions);
@@ -437,5 +473,6 @@ module.exports = {
   extractTraeCnToken,
   fetchTraeCnUsagePage,
   fetchTraeCnUsage,
+  fetchTraeCnUsageWindowed,
   fetchTraeCnUsageWithAuth,
 };

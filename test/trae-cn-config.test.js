@@ -29,6 +29,7 @@ const {
   extractTraeCnToken,
   fetchTraeCnUsagePage,
   fetchTraeCnUsage,
+  fetchTraeCnUsageWindowed,
   fetchTraeCnUsageWithAuth,
 } = require("../src/lib/trae-cn-config");
 
@@ -552,6 +553,153 @@ test("fetchTraeCnUsage rejects a declared snapshot over capacity before page two
   assert.deepEqual(requestedPages, [1], "declared over-capacity total makes one request");
 });
 
+// ---------------------------------------------------------------------------
+// Capacity-adaptive window splitting
+// ---------------------------------------------------------------------------
+
+function windowedFetch(handler, requests = []) {
+  const fetchImpl = async (_url, options) => {
+    const body = JSON.parse(options.body);
+    requests.push(body);
+    return jsonResponse(200, handler(body));
+  };
+  return { fetchImpl, requests };
+}
+
+test("fetchTraeCnUsageWindowed returns a within-capacity window without splitting", async () => {
+  const { fetchImpl, requests } = windowedFetch(() => ({
+    user_usage_group_by_sessions: [{ session_id: "only" }],
+    total: 1,
+  }));
+  const result = await fetchTraeCnUsageWindowed({
+    jwt: JWT,
+    start_time: START,
+    end_time: END,
+    fetchImpl,
+    delayMs: 0,
+  });
+  assert.equal(requests.length, 1, "no probe beyond the single window");
+  assert.equal(requests[0].start_time, START);
+  assert.equal(requests[0].end_time, END);
+  assert.equal(result.sessions.length, 1);
+  assert.equal(result.total, 1);
+});
+
+test("fetchTraeCnUsageWindowed splits an over-capacity window into staggered halves", async () => {
+  const mid = START + Math.floor((END - START) / 2);
+  const leftRow = { session_id: "left" };
+  const rightRow = { session_id: "right" };
+  const { fetchImpl, requests } = windowedFetch((body) => {
+    if (body.start_time === START && body.end_time === END) {
+      return { user_usage_group_by_sessions: [leftRow], total: 2001 };
+    }
+    if (body.start_time === START && body.end_time === mid) {
+      return { user_usage_group_by_sessions: [leftRow], total: 1 };
+    }
+    if (body.start_time === mid + 1 && body.end_time === END) {
+      return { user_usage_group_by_sessions: [rightRow], total: 1 };
+    }
+    throw new Error(`unexpected window ${body.start_time}-${body.end_time}`);
+  });
+  const result = await fetchTraeCnUsageWindowed({
+    jwt: JWT,
+    start_time: START,
+    end_time: END,
+    fetchImpl,
+    delayMs: 0,
+  });
+  // Full window fails on page one; the halves are staggered by one second so
+  // their union equals the full window without overlap.
+  assert.deepEqual(
+    requests.map((b) => [b.start_time, b.end_time]),
+    [[START, END], [START, mid], [mid + 1, END]],
+  );
+  assert.deepEqual(result.sessions, [leftRow, rightRow]);
+  assert.equal(result.total, 2);
+  assert.equal(result.pages_fetched, 2);
+});
+
+test("fetchTraeCnUsageWindowed splits recursively until a sub-window fits", async () => {
+  const mid = START + Math.floor((END - START) / 2);
+  const quarter = START + Math.floor((mid - START) / 2);
+  const { fetchImpl, requests } = windowedFetch((body) => {
+    if (body.start_time === START && (body.end_time === END || body.end_time === mid)) {
+      return { user_usage_group_by_sessions: [], total: 2001 };
+    }
+    if (body.start_time === START && body.end_time === quarter) {
+      return { user_usage_group_by_sessions: [{ session_id: "q1" }], total: 1 };
+    }
+    if (body.start_time === quarter + 1 && body.end_time === mid) {
+      return { user_usage_group_by_sessions: [{ session_id: "q2" }], total: 1 };
+    }
+    if (body.start_time === mid + 1 && body.end_time === END) {
+      return { user_usage_group_by_sessions: [{ session_id: "q3" }], total: 1 };
+    }
+    throw new Error(`unexpected window ${body.start_time}-${body.end_time}`);
+  });
+  const result = await fetchTraeCnUsageWindowed({
+    jwt: JWT,
+    start_time: START,
+    end_time: END,
+    fetchImpl,
+    delayMs: 0,
+  });
+  assert.deepEqual(
+    requests.map((b) => [b.start_time, b.end_time]),
+    [[START, END], [START, mid], [START, quarter], [quarter + 1, mid], [mid + 1, END]],
+  );
+  assert.equal(result.sessions.length, 3);
+  assert.equal(result.total, 3);
+});
+
+test("fetchTraeCnUsageWindowed fails closed at the split-depth ceiling", async () => {
+  const { fetchImpl, requests } = windowedFetch(() => ({
+    user_usage_group_by_sessions: [],
+    total: 2001,
+  }));
+  await assert.rejects(
+    fetchTraeCnUsageWindowed({
+      jwt: JWT,
+      start_time: START,
+      end_time: END,
+      fetchImpl,
+      delayMs: 0,
+    }),
+    (error) => {
+      assert.equal(error.code, "TRAE_CN_USAGE_CAPACITY_EXCEEDED");
+      assert.match(error.message, /supported capacity/);
+      return true;
+    },
+  );
+  // Every sub-window stays over capacity, so the full depth-8 binary tree is
+  // probed: at most 2^9 - 1 first-page requests before failing closed.
+  assert.ok(requests.length <= 511, `probe count ${requests.length} exceeds the ceiling`);
+  assert.ok(requests.length > 1, "splitting was attempted");
+});
+
+test("fetchTraeCnUsageWindowed rethrows non-capacity errors untouched", async () => {
+  const requests = [];
+  const fetchImpl = async (_url, options) => {
+    requests.push(JSON.parse(options.body));
+    return jsonResponse(500, {});
+  };
+  await assert.rejects(
+    fetchTraeCnUsageWindowed({
+      jwt: JWT,
+      start_time: START,
+      end_time: END,
+      fetchImpl,
+      delayMs: 0,
+    }),
+    /HTTP 500/,
+  );
+  assert.deepEqual(
+    requests.map((b) => [b.start_time, b.end_time]),
+    [[START, END]],
+    "no split attempt on a non-capacity failure",
+  );
+});
+
 test("production inter-page delay constant is 300ms (tests inject delayMs: 0)", () => {
   assert.equal(TRAE_CN_USAGE_DELAY_MS, 300);
 });
@@ -614,6 +762,33 @@ test("fetchTraeCnUsageWithAuth never retries more than once", async () => {
     /HTTP 403/,
   );
   assert.equal(usageCalls.length, 2, "exactly two attempts");
+});
+
+test("fetchTraeCnUsageWithAuth splits over-capacity windows by default", async () => {
+  const home = makeTraeCnHome();
+  writeStorage(home, { token: "split.jwt.1", refreshToken: "r1" });
+  const mid = START + Math.floor((END - START) / 2);
+  const requests = [];
+  const fetchImpl = async (_url, options) => {
+    const body = JSON.parse(options.body);
+    requests.push([body.start_time, body.end_time]);
+    if (body.start_time === START && body.end_time === END) {
+      return jsonResponse(200, { user_usage_group_by_sessions: [], total: 2001 });
+    }
+    const row = { session_id: `s-${body.start_time}`, model_name: "doubao-pro", usage_time: body.end_time, input_token: 1, output_token: 1, cache_read_token: 0, cache_write_token: 0 };
+    return jsonResponse(200, { user_usage_group_by_sessions: [row], total: 1 });
+  };
+  const result = await fetchTraeCnUsageWithAuth({
+    start_time: START,
+    end_time: END,
+    fetchImpl,
+    delayMs: 0,
+    env: { [TRAE_CN_HOME_ENV]: home },
+    platform: "darwin",
+  });
+  assert.deepEqual(requests, [[START, END], [START, mid], [mid + 1, END]]);
+  assert.equal(result.sessions.length, 2);
+  assert.equal(result.total, 2);
 });
 
 test("fetchTraeCnUsageWithAuth does not retry on non-auth errors", async () => {

@@ -1684,9 +1684,11 @@ async function cmdSync(argv, context = {}) {
     // excludes both ordinary background and `--auto --background
     // --all-local-sources`. Fetching goes through the storage-backed Phase A
     // helper so its single 401/403 reread/retry is used; an empty response is a
-    // successful no-op; complete snapshots are bounded to 100 pages/2,000 rows;
-    // over-capacity or other fetch/page/schema/auth failures skip the parser and
-    // leave prior data untouched while unrelated providers continue.
+    // successful no-op; each window is bounded to 100 pages/2,000 rows and an
+    // over-capacity window is split into staggered sub-windows (still over
+    // capacity at the finest allowed granularity, or any other fetch/page/
+    // schema/auth failure) skips the parser and leaves prior data untouched
+    // while unrelated providers continue.
     let traeCnResult = { recordsProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
     const traeCnStoragePath = resolveTraeCnStoragePath({ env: process.env, home });
     if (
