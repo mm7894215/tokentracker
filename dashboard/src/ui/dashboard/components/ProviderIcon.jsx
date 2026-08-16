@@ -117,11 +117,22 @@ function CodeBuddyIcon({ size = 16, className = "" }) {
   );
 }
 
-// TRAE Work CN — official app-icon mark (black mask with two diamond eyes
-// and the notched lower-left corner on a white rounded square), traced from
-// the TRAE SOLO CN desktop app icon. Like the Craft mark, the fixed
-// white/black palette reads on both light and dark themes and therefore does
-// not adapt to currentColor.
+// TRAE Work CN — official app-logo mark reverse-engineered from
+// https://work.trae.cn/ favicon (48×48) and PWA manifest icon-512.png
+// (pixel-accurate geometry, 512×512 canvas).
+//
+// Structure (confirmed against 512px source RGBA raster):
+//   • White rounded square (#FFFFFF, corners transparent so the circular
+//     alpha mask reads correctly on any browser tab chrome).
+//   • Pure black (#000000) bracket-frame glyph over it:
+//       – a full-width top crossbar,
+//       – two 36px-thick vertical arms (left arm floats; right arm anchors
+//         the bottom crossbar which therefore sits 36px inset on the left),
+//       – two spindle accents midway inside the arms (rhombic ellipses,
+//         rx≈24 ry≈22).
+//
+// The white plate + solid black ink matches the favicon pixel-for-pixel and
+// therefore stays consistent with the brand assets served from work.trae.cn.
 function TraeCnIcon({ size = 16, className = "" }) {
   return (
     <svg
@@ -132,17 +143,32 @@ function TraeCnIcon({ size = 16, className = "" }) {
       data-brand="trae-cn"
       aria-hidden="true"
     >
-      <defs>
-        <linearGradient id="traeCnBg" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#FFFFFF" />
-          <stop offset="100%" stopColor="#EFEFEF" />
-        </linearGradient>
-      </defs>
-      <rect x="48" y="48" width="416" height="416" rx="90" fill="url(#traeCnBg)" />
+      {/* White rounded square plate — corners inherit transparent background */}
+      <rect x="48" y="48" width="416" height="416" rx="76" fill="#FFFFFF" />
+
+      {/* Top crossbar + right arm + bottom crossbar (one contiguous polygon) */}
       <path
         fill="#000000"
-        fillRule="evenodd"
-        d="M130 166 H381 V345 H166 V310 H130 Z M230 231 L254 255 L230 279 L206 255 Z M302 231 L326 255 L302 279 L278 255 Z"
+        d="M130 168 H381 V344 H166 V312 H346 V204 H130 Z"
+      />
+
+      {/* Free-standing left arm (stops 36px above the bottom crossbar, which
+          leaves the characteristic step-clear on the lower-left) */}
+      <path
+        fill="#000000"
+        d="M130 204 H165 V308 H130 Z"
+      />
+
+      {/* Left spindle accent (rhombic ellipse, rx≈24 ry≈22) */}
+      <path
+        fill="#000000"
+        d="M231 234 C244 234 254 244 254 256 C254 268 244 278 231 278 C218 278 207 268 207 256 C207 244 218 234 231 234 Z"
+      />
+
+      {/* Right spindle accent (rhombic ellipse, rx=24 ry=22) */}
+      <path
+        fill="#000000"
+        d="M302 234 C315 234 326 244 326 256 C326 268 315 278 302 278 C289 278 278 268 278 256 C278 244 289 234 302 234 Z"
       />
     </svg>
   );
