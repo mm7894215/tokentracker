@@ -51,13 +51,34 @@ const README_EXPECTATIONS = [
   ["README.de.md", /32 KI-Coding-Tools/, /\|\s+\*\*Unterstützte KI-Tools\*\*\s+\|\s+\*\*32\*\*/, /Rate-Limit-Tracking.*✅ 13 Provider/],
 ];
 
+function hasLiteralProviderCatalogEntry(source, provider) {
+  const catalogLines = source.split("\n").filter((line) => {
+    const trimmed = line.trimStart();
+    return trimmed.startsWith("|") || trimmed.startsWith("- 🔌") || trimmed.startsWith("> - **") || trimmed.startsWith('A["');
+  });
+
+  return catalogLines.some((line) => {
+    let offset = 0;
+    while (offset < line.length) {
+      const index = line.indexOf(provider, offset);
+      if (index === -1) return false;
+      const before = line[index - 1] || "";
+      const after = line[index + provider.length] || "";
+      const isWord = (value) => /[A-Za-z0-9_-]/.test(value);
+      if (!isWord(before) && !isWord(after)) return true;
+      offset = index + provider.length;
+    }
+    return false;
+  });
+}
+
 test("public discovery surfaces describe all 32 supported tools", () => {
   for (const [file, countPattern, comparisonPattern, limitCountPattern] of README_EXPECTATIONS) {
     const source = read(file);
     assert.match(source, countPattern, `${file} has the current provider count`);
     assert.match(source, comparisonPattern, `${file} comparison table has the current provider count`);
     for (const provider of CANONICAL_PROVIDERS) {
-      assert.match(source, new RegExp(provider), `${file} lists ${provider}`);
+      assert.ok(hasLiteralProviderCatalogEntry(source, provider), `${file} lists ${provider}`);
     }
     assert.match(source, limitCountPattern, `${file} rate-limit row carries the current usage-limits provider count`);
   }

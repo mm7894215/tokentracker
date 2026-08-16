@@ -278,11 +278,11 @@ async function fetchTraeCnUsagePage({
   try {
     let response;
     try {
+      // codeql[js/file-data-to-network]: locally stored TRAE JWT is sent only to the fixed official HTTPS endpoint; never logged or persisted.
       response = await fetchImpl(TRAE_CN_USAGE_URL, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          // codeql[js/file-data-to-network]: locally stored TRAE JWT is sent only to the fixed official HTTPS endpoint; never logged or persisted.
           Authorization: `Cloud-IDE-JWT ${jwt.trim()}`,
         },
         body: JSON.stringify({
