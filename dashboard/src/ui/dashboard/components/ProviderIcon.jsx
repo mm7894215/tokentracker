@@ -117,22 +117,33 @@ function CodeBuddyIcon({ size = 16, className = "" }) {
   );
 }
 
-// Compact local monogram for TRAE Work CN. It is deliberately not a claimed
-// official asset: the single-color mark stays legible in the existing 16–20px
-// slots and inherits currentColor in both themes.
+// TRAE Work CN — official app-icon mark (black mask with two diamond eyes
+// and the notched lower-left corner on a white rounded square), traced from
+// the TRAE SOLO CN desktop app icon. Like the Craft mark, the fixed
+// white/black palette reads on both light and dark themes and therefore does
+// not adapt to currentColor.
 function TraeCnIcon({ size = 16, className = "" }) {
   return (
     <svg
       width={size}
       height={size}
-      viewBox="0 0 24 24"
-      fill="currentColor"
+      viewBox="0 0 512 512"
       className={className}
       data-brand="trae-cn"
       aria-hidden="true"
     >
-      <path d="M3 4h18v3h-7.5v13h-3V7H3V4z" />
-      <path d="M20.5 12.5h-3a3.5 3.5 0 1 0 0 7h3" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" />
+      <defs>
+        <linearGradient id="traeCnBg" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#FFFFFF" />
+          <stop offset="100%" stopColor="#EFEFEF" />
+        </linearGradient>
+      </defs>
+      <rect x="48" y="48" width="416" height="416" rx="90" fill="url(#traeCnBg)" />
+      <path
+        fill="#000000"
+        fillRule="evenodd"
+        d="M130 166 H381 V345 H166 V310 H130 Z M230 231 L254 255 L230 279 L206 255 Z M302 231 L326 255 L302 279 L278 255 Z"
+      />
     </svg>
   );
 }

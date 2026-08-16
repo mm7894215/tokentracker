@@ -86,7 +86,9 @@ describe("ProviderIcon", () => {
     expect(icon).toHaveAttribute("width", "20");
     expect(icon).toHaveAttribute("height", "20");
     expect(icon).toHaveAttribute("aria-hidden", "true");
-    expect(icon).toHaveAttribute("fill", "currentColor");
+    // Official app-icon palette: white rounded square + black mask, fixed
+    // colors instead of currentColor (same policy as the Craft mark).
+    expect(icon?.querySelector("rect")).not.toBeNull();
     expect(icon?.querySelector("path")).not.toBeNull();
     expect(icon?.querySelector("circle")).toBeNull();
     expect(container.querySelector(".text-oai-gray-400")).toBeNull();
