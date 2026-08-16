@@ -662,6 +662,49 @@ describe("fetchCursorUsageCsv — injectable fetch", () => {
     }
   });
 
+  it("resolves a relative Location against the CSV URL", async () => {
+    const calls = [];
+    const csv = await fetchCursorUsageCsv({
+      cookie: CURSOR_CSV_COOKIE,
+      fetchImpl: async (url) => {
+        calls.push(String(url));
+        if (calls.length === 1) {
+          return jsonLikeResponse({ status: 308, headers: { Location: "/api/moved-csv" } });
+        }
+        return jsonLikeResponse({ status: 200, body: CURSOR_CSV_BODY });
+      },
+    });
+    assert.equal(csv, CURSOR_CSV_BODY);
+    assert.equal(calls[1], "https://cursor.com/api/moved-csv");
+  });
+
+  it("refuses to forward the session cookie to an off-origin redirect", async () => {
+    for (const location of [
+      "https://evil.example.com/steal",
+      "https://cursor.com.evil.example.com/steal",
+      "http://cursor.com/downgraded",
+      "//evil.example.com/protocol-relative",
+    ]) {
+      const calls = [];
+      await assert.rejects(
+        () =>
+          fetchCursorUsageCsv({
+            cookie: CURSOR_CSV_COOKIE,
+            fetchImpl: async (url) => {
+              calls.push(String(url));
+              if (calls.length === 1) {
+                return jsonLikeResponse({ status: 308, headers: { Location: location } });
+              }
+              return jsonLikeResponse({ status: 200, body: CURSOR_CSV_BODY });
+            },
+          }),
+        { message: "Cursor API redirect to an untrusted origin" },
+        `expected ${location} to be rejected`,
+      );
+      assert.equal(calls.length, 1, `${location} must not trigger a second request`);
+    }
+  });
+
   it("throws when a 308 has no Location header", async () => {
     await assert.rejects(
       () =>

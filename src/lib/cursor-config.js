@@ -149,6 +149,29 @@ function remapCursorFetchTimeout(err) {
   throw err;
 }
 
+const CURSOR_REDIRECT_HOSTS = new Set(["cursor.com", "www.cursor.com"]);
+
+/**
+ * Resolve a redirect `Location` before the session cookie is forwarded to it.
+ *
+ * The header is attacker-influenced in principle, and the next hop carries the
+ * Cursor session cookie, so an off-origin redirect would disclose it. Resolving
+ * against the request URL also handles a relative Location, which bare
+ * `fetch(location)` would reject.
+ */
+function resolveCursorRedirect(location, baseUrl) {
+  let url;
+  try {
+    url = new URL(location, baseUrl);
+  } catch {
+    throw new Error("Cursor API redirect to an untrusted origin");
+  }
+  if (url.protocol !== "https:" || !CURSOR_REDIRECT_HOSTS.has(url.hostname)) {
+    throw new Error("Cursor API redirect to an untrusted origin");
+  }
+  return url.toString();
+}
+
 /**
  * Fetch full usage CSV from Cursor API.
  * Returns raw CSV string or throws on error.
@@ -174,7 +197,8 @@ function fetchCursorUsageCsv({ cookie, timeoutMs = 30000, fetchImpl = fetch }) {
       // Location + Cookie are forwarded explicitly (cursor.com → www.cursor.com).
       const location = res.headers.get("location");
       if (!location) throw new Error("Cursor API redirect without Location header");
-      return fetchUrlRaw({ urlStr: location, cookie, timeoutMs, fetchImpl });
+      const target = resolveCursorRedirect(location, CURSOR_CSV_URL);
+      return fetchUrlRaw({ urlStr: target, cookie, timeoutMs, fetchImpl });
     }
     if (res.status !== 200) {
       throw new Error(`Cursor API returned ${res.status}`);
