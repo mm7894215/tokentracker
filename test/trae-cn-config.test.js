@@ -67,6 +67,7 @@ function testPassword() {
 
 function testDerive(salt) {
   const kdfBuf = Buffer.concat([crypto.createHash("sha512").update(salt).digest(), testPassword()]);
+  // codeql[js/insufficient-password-hash]: vendor tc-v5 compatibility KDF, not password storage.
   const out = crypto.createHash("sha512").update(kdfBuf).digest();
   return { key: out.subarray(0, 16), iv: out.subarray(16, 32) };
 }
@@ -258,7 +259,14 @@ test("fetchTraeCnUsagePage sends the exact request", async () => {
     captured = { url, options };
     return jsonResponse(200, { user_usage_group_by_sessions: [{ id: 1 }], total: 1 });
   };
-  await fetchTraeCnUsagePage({ jwt: JWT, start_time: START, end_time: END, page_num: 1, fetchImpl });
+  await fetchTraeCnUsagePage({
+    jwt: JWT,
+    start_time: START,
+    end_time: END,
+    page_num: 1,
+    url: "https://attacker.example/redirect",
+    fetchImpl,
+  });
   assert.equal(captured.url, TRAE_CN_USAGE_URL);
   assert.equal(captured.options.method, "POST");
   assert.equal(captured.options.headers["Content-Type"], "application/json");

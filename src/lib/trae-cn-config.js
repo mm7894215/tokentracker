@@ -91,6 +91,7 @@ function deriveTraeCnKeyIv(salt) {
     crypto.createHash("sha512").update(salt).digest(),
     traeCnHardcodedPassword(),
   ]);
+  // codeql[js/insufficient-password-hash]: vendor tc-v5 compatibility KDF, not password storage.
   const kdfOut = crypto.createHash("sha512").update(kdfBuf).digest();
   return {
     key: kdfOut.subarray(0, TRAE_CN_AES_KEY_LEN),
@@ -262,7 +263,6 @@ async function fetchTraeCnUsagePage({
   end_time,
   page_num,
   page_size = TRAE_CN_USAGE_PAGE_SIZE,
-  url = TRAE_CN_USAGE_URL,
   fetchImpl = fetch,
   timeoutMs = TRAE_CN_USAGE_TIMEOUT_MS,
 } = {}) {
@@ -277,10 +277,11 @@ async function fetchTraeCnUsagePage({
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   let response;
   try {
-    response = await fetchImpl(url, {
+    response = await fetchImpl(TRAE_CN_USAGE_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        // codeql[js/file-access-to-http]: locally stored TRAE JWT is sent only to the fixed official HTTPS endpoint; never logged or persisted.
         Authorization: `Cloud-IDE-JWT ${jwt.trim()}`,
       },
       body: JSON.stringify({
