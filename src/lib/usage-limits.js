@@ -3130,6 +3130,7 @@ async function fetchUsageLimitsUncached({
         nowMs,
         platform,
         signal,
+        providerTimeoutMs,
       }),
       "Ark Coding Plan",
       providerTimeoutMs,

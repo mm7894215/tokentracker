@@ -82,3 +82,31 @@ test("runCommand leaves the command untouched without useShell", async () => {
     restore();
   }
 });
+
+test("Windows .cmd path with cmd metacharacters survives both spawn modes", async () => {
+  // A realistic npm-global install under a Windows account whose name
+  // contains `&`: no whitespace, but cmd.exe would split the line at the
+  // `&` when the path is handed to a shell unquoted.
+  const command = "C:\\Users\\a&b\\AppData\\Roaming\\npm\\arkcli.cmd";
+  const args = ["usage", "plan", "--format", "json"];
+
+  const { calls, restore } = stubSpawn();
+  try {
+    // Shell mode: the whole path must be wrapped in quotes so the joined
+    // command line keeps `&` inside a single token.
+    await runCommand(undefined, command, args, { platform: "win32", useShell: true, timeout: 1000 });
+    assert.equal(calls[0].options.shell, true);
+    assert.equal(calls[0].command, `"${command}"`);
+    const joinedShell = [calls[0].command, ...calls[0].args].join(" ");
+    assert.ok(/^"[^"]*&[^"]*"/.test(joinedShell), "metacharacter must stay inside quotes");
+
+    // Default mode: direct spawn — args array passed through verbatim,
+    // no shell to re-parse the line, nothing quoted or split.
+    await runCommand(undefined, command, args, { platform: "win32", timeout: 1000 });
+    assert.equal(calls[1].options.shell, false);
+    assert.equal(calls[1].command, command);
+    assert.deepEqual(calls[1].args, args);
+  } finally {
+    restore();
+  }
+});

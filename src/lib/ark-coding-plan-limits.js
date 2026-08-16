@@ -32,6 +32,16 @@ const ARK_USAGE_PLAN_TIMEOUT_MS = 10_000;
 // cache), so it gets a much shorter leash.
 const ARK_PROFILE_SHOW_TIMEOUT_MS = 2_500;
 const ARK_CLI_STDERR_TRIM = 400;
+// Mirrors usage-limits.js DEFAULT_PROVIDER_TIMEOUT_MS, which is what the
+// production caller passes in; kept local to avoid a circular require.
+const ARK_PROVIDER_TIMEOUT_MS = 15_000;
+// A runCommand whose timeout fires still takes up to ~1s to hard-kill
+// (SIGTERM -> SIGKILL escalation). Reserve that plus slack so the serial
+// chain (discovery -> usage plan -> plans get / profile show -> cache
+// read) always settles inside the provider budget and the disk-cache
+// fallback actually gets served instead of losing the outer race.
+// Same shape as codexResetCreditListTimeoutMs's guard in usage-limits.js.
+const ARK_PROVIDER_BUDGET_GUARD_MS = 1_500;
 
 // arkcli period label -> canonical window slot. `session` is the 5-hour
 // rolling window; `weekly` and `monthly` refresh on calendar boundaries.
@@ -264,6 +274,11 @@ function trimStderr(stderr) {
  * Only `usage plan` runs on the happy path. `plans get` (tier label) runs
  * only when the usage response carries no tier, and `profile show` (the
  * cross-account cache guard) only when the disk cache is consulted.
+ *
+ * `providerTimeoutMs` bounds the whole serial chain (mirrors the codex
+ * remaining-budget pattern): each CLI call's timeout is clamped to what
+ * is left of the budget, and calls whose share has run out are skipped
+ * so the disk-cache fallback still resolves inside the outer race.
  */
 async function fetchArkCodingPlanLimits({
   commandRunner,
@@ -272,7 +287,22 @@ async function fetchArkCodingPlanLimits({
   platform = process.platform,
   signal,
   globalBinDirs,
+  providerTimeoutMs = ARK_PROVIDER_TIMEOUT_MS,
 } = {}) {
+  // Mirror of codexResetCreditListTimeoutMs: every CLI call in the serial
+  // chain gets a timeout clamped to what is left of the provider budget,
+  // so the chain can never outrun the outer provider race and starve the
+  // disk-cache fallback.
+  const startedAtMs = performance.now();
+  const budgetedTimeoutMs = (fullTimeoutMs) => {
+    if (!Number.isFinite(providerTimeoutMs) || providerTimeoutMs <= 0) return fullTimeoutMs;
+    const remainingMs = providerTimeoutMs - (performance.now() - startedAtMs);
+    if (remainingMs <= 0) return 0;
+    const guardedMs = Math.floor(remainingMs - ARK_PROVIDER_BUDGET_GUARD_MS);
+    if (guardedMs <= 0) return 0;
+    return Math.min(fullTimeoutMs, guardedMs);
+  };
+
   const searchDirs = () => Array.isArray(globalBinDirs)
     ? globalBinDirs
     : commonGlobalBinDirectories({ home, platform });
@@ -295,7 +325,6 @@ async function fetchArkCodingPlanLimits({
   if (!arkcliPath) return { configured: false };
 
   const commandOptions = {
-    timeout: ARK_USAGE_PLAN_TIMEOUT_MS,
     signal,
     killProcessGroup: true,
     platform,
@@ -305,6 +334,17 @@ async function fetchArkCodingPlanLimits({
     // it must stay opt-in (see command-runner.js).
     useShell: platform === "win32",
   };
+
+  // Budget already drained before the primary call could run: report the
+  // timeout without touching the cache — an unverified cache (profile
+  // identity unknown) must not be served on this path, mirroring the
+  // outer provider race's behavior. The verified-cache fallback below is
+  // what keeps hung-CLI polls serving last-known data.
+  const usageTimeoutMs = budgetedTimeoutMs(ARK_USAGE_PLAN_TIMEOUT_MS);
+  if (usageTimeoutMs <= 0) {
+    return { configured: true, error: "Ark Coding Plan provider timed out before arkcli could run." };
+  }
+
   // Spawn the resolved absolute path, never the bare name: on Windows
   // cmd.exe searches the current directory before PATH, so a bare
   // `arkcli` would let an `arkcli.bat` dropped in the server cwd hijack
@@ -313,26 +353,31 @@ async function fetchArkCodingPlanLimits({
     commandRunner,
     arkcliPath,
     ["usage", "plan", "--format", "json"],
-    commandOptions,
+    { ...commandOptions, timeout: usageTimeoutMs },
   );
 
   const failWithCache = async (message) => {
-    const profileIdentity = await runCommand(
-      commandRunner,
-      arkcliPath,
-      ["profile", "show", "--format", "json"],
-      // Short leash: this runs after `usage plan` already burned most of
-      // the provider budget; a slow/hung arkcli here must not starve the
-      // cache read that the caller is actually waiting for.
-      { ...commandOptions, timeout: ARK_PROFILE_SHOW_TIMEOUT_MS },
-    ).then((profileResult) => {
-      if (profileResult?.error || profileResult?.status !== 0) return null;
-      try {
-        return arkProfileIdentity(JSON.parse(String(profileResult.stdout || "")));
-      } catch (_error) {
-        return null;
-      }
-    }).catch(() => null);
+    // Short leash, further clamped to the remaining provider budget: this
+    // runs after `usage plan` already burned most of the budget; a slow or
+    // hung arkcli here must not starve the cache read that the caller is
+    // actually waiting for. When no budget is left the spawn is skipped
+    // entirely and the cache is read fail-open (identity unknown).
+    const profileTimeoutMs = budgetedTimeoutMs(ARK_PROFILE_SHOW_TIMEOUT_MS);
+    const profileIdentity = profileTimeoutMs > 0
+      ? await runCommand(
+        commandRunner,
+        arkcliPath,
+        ["profile", "show", "--format", "json"],
+        { ...commandOptions, timeout: profileTimeoutMs },
+      ).then((profileResult) => {
+        if (profileResult?.error || profileResult?.status !== 0) return null;
+        try {
+          return arkProfileIdentity(JSON.parse(String(profileResult.stdout || "")));
+        } catch (_error) {
+          return null;
+        }
+      }).catch(() => null)
+      : null;
     const cached = readArkCodingPlanLimitsCache({ home, nowMs, profileIdentity });
     if (cached) return cached;
     return { configured: true, error: message };
@@ -381,18 +426,23 @@ async function fetchArkCodingPlanLimits({
 
   if (!limits.plan_label) {
     // The tier ("lite" / "pro") lives on the `plans get` payload; fetch it
-    // only when the usage response did not carry one.
-    const plansResult = await runCommand(
-      commandRunner,
-      arkcliPath,
-      ["plans", "get", "--format", "json"],
-      commandOptions,
-    );
-    if (!plansResult?.error && plansResult?.status === 0) {
-      try {
-        const tier = normalizeArkPlansResponse(JSON.parse(String(plansResult.stdout || "")));
-        if (tier) limits.plan_label = planLabelForTier(tier);
-      } catch (_error) {}
+    // only when the usage response did not carry one, and only while the
+    // provider budget still has room for the spawn. A skipped fetch just
+    // leaves the label null — never worth losing the live data over.
+    const plansTimeoutMs = budgetedTimeoutMs(ARK_USAGE_PLAN_TIMEOUT_MS);
+    if (plansTimeoutMs > 0) {
+      const plansResult = await runCommand(
+        commandRunner,
+        arkcliPath,
+        ["plans", "get", "--format", "json"],
+        { ...commandOptions, timeout: plansTimeoutMs },
+      );
+      if (!plansResult?.error && plansResult?.status === 0) {
+        try {
+          const tier = normalizeArkPlansResponse(JSON.parse(String(plansResult.stdout || "")));
+          if (tier) limits.plan_label = planLabelForTier(tier);
+        } catch (_error) {}
+      }
     }
   }
 

@@ -567,6 +567,83 @@ test("fetchArkCodingPlanLimits bounds profile show with a short timeout on the c
   assert.equal(profileCall.options.timeout, 2_500);
 });
 
+test("fetchArkCodingPlanLimits shrinks later CLI timeouts as the provider budget drains", async (t) => {
+  const seen = [];
+  const runner = async (command, args, options) => {
+    seen.push({ command, args, options });
+    // Binary discovery burns real wall-clock budget, as it would against
+    // a PATH full of slow directories.
+    if (command === "which") {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      return { status: 0, stdout: "/usr/local/bin/arkcli\n", stderr: "" };
+    }
+    // usage plan fails so the cache-guard path (profile show) runs too.
+    return mockRunner({ usageStatus: 1 })(command, args);
+  };
+  const result = await fetchArkCodingPlanLimits({
+    commandRunner: runner,
+    home: tmpHome(t),
+    providerTimeoutMs: 4_000,
+  });
+  assert.equal(result.configured, true);
+
+  const usageCall = seen.find(({ args }) => args[0] === "usage");
+  assert.ok(usageCall, "expected usage plan to still run");
+  // ~300ms spent on discovery leaves ~3.7s; minus the 1.5s kill guard the
+  // usage timeout must clamp well below its full 10s.
+  assert.ok(usageCall.options.timeout > 0 && usageCall.options.timeout <= 2_600,
+    `usage timeout should be clamped to the remaining budget, got ${usageCall.options.timeout}`);
+
+  const profileCall = seen.find(({ args }) => args[0] === "profile");
+  assert.ok(profileCall, "expected profile show on the cache-guard path");
+  assert.ok(profileCall.options.timeout > 0 && profileCall.options.timeout < 2_500,
+    `profile timeout should shrink below its full 2.5s, got ${profileCall.options.timeout}`);
+});
+
+test("fetchArkCodingPlanLimits still serves the disk cache after a hung usage plan drains the budget", async (t) => {
+  const home = tmpHome(t);
+  const nowMs = Date.now();
+  writeArkCodingPlanLimitsCache({
+    configured: true,
+    plan_label: "Lite",
+    primary_window: { used_percent: 42, reset_at: new Date(nowMs + 3600_000).toISOString(), unit: "calls" },
+  }, { home, nowMs });
+
+  const seen = [];
+  const result = await fetchArkCodingPlanLimits({
+    commandRunner: async (command, args, options) => {
+      seen.push({ command, args, options });
+      if (command === "which") {
+        return { status: 0, stdout: "/usr/local/bin/arkcli\n", stderr: "" };
+      }
+      if (args[0] === "usage") {
+        // Simulate `usage plan` running until its budgeted timeout kills
+        // it: real elapsed time, then a timeout-shaped failure.
+        await new Promise((resolve) => setTimeout(resolve, 1_200));
+        return { status: null, stdout: "", stderr: "", error: new Error("spawn arkcli ETIMEDOUT") };
+      }
+      return mockRunner()(command, args, options);
+    },
+    home,
+    nowMs,
+    providerTimeoutMs: 2_600,
+  });
+
+  // Last-known data instead of an error — clamping the serial chain to
+  // the provider budget is what lets the cache fallback resolve inside
+  // the outer race.
+  assert.equal(result.cached, true);
+  assert.equal(result.stale, true);
+  assert.equal(result.source, "disk-cache");
+  assert.equal(result.plan_label, "Lite");
+
+  // `usage plan` ran to its (shrunk) timeout; `profile show` no longer
+  // fits in the remaining budget, so it is skipped and the cache is read
+  // fail-open — exactly the hung-CLI scenario the guard exists for.
+  const arkCommands = seen.filter(({ command }) => isArkCommand(command)).map(({ args }) => args[0]);
+  assert.deepEqual(arkCommands, ["usage"], "profile show must be skipped once the budget is drained");
+});
+
 test("whichBinary strips CRLF when where lists multiple matches", async () => {
   // Windows `where` emits CRLF and one line per PATH hit. The first line
   // must come back without its `\r`, or the polluted path fails at spawn.
