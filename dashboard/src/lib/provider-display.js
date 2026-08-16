@@ -6,6 +6,7 @@ const SPECIAL_PROVIDER_NAMES = {
   pianthropic: "Pi · Anthropic",
   pigithubcopilot: "Pi · GitHub Copilot",
   picopilot: "Pi · Copilot",
+  traecn: "TRAE Work CN",
 };
 
 const SPECIAL_PROVIDER_COPY_KEYS = {

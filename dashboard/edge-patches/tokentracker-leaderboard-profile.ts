@@ -418,7 +418,7 @@ function canonicalSource(s: string) {
 // RPC, and tokentracker-leaderboard-refresh.ts
 // (parity: test/account-source-parity.test.js).
 // deno-lint-ignore no-unused-vars
-const ACCOUNT_LEVEL_SOURCES = new Set<string>(["cursor"]);
+const ACCOUNT_LEVEL_SOURCES = new Set<string>(["cursor", "trae-cn"]);
 
 // ─────────────────────────── Window bounds ──────────────────────────
 function normalizeTimeZone(value: string | null): string | null {

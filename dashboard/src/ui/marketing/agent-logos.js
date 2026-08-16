@@ -33,4 +33,5 @@ export const AGENT_LOGOS = [
   { id: 29, name: "AnythingLLM", provider: "anythingllm" },
   { id: 30, name: "Claude Science", provider: "claude-science" },
   { id: 31, name: "DeepSeek Harness", provider: "dsh" },
+  { id: 32, name: "TRAE Work CN", provider: "trae-cn" },
 ];

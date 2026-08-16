@@ -110,6 +110,7 @@ const {
   resolveDroidModel,
   resolveDshSessionFiles,
   parseDshIncremental,
+  parseTraeCnApiIncremental,
   bucketKey,
   toUtcHalfHourStart,
   totalsKey,
@@ -132,6 +133,10 @@ const {
   parseCursorCsv,
 } = require("../lib/cursor-config");
 const { purgeProjectUsage } = require("../lib/project-usage-purge");
+const {
+  fetchTraeCnUsageWithAuth,
+  resolveTraeCnStoragePath,
+} = require("../lib/trae-cn-config");
 const {
   isCodexSessionCursorPath,
   isCursorStoreRetry,
@@ -289,6 +294,7 @@ const AUTO_SYNC_SOURCES = new Set([
   "qoder-cn",
   "reasonix",
   "roocode",
+  "trae-cn",
   "workbuddy",
   "zcode",
   "zed",
@@ -449,6 +455,15 @@ async function cmdSync(argv, context = {}) {
     : null;
   const lockWaitOptions = context && typeof context === "object"
     ? context.lockWaitOptions
+    : undefined;
+  // Narrow test-only seam for TRAE Work CN: deterministic injected fetch + a
+  // fixed "now" for the rolling range. Production keeps the global fetch and
+  // current time; no public CLI flag/config is introduced.
+  const traeCnFetchImpl = context && typeof context === "object"
+    ? context.traeCnFetchImpl
+    : undefined;
+  const traeCnNowMs = context && typeof context === "object"
+    ? context.traeCnNowMs
     : undefined;
   const syncDiagnostics = diagnostics && typeof diagnostics === "object" ? diagnostics : null;
   const home = os.homedir();
@@ -1661,6 +1676,58 @@ async function cmdSync(argv, context = {}) {
       }
     }
 
+    // ── Trae Work CN (国内版) — account-level usage API ──
+    // Phase C: a simple explicit rolling 30-day window captured once per sync
+    // (no cursor checkpoints / full-history import / adaptive splitting / page
+    // retries / background requests in this phase). Runs only for non-lightweight
+    // syncs where the source is allowed AND the CN storage path resolves — which
+    // excludes both ordinary background and `--auto --background
+    // --all-local-sources`. Fetching goes through the storage-backed Phase A
+    // helper so its single 401/403 reread/retry is used; an empty response is a
+    // successful no-op; any fetch/page/schema/auth failure skips the parser and
+    // leaves prior data untouched while unrelated providers continue.
+    let traeCnResult = { recordsProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
+    if (
+      !isBackgroundLightweightSync &&
+      sourceAllowed("trae-cn") &&
+      resolveTraeCnStoragePath({ env: process.env, home })
+    ) {
+      const nowMs = Number.isFinite(traeCnNowMs) ? traeCnNowMs : Date.now();
+      const fetchImpl = typeof traeCnFetchImpl === "function" ? traeCnFetchImpl : fetch;
+      const endTime = Math.floor(nowMs / 1000);
+      const startTime = Math.max(1, endTime - 30 * 24 * 60 * 60);
+      try {
+        if (progress?.enabled) {
+          progress.start(`Fetching TRAE Work CN usage...`);
+        }
+        const traeCnUsage = await fetchTraeCnUsageWithAuth({
+          start_time: startTime,
+          end_time: endTime,
+          fetchImpl,
+          env: process.env,
+          home,
+        });
+        const traeCnSessions = Array.isArray(traeCnUsage?.sessions) ? traeCnUsage.sessions : [];
+        if (traeCnSessions.length > 0) {
+          if (progress?.enabled) {
+            progress.start(
+              `Parsing TRAE Work CN ${renderBar(0)} 0/${formatNumber(
+                traeCnSessions.length,
+              )} records | buckets 0`,
+            );
+          }
+          traeCnResult = await parseTraeCnApiIncremental({
+            sessions: traeCnSessions,
+            cursors,
+            queuePath,
+            onProgress: makeProviderProgress("TRAE Work CN"),
+          });
+        }
+      } catch (err) {
+        warnProviderParseFailure("TRAE Work CN", err, opts);
+      }
+    }
+
     // ── Kiro (SQLite-based, with JSONL fallback; dual-install aware) ──
     let kiroResult = { recordsProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
     if (sourceAllowed("kiro")) {
@@ -2554,6 +2621,7 @@ async function cmdSync(argv, context = {}) {
       qoderCnResult.recordsProcessed +
       claudeScienceResult.recordsProcessed +
       cursorResult.recordsProcessed +
+      traeCnResult.recordsProcessed +
       kiroResult.recordsProcessed +
       kiroCliResult.recordsProcessed +
       hermesResult.recordsProcessed +
@@ -2588,6 +2656,7 @@ async function cmdSync(argv, context = {}) {
       qoderCnResult.bucketsQueued +
       claudeScienceResult.bucketsQueued +
       cursorResult.bucketsQueued +
+      traeCnResult.bucketsQueued +
       kiroResult.bucketsQueued +
       kiroCliResult.bucketsQueued +
       hermesResult.bucketsQueued +

@@ -16379,6 +16379,309 @@ function readTraeEntitlementFromStorage(storagePath) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Trae Work CN (国内版) — usage API incremental parser.
+//
+// TRAE Work CN's usage API reports per-session rows that are NOT append-only:
+// a session can be re-reported with corrected token totals, a different model,
+// or a shifted time bucket. This parser keeps the last normalized contribution
+// per session_id under `cursors.traeCn` and reconciles by subtracting the
+// previous contribution from its old bucket before adding the new one, so
+// corrections retract the stale tuple instead of stacking. Only the normalized
+// contribution is persisted — no raw API rows, cost/credits, auth, refresh
+// tokens, or prompt previews. Source is always `trae-cn`.
+const TRAE_CN_SOURCE = "trae-cn";
+const TRAE_CN_STATE_VERSION = 1;
+const TRAE_CN_UNKNOWN_MODEL = "trae-cn-unknown";
+
+function normalizeTraeCnState(raw) {
+  if (raw === undefined || raw === null) {
+    return { version: TRAE_CN_STATE_VERSION, sessions: {}, updatedAt: null };
+  }
+  if (typeof raw !== "object" || Array.isArray(raw)) {
+    throw new Error("Trae CN cursor state is malformed.");
+  }
+  if (raw.version !== TRAE_CN_STATE_VERSION) {
+    throw new Error(`Trae CN cursor state version ${raw.version} is not supported.`);
+  }
+  if (!raw.sessions || typeof raw.sessions !== "object" || Array.isArray(raw.sessions)) {
+    throw new Error("Trae CN cursor sessions are malformed.");
+  }
+  return {
+    version: TRAE_CN_STATE_VERSION,
+    sessions: { ...raw.sessions },
+    updatedAt: typeof raw.updatedAt === "string" ? raw.updatedAt : null,
+  };
+}
+
+function isValidTraeCnTotals(totals) {
+  if (!totals || typeof totals !== "object") return false;
+  for (const key of [
+    "input_tokens",
+    "cached_input_tokens",
+    "cache_creation_input_tokens",
+    "output_tokens",
+    "reasoning_output_tokens",
+    "total_tokens",
+    "billable_total_tokens",
+    "conversation_count",
+  ]) {
+    if (!Number.isSafeInteger(totals[key]) || totals[key] < 0) return false;
+  }
+  return true;
+}
+
+// Canonical UTC half-hour bucketStart produced by toUtcHalfHourStart:
+// "YYYY-MM-DDTHH:00:00.000Z" or "YYYY-MM-DDTHH:30:00.000Z".
+function isValidTraeCnBucketStart(value) {
+  if (typeof value !== "string") return false;
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:(00|30):00\.000Z$/.test(value)) return false;
+  const dt = new Date(value);
+  return Number.isFinite(dt.getTime()) && dt.toISOString() === value;
+}
+
+// Validate a stored prior contribution before it is ever subtracted, so a
+// tampered or corrupt cursor fails closed instead of silently rewinding buckets.
+// Enforces this provider's fixed canonical invariant (all totals safe
+// nonnegative integers, reasoning=0, conversation_count=1,
+// total=input+cached+cacheCreation+output, billable=total) plus a canonical
+// half-hour UTC bucketStart.
+function validateTraeCnStoredContribution(entry) {
+  if (!entry || typeof entry !== "object") {
+    throw new Error("Trae CN stored session contribution is malformed.");
+  }
+  if (
+    typeof entry.model !== "string" ||
+    !entry.model.trim() ||
+    entry.model.includes("|")
+  ) {
+    throw new Error("Trae CN stored session model is malformed.");
+  }
+  if (!isValidTraeCnBucketStart(entry.bucketStart)) {
+    throw new Error("Trae CN stored session bucket is malformed.");
+  }
+  if (!isValidTraeCnTotals(entry.totals)) {
+    throw new Error("Trae CN stored session totals are malformed.");
+  }
+  const { totals } = entry;
+  if (totals.reasoning_output_tokens !== 0 || totals.conversation_count !== 1) {
+    throw new Error("Trae CN stored session totals are malformed.");
+  }
+  const sum =
+    totals.input_tokens +
+    totals.cached_input_tokens +
+    totals.cache_creation_input_tokens +
+    totals.output_tokens;
+  if (totals.total_tokens !== sum || totals.billable_total_tokens !== totals.total_tokens) {
+    throw new Error("Trae CN stored session totals are malformed.");
+  }
+}
+
+// Token fields may live in `row.extra_info` (object or JSON string) or at the
+// top level of the row. Missing values are NOT coerced to zero.
+function traeCnExtraInfo(row) {
+  const extra = row?.extra_info;
+  if (extra && typeof extra === "object" && !Array.isArray(extra)) return extra;
+  if (typeof extra === "string") {
+    try {
+      const parsed = JSON.parse(extra);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed;
+    } catch (_e) {}
+  }
+  return null;
+}
+
+function traeCnTokenField(row, extra, key) {
+  if (extra && extra[key] !== undefined && extra[key] !== null) return extra[key];
+  if (row && row[key] !== undefined && row[key] !== null) return row[key];
+  return undefined;
+}
+
+// Normalize one raw session row into the canonical contribution, or throw
+// before any cursor/bucket mutation happens. Returns
+// { sessionId, model, bucketStart, totals }.
+function normalizeTraeCnSession(row) {
+  const sessionId = typeof row?.session_id === "string" ? row.session_id.trim() : "";
+  if (!sessionId) {
+    throw new Error("Trae CN session row is missing session_id.");
+  }
+  let model;
+  if (row?.model_name === undefined || row?.model_name === null) {
+    model = TRAE_CN_UNKNOWN_MODEL;
+  } else if (typeof row.model_name === "string") {
+    model = row.model_name.trim() || TRAE_CN_UNKNOWN_MODEL;
+  } else {
+    throw new Error("Trae CN session row has an invalid model_name.");
+  }
+  if (model.includes("|")) {
+    throw new Error("Trae CN session row has an unsupported model name.");
+  }
+  if (!Number.isSafeInteger(row?.usage_time) || row.usage_time <= 0) {
+    throw new Error("Trae CN session row has an invalid usage_time.");
+  }
+  const bucketStart = toUtcHalfHourStart(row.usage_time * 1000);
+  if (!bucketStart) {
+    throw new Error("Trae CN session row has an invalid usage_time.");
+  }
+  const extra = traeCnExtraInfo(row);
+  const fields = [
+    ["input_token", traeCnTokenField(row, extra, "input_token")],
+    ["output_token", traeCnTokenField(row, extra, "output_token")],
+    ["cache_read_token", traeCnTokenField(row, extra, "cache_read_token")],
+    ["cache_write_token", traeCnTokenField(row, extra, "cache_write_token")],
+  ];
+  for (const [label, value] of fields) {
+    if (!Number.isSafeInteger(value) || value < 0) {
+      throw new Error(`Trae CN session row has an invalid ${label}.`);
+    }
+  }
+  const total = fields[0][1] + fields[1][1] + fields[2][1] + fields[3][1];
+  if (!Number.isSafeInteger(total)) {
+    throw new Error("Trae CN session row token totals overflow.");
+  }
+  return {
+    sessionId,
+    model,
+    bucketStart,
+    totals: {
+      input_tokens: fields[0][1],
+      output_tokens: fields[1][1],
+      cached_input_tokens: fields[2][1],
+      cache_creation_input_tokens: fields[3][1],
+      reasoning_output_tokens: 0,
+      total_tokens: total,
+      billable_total_tokens: total,
+      conversation_count: 1,
+    },
+  };
+}
+
+// Fail closed instead of letting subtractTotals clamp a stored prior
+// contribution that exceeds its source bucket (a corruption signal).
+function assertTraeCnBucketCovers(bucketTotals, previousTotals) {
+  for (const key of [
+    "input_tokens",
+    "cached_input_tokens",
+    "cache_creation_input_tokens",
+    "output_tokens",
+    "reasoning_output_tokens",
+    "total_tokens",
+    "billable_total_tokens",
+    "conversation_count",
+  ]) {
+    if ((bucketTotals[key] || 0) < (previousTotals[key] || 0)) {
+      throw new Error("Trae CN state corruption: stored contribution exceeds its bucket totals.");
+    }
+  }
+}
+
+async function parseTraeCnApiIncremental({ sessions, cursors, queuePath, onProgress } = {}) {
+  if (!Array.isArray(sessions)) {
+    throw new Error("Trae CN sessions must be an array.");
+  }
+  if (!cursors || typeof cursors !== "object" || Array.isArray(cursors)) {
+    throw new Error("Trae CN cursors must be a writable object.");
+  }
+  await ensureDir(path.dirname(queuePath));
+
+  // Validate persisted state up front (fresh absent state initializes version
+  // 1; malformed state / unexpected version fails closed instead of resetting).
+  // Deep-clone the normalized working states so reconciliation and enqueue
+  // mutations never touch `cursors` before the final assignment succeeds.
+  const hourlyState = structuredClone(normalizeHourlyState(cursors?.hourly));
+  const traeCnState = structuredClone(normalizeTraeCnState(cursors?.traeCn));
+
+  if (sessions.length === 0) {
+    // Empty payload is a successful no-op: it never erases prior contributions.
+    return { recordsProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
+  }
+
+  // Full prevalidation + in-payload dedupe BEFORE any cursor/bucket mutation.
+  const bySession = new Map();
+  for (const row of sessions) {
+    const normalized = normalizeTraeCnSession(row);
+    const existing = bySession.get(normalized.sessionId);
+    if (existing) {
+      const identical =
+        existing.model === normalized.model &&
+        existing.bucketStart === normalized.bucketStart &&
+        totalsKey(existing.totals) === totalsKey(normalized.totals);
+      if (!identical) {
+        throw new Error("Trae CN session rows contain conflicting contributions.");
+      }
+      continue; // exact duplicate within one payload is accepted once
+    }
+    bySession.set(normalized.sessionId, normalized);
+  }
+
+  const touchedBuckets = new Set();
+  const cb = typeof onProgress === "function" ? onProgress : null;
+  const total = sessions.length;
+  let index = 0;
+  let eventsAggregated = 0;
+
+  // Validate EVERY existing stored contribution up front — not just sessions
+  // present in the incoming payload — so an unrelated malformed entry fails
+  // closed before any reconciliation mutation.
+  for (const sessionId of Object.keys(traeCnState.sessions)) {
+    validateTraeCnStoredContribution(traeCnState.sessions[sessionId]);
+  }
+
+  // Deterministic: process unique session ids in sorted order.
+  const sessionIds = [...bySession.keys()].sort();
+  for (const sessionId of sessionIds) {
+    const current = bySession.get(sessionId);
+    const previousEntry = traeCnState.sessions[sessionId];
+
+    const unchanged =
+      previousEntry &&
+      totalsKey(previousEntry.totals) === totalsKey(current.totals) &&
+      previousEntry.bucketStart === current.bucketStart &&
+      previousEntry.model === current.model;
+    if (unchanged) {
+      index += 1;
+      if (cb) cb({ index, total, eventsAggregated, bucketsQueued: touchedBuckets.size });
+      continue;
+    }
+
+    if (previousEntry) {
+      const oldBucket = getHourlyBucket(
+        hourlyState,
+        TRAE_CN_SOURCE,
+        previousEntry.model,
+        previousEntry.bucketStart,
+      );
+      assertTraeCnBucketCovers(oldBucket.totals, previousEntry.totals);
+      subtractTotals(oldBucket.totals, previousEntry.totals);
+      touchedBuckets.add(bucketKey(TRAE_CN_SOURCE, previousEntry.model, previousEntry.bucketStart));
+    }
+
+    const bucket = getHourlyBucket(hourlyState, TRAE_CN_SOURCE, current.model, current.bucketStart);
+    addTotals(bucket.totals, current.totals);
+    touchedBuckets.add(bucketKey(TRAE_CN_SOURCE, current.model, current.bucketStart));
+
+    traeCnState.sessions[sessionId] = {
+      model: current.model,
+      bucketStart: current.bucketStart,
+      totals: { ...current.totals },
+      updatedAt: new Date().toISOString(),
+    };
+    eventsAggregated += 1;
+    index += 1;
+    if (cb) cb({ index, total, eventsAggregated, bucketsQueued: touchedBuckets.size });
+  }
+
+  const bucketsQueued = await enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets });
+  const updatedAt = new Date().toISOString();
+  hourlyState.updatedAt = updatedAt;
+  traeCnState.updatedAt = updatedAt;
+  // Assign cursor state only after enqueue succeeds.
+  cursors.hourly = hourlyState;
+  cursors.traeCn = traeCnState;
+
+  return { recordsProcessed: total, eventsAggregated, bucketsQueued };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // DeepSeek Harness (dsh) — passive reader of the harness's session logs.
 //
 // The DeepSeek Harness SDK persists each agent session as an append-only JSONL
@@ -17186,6 +17489,7 @@ module.exports = {
   resolveTraePath,
   resolveTraeStoragePath,
   readTraeEntitlementFromStorage,
+  parseTraeCnApiIncremental,
   // DeepSeek Harness (dsh) — passive session-log reader
   resolveDshHome,
   resolveDshSessionFiles,

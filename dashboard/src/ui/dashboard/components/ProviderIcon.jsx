@@ -117,6 +117,26 @@ function CodeBuddyIcon({ size = 16, className = "" }) {
   );
 }
 
+// Compact local monogram for TRAE Work CN. It is deliberately not a claimed
+// official asset: the single-color mark stays legible in the existing 16–20px
+// slots and inherits currentColor in both themes.
+function TraeCnIcon({ size = 16, className = "" }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      className={className}
+      data-brand="trae-cn"
+      aria-hidden="true"
+    >
+      <path d="M3 4h18v3h-7.5v13h-3V7H3V4z" />
+      <path d="M20.5 12.5h-3a3.5 3.5 0 1 0 0 7h3" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function HermesIcon({ size = 16, className = "" }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" fillRule="evenodd" clipRule="evenodd" className={className}>
@@ -313,6 +333,7 @@ const PROVIDER_ICON_MAP = {
   "PI-GITHUB-COPILOT": PiIcon,
   "PI-COPILOT": PiIcon,
   ROOCODE: RoocodeIcon,
+  "TRAE-CN": TraeCnIcon,
   ZED: ZedIcon,
 };
 

@@ -29,4 +29,11 @@ describe("formatProviderDisplayName", () => {
     expect(formatProviderDisplayName("dsh")).toBe("DeepSeek Harness");
     expect(formatProviderDisplayName("deepseek")).toBe("DeepSeek Harness");
   });
+
+  it.each(["trae-cn", "TRAE-CN", "Trae_Cn"])(
+    "formats %s as TRAE Work CN",
+    (value) => {
+      expect(formatProviderDisplayName(value)).toBe("TRAE Work CN");
+    },
+  );
 });
