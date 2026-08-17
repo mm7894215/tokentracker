@@ -366,16 +366,19 @@ BEGIN
 
   -- First-seed / uncovered-day prioritization (trae-cn): jump the repair
   -- window to the earliest CLOSED day that has trae-cn session states but
-  -- no trae-cn rollup row yet (see the function header comment). A day
-  -- whose rollup row exists with stale values is NOT a gap - corrections
-  -- keep the ordinary cyclic schedule.
+  -- no trae-cn rollup row yet (see the function header comment). Coverage
+  -- is PER USER (the rollup PK starts at user_id): another user's same-day
+  -- row does NOT cover this user's seed. A day whose rollup row exists for
+  -- that user (even with stale values) is NOT a gap - corrections keep the
+  -- ordinary cyclic schedule.
   SELECT MIN((s.bucket_start AT TIME ZONE 'UTC')::date) INTO v_seed_gap_day
   FROM public.tokentracker_account_session_states s
   WHERE s.source = 'trae-cn'
     AND (s.bucket_start AT TIME ZONE 'UTC')::date < (v_target AT TIME ZONE 'UTC')::date
     AND NOT EXISTS (
       SELECT 1 FROM public.tokentracker_leaderboard_rollup_daily_v2 r
-      WHERE r.source = 'trae-cn'
+      WHERE r.user_id = s.user_id
+        AND r.source = 'trae-cn'
         AND r.day = (s.bucket_start AT TIME ZONE 'UTC')::date
     );
   IF v_seed_gap_day IS NOT NULL THEN

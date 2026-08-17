@@ -33,6 +33,9 @@
  *      advance_v2 (repair jumps to the earliest uncovered trae-cn day)
  *      heals the seed deterministically in ceil(seed_days / 7) scheduled
  *      runs instead of waiting a full cycle.
+ *   E. MULTI-USER isolation of that prioritization: gap coverage is PER
+ *      USER (r.user_id = s.user_id) - another user's same-day trae-cn
+ *      rollup row does not cover a new user's first seed day.
  *
  * The session-state inputs come from the REAL parser
  * (parseTraeCnApiIncremental -> queue -> LWW upsert mirror); the rollup/repair
@@ -116,13 +119,16 @@ function traeSession(sessionId, usageTimeMs, overrides = {}) {
 // ---------------------------------------------------------------------------
 const REPAIR_CHUNK_DAYS = 7; // advance_v2: interval '7 days' per run
 
-function createRollupSim(getStates, { minDayMs, nowMs }) {
+// getAccounts() -> [{ userId, states }] - one entry per user, mirroring
+// the real shared tables (rollup PK (user_id, source, model, day); session
+// states PK (user_id, source, session_id)).
+function createRollupSim(getAccounts, { minDayMs, nowMs }) {
   // meta mirrors tokentracker_leaderboard_rollup_meta_v2; assume catch-up
   // done (through = today), repair_from cycling from the oldest history day.
   const target = () => midnight(nowMs);
   const meta = { through: target(), repairFrom: midnight(minDayMs) };
   // rollup mirrors tokentracker_leaderboard_rollup_daily_v2:
-  // Map "day|source|model" -> {day, source, model, total_tokens}
+  // Map "day|source|model|user" -> {user_id, day, source, model, total_tokens}
   const rollup = new Map();
 
   function replaceDay(dayMs) {
@@ -130,34 +136,43 @@ function createRollupSim(getStates, { minDayMs, nowMs }) {
     for (const key of [...rollup.keys()]) {
       if (key.startsWith(dayKey + "|")) rollup.delete(key);
     }
-    for (const row of aggregateSessionStates(getStates(), {
-      from: new Date(dayMs).toISOString(),
-      to: new Date(dayMs + DAY_MS).toISOString(),
-    })) {
-      rollup.set(`${dayKey}|${row.source}|${row.model}`, {
-        day: dayKey,
-        source: row.source,
-        model: row.model,
-        total_tokens: row.total_tokens,
-      });
+    for (const { userId, states } of getAccounts()) {
+      for (const row of aggregateSessionStates(states, {
+        from: new Date(dayMs).toISOString(),
+        to: new Date(dayMs + DAY_MS).toISOString(),
+      })) {
+        rollup.set(`${dayKey}|${row.source}|${row.model}|${userId}`, {
+          user_id: userId,
+          day: dayKey,
+          source: row.source,
+          model: row.model,
+          total_tokens: row.total_tokens,
+        });
+      }
     }
   }
 
   return {
     // Seed-gap prioritization (mirrors the superseding advance_v2): the
-    // earliest CLOSED day with trae-cn session states but no trae-cn rollup
-    // row yet jumps the repair window there; stale-value corrections (row
-    // exists) keep the cyclic schedule.
+    // earliest CLOSED day where SOME user has trae-cn session states but NO
+    // trae-cn rollup row OF THEIR OWN jumps the repair window there.
+    // Coverage is PER USER (r.user_id = s.user_id in the SQL): another
+    // user's same-day row does not cover this user's seed. Stale-value
+    // corrections (the user's own row exists) keep the cyclic schedule.
     minSeedGapDay() {
       const t = target();
       let gap = null;
-      for (const state of getStates().values()) {
-        const dayMs = midnight(Date.parse(state.bucket_start));
-        if (dayMs >= t) continue;
-        const covered = [...rollup.keys()].some(
-          (key) => key.startsWith(isoDay(dayMs) + "|trae-cn|"),
-        );
-        if (!covered && (gap === null || dayMs < gap)) gap = dayMs;
+      for (const { userId, states } of getAccounts()) {
+        for (const state of states.values()) {
+          const dayMs = midnight(Date.parse(state.bucket_start));
+          if (dayMs >= t) continue;
+          const covered = [...rollup.keys()].some(
+            (key) =>
+              key.startsWith(isoDay(dayMs) + "|trae-cn|") &&
+              key.endsWith("|" + userId),
+          );
+          if (!covered && (gap === null || dayMs < gap)) gap = dayMs;
+        }
       }
       return gap;
     },
@@ -182,15 +197,17 @@ function createRollupSim(getStates, { minDayMs, nowMs }) {
       for (const row of rollup.values()) {
         perModel.set(row.model, (perModel.get(row.model) || 0) + row.total_tokens);
       }
-      for (const row of aggregateSessionStates(getStates(), {
-        from: new Date(meta.through).toISOString(),
-      })) {
-        perModel.set(row.model, (perModel.get(row.model) || 0) + row.total_tokens);
+      for (const { states } of getAccounts()) {
+        for (const row of aggregateSessionStates(states, {
+          from: new Date(meta.through).toISOString(),
+        })) {
+          perModel.set(row.model, (perModel.get(row.model) || 0) + row.total_tokens);
+        }
       }
       return perModel;
     },
-    rollupDay(dayMs, model) {
-      return rollup.get(`${isoDay(dayMs)}|trae-cn|${model}`) || null;
+    rollupDay(dayMs, model, userId = "user-a") {
+      return rollup.get(`${isoDay(dayMs)}|trae-cn|${model}|${userId}`) || null;
     },
   };
 }
@@ -204,9 +221,14 @@ const DAY = (offsetDays) => NOW_MS - offsetDays * DAY_MS;
 const HISTORY_MIN_DAY = DAY(120);
 
 function scenarioSetup() {
-  const cloudStates = new Map();
-  const sim = createRollupSim(() => cloudStates, { minDayMs: HISTORY_MIN_DAY, nowMs: NOW_MS });
-  return { cloudStates, sim };
+  const cloudStates = new Map(); // user a (scenarios A-D are single-user)
+  const cloudStatesB = new Map(); // user b (multi-user scenario E)
+  const accounts = () => [
+    { userId: "user-a", states: cloudStates },
+    { userId: "user-b", states: cloudStatesB },
+  ];
+  const sim = createRollupSim(accounts, { minDayMs: HISTORY_MIN_DAY, nowMs: NOW_MS });
+  return { cloudStates, cloudStatesB, sim };
 }
 
 const V1 = Date.parse("2027-01-12T00:00:00.000Z"); // original fetch stamp
@@ -386,6 +408,65 @@ test("D. first 30-day seed: account/profile/bounded immediate; TOTAL undercounts
 });
 
 // ---------------------------------------------------------------------------
+// E. MULTI-USER first-seed isolation: the seed-gap check must be PER USER.
+//    User A already has a trae-cn rollup row for day X; User B's first sync
+//    seeds day X with NO row of their own. Day X must STILL be a seed gap
+//    for User B (gap identity is (user_id, day), not just day) so the
+//    prioritized repair window covers User B's seed instead of falling back
+//    to the ordinary cyclic position.
+// ---------------------------------------------------------------------------
+test("E. multi-user first-seed: User B's day X stays a seed gap despite User A's same-day trae-cn rollup row", async () => {
+  const { cloudStates: userA, cloudStatesB: userB, sim } = scenarioSetup();
+  // Both users' rows live in the SAME deployed tables; the gap check must
+  // correlate coverage by user_id, not by day alone.
+
+  const seedDay = DAY(10);
+  // User A: day X already covered by the materialized rollup.
+  await syncSessions(userA, {
+    sessions: [traeSession("usera-day10", seedDay + 5 * 60 * 60 * 1000)],
+    verifiedAtMs: V1,
+  });
+  sim.buildAll();
+  assert.ok(sim.rollupDay(seedDay, "model-a"), "User A already has a trae-cn rollup row for day X");
+  assert.equal(sim.leaderboardTotal().get("model-a"), 110, "TOTAL covers User A only");
+
+  // User B: FIRST trae-cn sync seeds the SAME day, no user-b rollup row.
+  await syncSessions(userB, {
+    sessions: [traeSession("userb-day10", seedDay + 12 * 60 * 60 * 1000)],
+    verifiedAtMs: V2,
+  });
+  assert.equal(
+    aggregateSessionStates(userB)[0].total_tokens,
+    110,
+    "User B's live account total is immediate (session states)",
+  );
+  assert.equal(
+    sim.leaderboardTotal().get("model-a"),
+    110,
+    "TOTAL still undercounts User B before repair (closed day, no user-b rollup row)",
+  );
+
+  // The regression: day X is a gap FOR USER B even though User A's row
+  // covers the same (source, day). A day-only existence check (the 672f02a6
+  // SQL) would see "covered" and silently demote User B to cyclic repair.
+  assert.equal(sim.minSeedGapDay(), seedDay, "day X is still a seed gap for User B (per-user coverage)");
+
+  // The prioritized repair must jump to User B's seed day, not the cyclic
+  // position 120 days back: one run materializes user-b's day-X row while
+  // User A's own row is rebuilt unchanged.
+  sim.advanceRun();
+  const userBRow = sim.rollupDay(seedDay, "model-a", "user-b");
+  assert.ok(userBRow, "user-b's own day-X rollup row is materialized");
+  assert.equal(userBRow.total_tokens, 110, "user-b's row carries their seed usage");
+  assert.equal(sim.rollupDay(seedDay, "model-a", "user-a").total_tokens, 110, "user-a's row is untouched");
+  assert.equal(
+    sim.leaderboardTotal().get("model-a"),
+    220,
+    "run 1 prioritized User B's seed day (110 A + 110 B)",
+  );
+});
+
+// ---------------------------------------------------------------------------
 // SQL contract pins: the deployed functions must actually implement the
 // semantics mirrored above (the JS mirror cannot be allowed to drift).
 // ---------------------------------------------------------------------------
@@ -418,6 +499,7 @@ test("SQL pin: advance_v2 (superseding definition) repairs 7 days per run, cycli
   assert.match(advanceFn, /v_seed_gap_day/, "seed-gap day is computed");
   assert.match(advanceFn, /FROM public\.tokentracker_account_session_states s/, "gaps come from the canonical session states");
   assert.match(advanceFn, /NOT EXISTS[\s\S]*?r\.source = 'trae-cn'/, "a day is a gap only when NO trae-cn rollup row exists (stale values are NOT gaps)");
+  assert.match(advanceFn, /r\.user_id = s\.user_id/, "gap coverage is PER USER: another user's same-day row must not hide this user's seed (scenario E)");
   assert.match(advanceFn, /v_repair_from := v_seed_gap_day/, "the repair window jumps to the seed gap");
   // Only the window POSITION changes: the per-run chunk stays 7 days.
   assert.match(advanceFn, /v_seed_gap_day[\s\S]*?v_until := LEAST\([\s\S]*?interval '7 days'/, "gap-jump still repairs a bounded 7-day chunk");
