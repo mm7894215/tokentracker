@@ -538,11 +538,14 @@ test("status trae-cn installed=true with auth readable when the storage file exi
   try {
     process.env.HOME = tmp;
     process.env.USERPROFILE = tmp;
-    delete process.env.TOKENTRACKER_TRAE_CN_HOME;
+    // Platform-independent: the default-path resolver is darwin-only, so point
+    // the env override at a synthetic install. Same semantics under test:
+    // storage.json exists -> installed=true, auth readable.
+    process.env.TOKENTRACKER_TRAE_CN_HOME = path.join(tmp, "trae-install");
     delete process.env.TOKENTRACKER_TRAE_CN_USAGE;
 
     const storageDir = path.join(
-      tmp, "Library", "Application Support", "TRAE SOLO CN", "User", "globalStorage",
+      process.env.TOKENTRACKER_TRAE_CN_HOME, "User", "globalStorage",
     );
     await fs.mkdir(storageDir, { recursive: true });
     await fs.writeFile(
