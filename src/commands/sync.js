@@ -3045,6 +3045,8 @@ function recordCodexColdScanAudit(
 module.exports = {
   cmdSync,
   acquireSyncLock,
+  readQueueBatch,
+  drainQueueToCloud,
   migrateCursorUnknownBuckets,
   migrateRolloutCumulativeDeltaBuckets,
   repairCodebuddyLogJsonlOverlap,
@@ -3611,9 +3613,17 @@ async function readQueueBatch(queuePath, startOffset, maxBuckets) {
   // one, and only the latest per session may reach the ingest batch (a
   // duplicate would make the cloud ON CONFLICT affect one row twice).
   // snapshot_verified_at rides along verbatim from the ORIGINAL fetch, so a
-  // transport retry never fakes logical freshness. (The ingest edge caps a
-  // batch at 500 states; a fresh device's first sync appends one record per
-  // observed session, well under the cap for a 30-day TRAE window.)
+  // transport retry never fakes logical freshness.
+  //
+  // Batching: session-state records count toward the SAME per-batch record
+  // cap (maxBuckets) as bucket rows. The ingest edge rejects a request with
+  // more than 500 states (HTTP 400); before they counted, a states-heavy
+  // queue (a fresh device's first 30-day TRAE sync appends one record per
+  // observed session) was read in ONE uncapped batch - the 400 left the
+  // queue offset untouched and every retry re-read the identical oversized
+  // request, a permanent upload failure. With the default batchSize of 200
+  // (and the MAX_INGEST_BUCKETS=500 clamp above), every request stays under
+  // the edge cap while batching follows the existing design.
   const sessionStateMap = new Map();
   let offset = startOffset;
   let linesRead = 0;
@@ -3645,6 +3655,11 @@ async function readQueueBatch(queuePath, startOffset, maxBuckets) {
             ? { snapshot_verified_at: bucket.snapshot_verified_at }
             : {}),
         });
+        // Counted like a bucket row: the record rides THIS batch and its
+        // bytes are covered by nextOffset, so the next batch resumes right
+        // after it.
+        linesRead += 1;
+        if (linesRead >= maxBuckets) break;
       }
       continue;
     }

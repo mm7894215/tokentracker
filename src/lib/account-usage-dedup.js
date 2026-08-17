@@ -18,8 +18,12 @@
  *     old hour). Canonical truth for trae-cn therefore lives at the SESSION
  *     level (tokentracker_account_session_states; migrations/
  *     20260817120000_account-session-states.sql): identity is
- *     (user_id, source, session_id) - device_id is NOT identity, because the
- *     usage API carries no device discriminator. Every observation of one
+ *     (user_id, source, session_id) - device_id is NOT identity (the usage
+ *     API request carries no device discriminator). Session-id evidence
+ *     (2026-08-17): repeated-fetch stability VERIFIED, cross-window
+ *     stability VERIFIED; cross-device same-account stability NOT DIRECTLY
+ *     VERIFIED (no second independent device/auth experiment). Every
+ *     observation of one
  *     session whole-row-replaces the previous state under a strict LWW
  *     guard, so the three correction classes collapse into ONE operation:
  *

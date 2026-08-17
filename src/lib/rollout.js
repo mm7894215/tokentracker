@@ -16604,12 +16604,15 @@ function assertTraeCnBucketCovers(bucketTotals, previousTotals) {
 // Cloud truth for trae-cn lives at the session level
 // (tokentracker_account_session_states; ingest edge upserts via
 // tokentracker_upsert_account_session_states): identity is
-// (user_id, source, session_id) - device_id is NOT identity, because the
-// usage API request carries no device discriminator, so every device of the
-// account observes the same server-side session namespace (PROVEN
-// 2026-08-17: 137/137 sessions persisted across two independent fetches, 0
-// disappearances, one session revised upward KEPT its id, no duplicate ids,
-// cross-window queries return exact subsets).
+// (user_id, source, session_id) - device_id is NOT identity (the usage API
+// request carries no device discriminator). Evidence split (2026-08-17, one
+// account, three real fetches 137 -> 141 -> 164): repeated-fetch id
+// stability VERIFIED (137/137 persisted, corrections KEPT ids), cross-window
+// stability VERIFIED (exact subsets), no duplicate ids OBSERVED. Cross-device
+// same-account id stability is NOT DIRECTLY VERIFIED - no device
+// discriminator in the request body is necessary but not sufficient (a
+// device/login context could ride inside the JWT / server auth context), and
+// no second independent device/auth experiment was run.
 //
 // The three correction classes collapse into ONE whole-row replace:
 //   downward  S tokens 100 -> 60

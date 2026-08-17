@@ -8,16 +8,32 @@
 -- bucket migration (10:00 -> 10:30) leaves the old hour stranded.
 --
 -- Fix: canonical truth at the SESSION level. TRAE's usage API carries a
--- stable session_id (PROVEN 2026-08-17: 137/137 sessions persisted across two
--- independent fetches with 0 disappearances; one session was revised upward
--- mid-window and KEPT its session_id; account responses have no duplicate
--- ids; cross-window cross-checks return exact subsets). The CLI parser
--- (src/lib/rollout.js) emits one queue record per CHANGED session
--- (kind: "account_session_state"); the ingest edge upserts them here via
--- tokentracker_upsert_account_session_states(). Identity is
--- (user_id, source, session_id) - device_id is NOT part of the identity: the
--- API request carries no device discriminator, so every device of the
--- account observes the SAME server-side session namespace.
+-- session_id whose observed stability splits into (evidence 2026-08-17,
+-- one account, three real fetches 137 -> 141 -> 164 sessions):
+--   repeated-fetch stability        VERIFIED (137/137 persisted across two
+--                                   independent fetches, 0 disappearances;
+--                                   one session revised upward mid-window
+--                                   KEPT its session_id)
+--   cross-window stability          VERIFIED (window-subset queries return
+--                                   exact id subsets)
+--   no duplicate ids                OBSERVED (all fetched responses)
+--   cross-device same-account       NOT DIRECTLY VERIFIED: the request body
+--                                   carries no device discriminator, but that
+--                                   is necessary, not sufficient - a device
+--                                   or login context could ride inside the
+--                                   JWT / server auth context. No second
+--                                   independent device/auth experiment was
+--                                   run. If it were ever DISPROVEN (same
+--                                   logical session, different ids per
+--                                   device), this PK would split one logical
+--                                   session into competing rows and the
+--                                   identity must be re-evaluated.
+-- The CLI parser (src/lib/rollout.js) emits one queue record per CHANGED
+-- session (kind: "account_session_state"); the ingest edge upserts them
+-- here via tokentracker_upsert_account_session_states(). Identity is
+-- (user_id, source, session_id) - device_id is NOT part of the identity
+-- (the API request carries no device discriminator; see the stability
+-- split above for what that does and does not prove).
 --
 -- Three corrections become ONE whole-row replace:
 --   downward   S tokens 100 -> 60        row replaced, total 60
@@ -37,10 +53,10 @@
 -- observation only when its stamp is STRICTLY NEWER (>) than the stored
 -- one, so a transport retry of an old observation is a no-op, and the same
 -- observation replayed is idempotent. This is best-effort cross-device
--- ordering, NOT strict correctness: two devices with skewed clocks can
--- mis-order two conflicting observations of one session (residual risk,
--- bounded by the skew; observations of the same session converge because
--- they reflect one server-side state).
+-- ordering, NOT strict correctness: client clock skew can mis-order two
+-- conflicting observations of one session, and a sufficiently
+-- future-skewed client timestamp can delay later corrections (residual
+-- risk; there is no mechanism bounding the skew).
 --
 -- Semantics mirrored by src/lib/account-usage-dedup.js and pinned by
 -- test/account-usage-dedup.test.js. Apply BEFORE re-deploying the updated
@@ -53,8 +69,10 @@
 CREATE TABLE IF NOT EXISTS public.tokentracker_account_session_states (
   user_id uuid NOT NULL,
   source text NOT NULL,
-  -- Stable provider-side session identity (TRAE session_id). Not a device
-  -- attribute: all devices of one account observe the same namespace.
+  -- Provider-side session identity (TRAE session_id): stable across
+  -- repeated fetches and window changes (VERIFIED), account-scoped rather
+  -- than device-scoped in the request (cross-device id stability itself is
+  -- NOT DIRECTLY VERIFIED - see the header's evidence split).
   session_id text NOT NULL,
   model text NOT NULL,
   -- Canonical UTC half-hour bucket of this session's CURRENT placement.
@@ -152,9 +170,13 @@ GRANT EXECUTE ON FUNCTION public.tokentracker_upsert_account_session_states(uuid
 -- watermark-owner branch and the legacy MAX fallback for trae-cn. 'cursor'
 -- (identical rows across devices, no session identity) keeps the legacy
 -- whole-row MAX dedup. Historical rollup days self-heal through the existing
--- 7-day repair loop in leaderboard_rollup_daily_advance_v2; an immediate
--- full rebuild is optional (call leaderboard_rollup_daily_replace_v2 for the
--- affected range).
+-- cyclic repair in leaderboard_rollup_daily_advance_v2: 7 days per scheduled
+-- run (total refresh, every ~6h) from the OLDEST history day, wrapping. The
+-- lag therefore scales with TOTAL history length (e.g. ~28 days of history
+-- repaired per day of wall clock), not with the correction's age; live paths
+-- (account_usage_grouped, bounded leaderboard windows) reflect corrections
+-- immediately. An immediate full rebuild is optional (call
+-- leaderboard_rollup_daily_replace_v2 for the affected range).
 CREATE OR REPLACE FUNCTION public.leaderboard_hourly_dedup_v2(
   p_from timestamptz,
   p_to timestamptz
