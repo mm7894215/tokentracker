@@ -392,9 +392,6 @@ test("D. first 30-day seed: account/profile/bounded immediate; TOTAL undercounts
 function readRepoFile(rel) {
   return fs.readFileSync(path.join(ROOT, rel), "utf8");
 }
-function readRepoFile(rel) {
-  return fs.readFileSync(path.join(ROOT, rel), "utf8");
-}
 
 test("SQL pin: replace_v2 rebuilds closed days from leaderboard_hourly_dedup_v2 (which reads trae-cn session states)", () => {
   const sql = readRepoFile("migrations/20260804043427_align-leaderboard-machine-clusters.sql");
