@@ -26,6 +26,13 @@
  *   C. cross-day bucket migration Day A 23:30 -> Day B 00:00: Day A drops
  *      the 100, Day B gains it, total stays 100 (transient dip possible
  *      while only one of the two days has been repaired)
+ *   D. FIRST 30-day seed on a caught-up rollup: live paths (account /
+ *      profile / bounded boards) include the seed immediately, but the
+ *      leaderboard TOTAL (rollup UNION live tail) misses every CLOSED seed
+ *      day until a repair rebuilds them. The seed-gap PRIORITIZATION in
+ *      advance_v2 (repair jumps to the earliest uncovered trae-cn day)
+ *      heals the seed deterministically in ceil(seed_days / 7) scheduled
+ *      runs instead of waiting a full cycle.
  *
  * The session-state inputs come from the REAL parser
  * (parseTraeCnApiIncremental -> queue -> LWW upsert mirror); the rollup/repair
@@ -137,10 +144,28 @@ function createRollupSim(getStates, { minDayMs, nowMs }) {
   }
 
   return {
-    /** One scheduled advance run: repairs the next 7-day chunk cyclically. */
+    // Seed-gap prioritization (mirrors the superseding advance_v2): the
+    // earliest CLOSED day with trae-cn session states but no trae-cn rollup
+    // row yet jumps the repair window there; stale-value corrections (row
+    // exists) keep the cyclic schedule.
+    minSeedGapDay() {
+      const t = target();
+      let gap = null;
+      for (const state of getStates().values()) {
+        const dayMs = midnight(Date.parse(state.bucket_start));
+        if (dayMs >= t) continue;
+        const covered = [...rollup.keys()].some(
+          (key) => key.startsWith(isoDay(dayMs) + "|trae-cn|"),
+        );
+        if (!covered && (gap === null || dayMs < gap)) gap = dayMs;
+      }
+      return gap;
+    },
+    /** One scheduled advance run: gap-prioritized, else the cyclic chunk. */
     advanceRun() {
       const t = target();
-      let from = meta.repairFrom >= t ? minDayMs : meta.repairFrom;
+      const gap = this.minSeedGapDay();
+      let from = gap !== null ? gap : (meta.repairFrom >= t ? minDayMs : meta.repairFrom);
       const until = Math.min(t, from + REPAIR_CHUNK_DAYS * DAY_MS);
       for (let d = from; d < until; d += DAY_MS) replaceDay(d);
       meta.repairFrom = until >= t ? minDayMs : until;
@@ -308,9 +333,65 @@ test("C. cross-day bucket migration: Day A drops the 100, Day B gains it, total 
 });
 
 // ---------------------------------------------------------------------------
+// D. FIRST 30-day seed vs the leaderboard TOTAL (rollup UNION live tail).
+// ---------------------------------------------------------------------------
+test("D. first 30-day seed: account/profile/bounded immediate; TOTAL undercounts closed days until the seed-gap-prioritized repair completes", async () => {
+  const { cloudStates, sim } = scenarioSetup();
+  // Preconditions (review scenario): rollup caught up (through = today),
+  // no trae-cn session states, no trae-cn rollup rows. The 120-day history
+  // below is OTHER sources; the cyclic repair position sits at the OLDEST
+  // day, so without prioritization the seed would wait a full cycle.
+  sim.buildAll();
+
+  // First TRAE sync: one real parser call seeds ~30 CLOSED days at once
+  // (one session per day, 110 tokens each).
+  const seedDays = 30;
+  const sessions = [];
+  for (let k = seedDays; k >= 1; k -= 1) {
+    sessions.push(traeSession(`seed-${k}`, DAY(k) + 10 * 60 * 60 * 1000));
+  }
+  await syncSessions(cloudStates, { sessions, verifiedAtMs: V2 });
+  assert.equal(cloudStates.size, seedDays, "the first sync seeded 30 canonical sessions");
+
+  // LIVE paths: everything except the leaderboard TOTAL is immediate.
+  const accountTotal = aggregateSessionStates(cloudStates).reduce((acc, r) => acc + r.total_tokens, 0);
+  assert.equal(accountTotal, seedDays * 110, "account usage total = 3300 immediately (profile reads the same RPC)");
+  const weekRows = aggregateSessionStates(cloudStates, {
+    from: new Date(DAY(7)).toISOString(),
+    to: new Date(NOW_MS).toISOString(),
+  });
+  assert.equal(weekRows.reduce((acc, r) => acc + r.total_tokens, 0), 7 * 110, "bounded leaderboard week includes its seed days immediately");
+
+  // TOTAL before any repair: rollup has no trae-cn rows and the live tail
+  // only covers [today 00:00, now) - every seed day is closed, so the TOTAL
+  // UNDERCOUNTS by the full seed.
+  const before = sim.leaderboardTotal().get("model-a") || 0;
+  assert.equal(before, 0, "leaderboard TOTAL undercounts the first seed entirely (all 30 days are closed days)");
+
+  // The seed-gap prioritization must repair from the SEED's oldest day (not
+  // the cyclic position 120 days back): after one run exactly the first
+  // 7 seed days are materialized.
+  sim.advanceRun();
+  const afterRun1 = sim.leaderboardTotal().get("model-a") || 0;
+  assert.equal(afterRun1, 7 * 110, "run 1 repairs the seed's oldest 7 days (gap-first, 7-day chunk)");
+
+  // Deterministic completion: ceil(30/7) = 5 scheduled runs total.
+  let runs = 1;
+  while ((sim.leaderboardTotal().get("model-a") || 0) !== seedDays * 110 && runs < 50) {
+    sim.advanceRun();
+    runs += 1;
+  }
+  assert.equal(sim.leaderboardTotal().get("model-a"), seedDays * 110, "TOTAL now equals the account/profile total");
+  assert.equal(runs, 5, "a 30-day seed heals in ceil(30/7)=5 scheduled runs (not a full 120-day cycle)");
+});
+
+// ---------------------------------------------------------------------------
 // SQL contract pins: the deployed functions must actually implement the
 // semantics mirrored above (the JS mirror cannot be allowed to drift).
 // ---------------------------------------------------------------------------
+function readRepoFile(rel) {
+  return fs.readFileSync(path.join(ROOT, rel), "utf8");
+}
 function readRepoFile(rel) {
   return fs.readFileSync(path.join(ROOT, rel), "utf8");
 }
@@ -327,12 +408,22 @@ test("SQL pin: replace_v2 rebuilds closed days from leaderboard_hourly_dedup_v2 
   assert.match(dedupFn, /s\.source = 'trae-cn'/);
 });
 
-test("SQL pin: advance_v2 repairs 7 days per run cyclically from the OLDEST history day (lag scales with history length)", () => {
-  const sql = readRepoFile("migrations/20260804043427_align-leaderboard-machine-clusters.sql");
+test("SQL pin: advance_v2 (superseding definition) repairs 7 days per run, cyclically, with first-seed gap prioritization", () => {
+  // The 20260817120000 migration supersedes the 0804 advance_v2: pin the
+  // LATEST definition the deployment will actually leave in the database.
+  const sql = readRepoFile("migrations/20260817120000_account-session-states.sql");
   const advanceFn = sql.split("CREATE OR REPLACE FUNCTION public.leaderboard_rollup_daily_advance_v2")[1].split("$func$;")[0];
-  assert.match(advanceFn, /interval '7 days'/, "7 days per scheduled run");
+  assert.match(advanceFn, /interval '7 days'/, "7 days per scheduled run (catch-up AND repair)");
   assert.match(advanceFn, /v_min_day/, "repair starts at the oldest history day");
   assert.match(advanceFn, /v_repair_from := v_min_day/, "repair wraps to the oldest day after completing a cycle");
+  // First-seed prioritization: jump to the earliest closed trae-cn day that
+  // has session states but no rollup row yet.
+  assert.match(advanceFn, /v_seed_gap_day/, "seed-gap day is computed");
+  assert.match(advanceFn, /FROM public\.tokentracker_account_session_states s/, "gaps come from the canonical session states");
+  assert.match(advanceFn, /NOT EXISTS[\s\S]*?r\.source = 'trae-cn'/, "a day is a gap only when NO trae-cn rollup row exists (stale values are NOT gaps)");
+  assert.match(advanceFn, /v_repair_from := v_seed_gap_day/, "the repair window jumps to the seed gap");
+  // Only the window POSITION changes: the per-run chunk stays 7 days.
+  assert.match(advanceFn, /v_seed_gap_day[\s\S]*?v_until := LEAST\([\s\S]*?interval '7 days'/, "gap-jump still repairs a bounded 7-day chunk");
 });
 
 test("SQL pin: leaderboard TOTAL reads rollup UNION live tail; bounded windows read live", () => {

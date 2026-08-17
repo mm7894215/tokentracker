@@ -169,13 +169,18 @@ GRANT EXECUTE ON FUNCTION public.tokentracker_upsert_account_session_states(uuid
 -- the leaderboard - the session-state branch replaces both the previous
 -- watermark-owner branch and the legacy MAX fallback for trae-cn. 'cursor'
 -- (identical rows across devices, no session identity) keeps the legacy
--- whole-row MAX dedup. Historical rollup days self-heal through the existing
--- cyclic repair in leaderboard_rollup_daily_advance_v2: 7 days per scheduled
--- run (total refresh, every ~6h) from the OLDEST history day, wrapping. The
--- lag therefore scales with TOTAL history length (e.g. ~28 days of history
--- repaired per day of wall clock), not with the correction's age; live paths
--- (account_usage_grouped, bounded leaderboard windows) reflect corrections
--- immediately. An immediate full rebuild is optional (call
+-- whole-row MAX dedup. Historical rollup days self-heal through the cyclic
+-- repair in leaderboard_rollup_daily_advance_v2 (superseded below): 7 days
+-- per scheduled run (total refresh, every ~6h) from the OLDEST history day,
+-- wrapping. FIRST SEEDS are prioritized: when a closed day has trae-cn
+-- session states but no trae-cn rollup row yet, the repair window jumps
+-- there, so a new account's first ~30-day seed heals in
+-- ceil(seed_span / 7) scheduled runs (~30h at the 6h cadence) instead of a
+-- full cycle. Corrections to already-covered days (stale values, row exists)
+-- keep the ordinary cyclic schedule - their lag scales with TOTAL history
+-- length, not the correction's age. Live paths (account_usage_grouped,
+-- bounded leaderboard windows) reflect everything immediately. An immediate
+-- full rebuild is optional for instant parity (call
 -- leaderboard_rollup_daily_replace_v2 for the affected range).
 CREATE OR REPLACE FUNCTION public.leaderboard_hourly_dedup_v2(
   p_from timestamptz,
@@ -284,3 +289,118 @@ AS $func$
     AND s.source = 'trae-cn'
   GROUP BY s.user_id, s.source, s.model, s.bucket_start
 $func$;
+
+-- ---------------------------------------------------------------------------
+-- leaderboard_rollup_daily_advance_v2: supersede the 20260804043427 definition
+-- with FIRST-SEED PRIORITIZATION for trae-cn. Everything else (7-day catch-up
+-- bootstrap, cyclic 7-day repair from the oldest history day) is unchanged.
+--
+-- Why: a new account's first TRAE sync seeds ~30 CLOSED days of session
+-- states in one upload. Live paths (account_usage_grouped, bounded
+-- leaderboard windows) read session states directly and see the seed
+-- immediately, but the leaderboard TOTAL reads the MATERIALIZED rollup for
+-- closed days - which has never covered them. The plain cyclic repair would
+-- reach the seed only after up to a FULL cycle (history_days / 7 scheduled
+-- runs), leaving the TOTAL undercounted versus account/profile for days.
+-- The fix is a repositioning only: when the earliest closed day that HAS
+-- trae-cn session states but NO trae-cn rollup row exists, the repair window
+-- JUMPS there. The seed range then rebuilds deterministically at 7 days per
+-- scheduled run (ceil(seed_span / 7) runs; a 30-day seed = 5 runs ~= 30h at
+-- the ~6h total-refresh cadence). Corrections to already-covered days are
+-- NOT gaps (their rollup row exists, merely stale) and keep the ordinary
+-- cyclic schedule; per-run work stays bounded by the same 7-day chunk, so
+-- the memory/statement-time budget that motivated the cyclic design is
+-- unchanged. Mirrored by the createRollupSim harness and pinned by scenario
+-- D in test/leaderboard-rollup-correction.test.js.
+CREATE OR REPLACE FUNCTION public.leaderboard_rollup_daily_advance_v2()
+RETURNS void
+LANGUAGE plpgsql
+SET work_mem TO '16MB'
+SET hash_mem_multiplier TO '2'
+SET statement_timeout TO '25s'
+AS $func$
+DECLARE
+  v_from timestamptz;
+  v_target timestamptz := date_trunc('day', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC';
+  v_until timestamptz;
+  v_min_day date;
+  v_repair_from date;
+  v_seed_gap_day date;
+BEGIN
+  SELECT
+    (date_trunc('day', MIN(h.hour_start) AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')::date
+  INTO v_min_day
+  FROM public.tokentracker_hourly h;
+  v_min_day := COALESCE(v_min_day, (v_target AT TIME ZONE 'UTC')::date);
+
+  SELECT m.through, m.repair_from INTO v_from, v_repair_from
+  FROM public.tokentracker_leaderboard_rollup_meta_v2 m
+  WHERE m.id = 1
+  FOR UPDATE;
+
+  IF v_from IS NULL THEN
+    v_from := v_min_day::timestamp AT TIME ZONE 'UTC';
+    v_repair_from := v_min_day;
+    INSERT INTO public.tokentracker_leaderboard_rollup_meta_v2 (
+      id, through, repair_from, rebuilt_at
+    ) VALUES (1, v_from, v_repair_from, now());
+  END IF;
+
+  IF v_from < v_target THEN
+    -- Bootstrap/catch-up: advance at most seven closed days per request.
+    v_until := LEAST(v_target, v_from + interval '7 days');
+    PERFORM public.leaderboard_rollup_daily_replace_v2(v_from, v_until);
+    UPDATE public.tokentracker_leaderboard_rollup_meta_v2
+    SET through = v_until,
+        rebuilt_at = now()
+    WHERE id = 1;
+    RETURN;
+  END IF;
+
+  -- Once caught up, continuously repair seven historical days per scheduled
+  -- total refresh. Late history uploads, device revocations, and cluster-map
+  -- changes therefore self-heal without another whole-history memory spike.
+  IF v_repair_from >= (v_target AT TIME ZONE 'UTC')::date THEN
+    v_repair_from := v_min_day;
+  END IF;
+
+  -- First-seed / uncovered-day prioritization (trae-cn): jump the repair
+  -- window to the earliest CLOSED day that has trae-cn session states but
+  -- no trae-cn rollup row yet (see the function header comment). A day
+  -- whose rollup row exists with stale values is NOT a gap - corrections
+  -- keep the ordinary cyclic schedule.
+  SELECT MIN((s.bucket_start AT TIME ZONE 'UTC')::date) INTO v_seed_gap_day
+  FROM public.tokentracker_account_session_states s
+  WHERE s.source = 'trae-cn'
+    AND (s.bucket_start AT TIME ZONE 'UTC')::date < (v_target AT TIME ZONE 'UTC')::date
+    AND NOT EXISTS (
+      SELECT 1 FROM public.tokentracker_leaderboard_rollup_daily_v2 r
+      WHERE r.source = 'trae-cn'
+        AND r.day = (s.bucket_start AT TIME ZONE 'UTC')::date
+    );
+  IF v_seed_gap_day IS NOT NULL THEN
+    v_repair_from := v_seed_gap_day;
+  END IF;
+
+  v_until := LEAST(
+    v_target,
+    (v_repair_from::timestamp AT TIME ZONE 'UTC') + interval '7 days'
+  );
+  PERFORM public.leaderboard_rollup_daily_replace_v2(
+    v_repair_from::timestamp AT TIME ZONE 'UTC',
+    v_until
+  );
+  UPDATE public.tokentracker_leaderboard_rollup_meta_v2
+  SET repair_from = CASE
+        WHEN v_until >= v_target THEN v_min_day
+        ELSE (v_until AT TIME ZONE 'UTC')::date
+      END,
+      rebuilt_at = now()
+  WHERE id = 1;
+END
+$func$;
+
+REVOKE ALL ON FUNCTION public.leaderboard_rollup_daily_advance_v2()
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.leaderboard_rollup_daily_advance_v2()
+  TO project_admin;
