@@ -106,54 +106,74 @@ export default async function (req: Request): Promise<Response> {
       ? body.hourly
       : [];
 
-  // Account-sync watermarks (kind: "account_sync_watermark" queue records)
-  // assert the closed window this device just verified against an
-  // account-level source API (trae-cn). The cloud aggregation
-  // (account_usage_grouped / leaderboard_hourly_dedup_v2) picks, per hour,
-  // the freshest covering watermark device as the canonical owner, so a
-  // newer snapshot displaces stale tuples from devices holding older
-  // versions. A watermark-only batch is a meaningful upload (e.g. a
-  // verified-empty window) and must not fall into the no-buckets reject.
-  const rawWatermarks = Array.isArray(body.account_watermarks)
-    ? body.account_watermarks
-    : [];
-  if (rawWatermarks.length > 50) {
-    return json({ error: "Too many account watermarks (max 50)" }, 400);
+  // Account session states (kind: "account_session_state" queue records)
+  // are canonical observations of one provider-side session (trae-cn):
+  // identity is (user, source, session_id) - device_id is NOT identity, so
+  // every device of the account converges onto the same row via the LWW
+  // upsert rpc. Downward / model / bucket corrections are one whole-row
+  // replace; absence never deletes (contract NOT PROVEN). A states-only
+  // batch is a meaningful upload and must not fall into the no-buckets
+  // reject.
+  const rawStates = Array.isArray(body.account_session_states) ? body.account_session_states : [];
+  if (rawStates.length > 500) {
+    return json({ error: "Too many account session states (max 500)" }, 400);
   }
-  const watermarks = [];
-  for (const w of rawWatermarks) {
-    const source = typeof w?.source === "string" ? w.source.trim().toLowerCase() : "";
-    const start = Date.parse(String(w?.window_start ?? ""));
-    const end = Date.parse(String(w?.window_end ?? ""));
-    const firstCovered = Date.parse(String(w?.first_covered_hour ?? ""));
-    const verifiedAt = Date.parse(String(w?.snapshot_verified_at ?? ""));
-    // Fail closed on a malformed watermark: writing a bogus window would
-    // corrupt cross-device ownership for the whole account. Coverage must
-    // start inside the window (the snapshot's first data bucket), and the
-    // logical verification stamp must be present so owner freshness never
-    // depends on server receive time.
-    if (
-      !source ||
-      !Number.isFinite(start) ||
-      !Number.isFinite(end) ||
-      end <= start ||
-      !Number.isFinite(firstCovered) ||
-      firstCovered < start ||
-      firstCovered >= end ||
-      !Number.isFinite(verifiedAt)
-    ) {
-      return json({ error: "Invalid account watermark" }, 400);
+  const TOKEN_KEYS = [
+    "input_tokens",
+    "output_tokens",
+    "cached_input_tokens",
+    "cache_creation_input_tokens",
+    "reasoning_output_tokens",
+    "total_tokens",
+  ] as const;
+  const states: Record<string, unknown>[] = [];
+  for (const r of rawStates) {
+    const source = typeof r?.source === "string" ? r.source.trim().toLowerCase() : "";
+    const sessionId = typeof r?.session_id === "string" ? r.session_id.trim() : "";
+    const model = typeof r?.model === "string" ? r.model.trim() : "";
+    const bucketStart = Date.parse(String(r?.bucket_start ?? ""));
+    const verifiedAt = Date.parse(String(r?.snapshot_verified_at ?? ""));
+    const tokens: Record<string, number> = {};
+    let tokensOk = true;
+    for (const k of TOKEN_KEYS) {
+      const v = Number(r?.[k]);
+      if (!Number.isSafeInteger(v) || v < 0) tokensOk = false;
+      else tokens[k] = v;
     }
-    watermarks.push({
+    // Fail closed on a malformed state record: a bogus canonical session row
+    // would corrupt the account's cross-device truth. The parser guarantees
+    // total = input + cached + cacheCreation + output; enforce it here too.
+    if (
+      source !== "trae-cn" ||
+      !sessionId ||
+      sessionId.length > 256 ||
+      !model ||
+      model.length > 200 ||
+      !Number.isFinite(bucketStart) ||
+      !Number.isFinite(verifiedAt) ||
+      !tokensOk ||
+      tokens.total_tokens !==
+        tokens.input_tokens + tokens.cached_input_tokens + tokens.cache_creation_input_tokens + tokens.output_tokens
+    ) {
+      return json({ error: "Invalid account session state" }, 400);
+    }
+    states.push({
       source,
-      window_start: new Date(start).toISOString(),
-      window_end: new Date(end).toISOString(),
-      first_covered_hour: new Date(firstCovered).toISOString(),
+      session_id: sessionId,
+      model,
+      bucket_start: new Date(bucketStart).toISOString(),
       snapshot_verified_at: new Date(verifiedAt).toISOString(),
+      ...tokens,
     });
   }
+  // Same-session collisions inside one batch would make the LWW upsert's
+  // ON CONFLICT affect a row twice (Postgres error). Keep the LAST record:
+  // the append-only CLI queue writes later records with newer stamps.
+  const stateMap = new Map<string, Record<string, unknown>>();
+  for (const r of states) stateMap.set(r.source + "|" + r.session_id, r);
+  const stateRows = Array.from(stateMap.values());
 
-  if ((!Array.isArray(buckets) || buckets.length === 0) && watermarks.length === 0) {
+  if ((!Array.isArray(buckets) || buckets.length === 0) && stateRows.length === 0) {
     return json({ error: "No usage buckets provided" }, 400);
   }
   if (buckets.length > 500) {
@@ -205,30 +225,19 @@ export default async function (req: Request): Promise<Response> {
 
   if (upsertErr) return json({ error: upsertErr.message }, 500);
 
-  if (watermarks.length > 0) {
-    // Insert AFTER the bucket rows of the same upload landed, so a watermark
-    // never covers hours whose owning rows failed to write. Watermark rows
-    // are IMMUTABLE history keyed by the full window identity
-    // (user_id, device_id, source, window_start, window_end): a re-delivered
-    // watermark (queue/upload retry of the SAME verified window) is a no-op
-    // (DO NOTHING), so updated_at stays the FIRST-upload time and a transport
-    // retry can never masquerade as a fresher snapshot in owner selection.
-    const wmRows = watermarks.map((w) => ({
-      user_id: userId,
-      device_id: deviceId,
-      source: w.source,
-      window_start: w.window_start,
-      window_end: w.window_end,
-      first_covered_hour: w.first_covered_hour,
-      snapshot_verified_at: w.snapshot_verified_at,
-    }));
-    const { error: wmErr } = await client.database
-      .from("tokentracker_account_sync_watermarks")
-      .upsert(wmRows, {
-        onConflict: "user_id,device_id,source,window_start,window_end",
-        ignoreDuplicates: true,
-      });
-    if (wmErr) return json({ error: wmErr.message }, 500);
+  if (stateRows.length > 0) {
+    // Write AFTER the bucket rows of the same upload landed, so canonical
+    // session state never advances for an upload whose device-level rows
+    // failed. The rpc applies a STRICTLY-newer LWW guard
+    // (EXCLUDED.snapshot_verified_at > stored): replays are idempotent and
+    // a transport retry of an older observation can never displace a newer
+    // one. Equal-stamp conflicts keep the first-applied row (stable under
+    // retries).
+    const { error: stateErr } = await client.database.rpc(
+      "tokentracker_upsert_account_session_states",
+      { p_user_id: userId, p_states: stateRows },
+    );
+    if (stateErr) return json({ error: stateErr.message }, 500);
   }
 
   return json({ ok: true, inserted: rows.length, skipped: 0 });

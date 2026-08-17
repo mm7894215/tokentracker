@@ -1703,8 +1703,8 @@ async function cmdSync(argv, context = {}) {
       const endTime = Math.floor(nowMs / 1000);
       // Align the REAL fetch start down to a half-hour boundary so the API
       // range fully contains every bucket it can touch (a raw 08:37 start
-      // would only partially cover the 08:30 bucket) and the watermark
-      // asserts exactly the same range the API was queried with.
+      // would only partially cover the 08:30 bucket) - session bucket floors
+      // never straddle the queried range.
       const HALF_HOUR_SEC = 30 * 60;
       const startTime = Math.max(
         1,
@@ -1728,8 +1728,9 @@ async function cmdSync(argv, context = {}) {
           // An empty payload parses as a pure no-op: the TRAE absence
           // contract is NOT PROVEN (no evidence that a missing session means
           // deleted/zero), so an empty response asserts nothing - no usage
-          // mutation and no watermark. Non-empty snapshots append the
-          // watermark that displaces stale cross-device tuples.
+          // mutation and no session states. Non-empty snapshots append one
+          // canonical session-state observation per CHANGED session (the
+          // cloud LWW upsert reconciles cross-device versions).
           {
             if (progress?.enabled && traeCnSessions.length > 0) {
               progress.start(
@@ -1745,6 +1746,12 @@ async function cmdSync(argv, context = {}) {
               onProgress: makeProviderProgress("TRAE Work CN"),
               windowStartMs: startTime * 1000,
               windowEndMs: endTime * 1000,
+              // The LOGICAL fetch stamp carried into every session state's
+              // snapshot_verified_at: the same clock that produced the query
+              // range, not the later enqueue moment (append-only queue
+              // replays it verbatim, so transport retries never fake
+              // freshness).
+              snapshotVerifiedAtMs: nowMs,
             });
             // A partially malformed snapshot throws inside the parser (fail
             // closed - it must not become the authoritative window state);
@@ -3538,10 +3545,10 @@ async function drainQueueToCloud({ baseUrl, deviceToken, queuePath, queueStatePa
   for (let batch = 0; batch < maxBatches; batch++) {
     if (offset >= queueSize) break;
     const result = await readQueueBatch(queuePath, offset, limit);
-    // A watermark-only tail (e.g. a sync whose reconciled buckets were all
-    // unchanged) is still a meaningful upload: it advances the account-sync
-    // coverage that displaces stale cross-device tuples cloud-side.
-    if (result.buckets.length === 0 && result.watermarks.length === 0) break;
+    // A states-only tail (e.g. a retry batch whose bucket rows already
+    // uploaded) is still a meaningful upload: it advances the canonical
+    // session corrections cloud-side.
+    if (result.buckets.length === 0 && result.sessionStates.length === 0) break;
 
     const root = baseUrl.replace(/\/$/, "");
     const anonKey = process.env.TOKENTRACKER_INSFORGE_ANON_KEY || "";
@@ -3556,7 +3563,9 @@ async function drainQueueToCloud({ baseUrl, deviceToken, queuePath, queueStatePa
       headers,
       body: JSON.stringify({
         hourly: result.buckets,
-        ...(result.watermarks.length > 0 ? { account_watermarks: result.watermarks } : {}),
+        ...(result.sessionStates.length > 0
+          ? { account_session_states: result.sessionStates }
+          : {}),
       }),
     });
 
@@ -3594,19 +3603,18 @@ async function readQueueBatch(queuePath, startOffset, maxBuckets) {
   const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
 
   const bucketMap = new Map();
-  // Account-sync watermarks (kind: "account_sync_watermark") are queue
+  // Account session states (kind: "account_session_state") are queue
   // control records, not usage rows: collect them separately so they ride
   // the same upload (after the bucket rows in file order) without entering
-  // the bucket stream. Watermarks are IMMUTABLE history: collect EVERY
-  // unique (source, window_start, window_end) — an older window must never
-  // be dropped just because a newer rolling window was appended later, or
-  // historical ownership would be lost exactly when the 30-day window
-  // slides past a corrected bucket. first_covered_hour / snapshot_verified_at
-  // ride along verbatim: the append-only queue replays the ORIGINAL fetch
-  // stamp on every transport retry, so a retry never fakes logical
-  // freshness. (The ingest edge caps a batch at 50; each sync appends one
-  // record, well under the cap.)
-  const watermarkMap = new Map();
+  // the bucket stream. Keyed by (source, session_id) LAST-WINS: the
+  // append-only queue writes a session's newer observation after its older
+  // one, and only the latest per session may reach the ingest batch (a
+  // duplicate would make the cloud ON CONFLICT affect one row twice).
+  // snapshot_verified_at rides along verbatim from the ORIGINAL fetch, so a
+  // transport retry never fakes logical freshness. (The ingest edge caps a
+  // batch at 500 states; a fresh device's first sync appends one record per
+  // observed session, well under the cap for a 30-day TRAE window.)
+  const sessionStateMap = new Map();
   let offset = startOffset;
   let linesRead = 0;
   for await (const line of rl) {
@@ -3619,26 +3627,32 @@ async function readQueueBatch(queuePath, startOffset, maxBuckets) {
     } catch (_e) {
       continue;
     }
-    if (bucket?.kind === "account_sync_watermark") {
-      if (typeof bucket.source === "string" && bucket.source.trim()) {
-        const wmSource = bucket.source.trim().toLowerCase();
-        const wmKey = wmSource + "|" + bucket.window_start + "|" + bucket.window_end;
-        if (!watermarkMap.has(wmKey)) {
-          watermarkMap.set(wmKey, {
-            source: wmSource,
-            window_start: bucket.window_start,
-            window_end: bucket.window_end,
-            ...(typeof bucket.first_covered_hour === "string" && bucket.first_covered_hour
-              ? { first_covered_hour: bucket.first_covered_hour }
-              : {}),
-            ...(typeof bucket.snapshot_verified_at === "string" && bucket.snapshot_verified_at
-              ? { snapshot_verified_at: bucket.snapshot_verified_at }
-              : {}),
-          });
-        }
+    if (bucket?.kind === "account_session_state") {
+      if (typeof bucket.source === "string" && typeof bucket.session_id === "string" && bucket.session_id.trim()) {
+        const ssSource = bucket.source.trim().toLowerCase();
+        sessionStateMap.set(ssSource + "|" + bucket.session_id.trim(), {
+          source: ssSource,
+          session_id: bucket.session_id.trim(),
+          model: typeof bucket.model === "string" ? bucket.model : "",
+          bucket_start: typeof bucket.bucket_start === "string" ? bucket.bucket_start : "",
+          input_tokens: Number(bucket.input_tokens) || 0,
+          output_tokens: Number(bucket.output_tokens) || 0,
+          cached_input_tokens: Number(bucket.cached_input_tokens) || 0,
+          cache_creation_input_tokens: Number(bucket.cache_creation_input_tokens) || 0,
+          reasoning_output_tokens: Number(bucket.reasoning_output_tokens) || 0,
+          total_tokens: Number(bucket.total_tokens) || 0,
+          ...(typeof bucket.snapshot_verified_at === "string" && bucket.snapshot_verified_at
+            ? { snapshot_verified_at: bucket.snapshot_verified_at }
+            : {}),
+        });
       }
       continue;
     }
+    // Pre-release watermark records from this feature branch's dev queues
+    // are obsolete control records: drop them instead of letting them enter
+    // the bucket stream (they carry no hour_start and would be skipped
+    // downstream anyway, but be explicit).
+    if (bucket?.kind === "account_sync_watermark") continue;
     const hourStart = typeof bucket?.hour_start === "string" ? bucket.hour_start : null;
     if (!hourStart) continue;
     const source = (typeof bucket?.source === "string" ? bucket.source.trim().toLowerCase() : "") || "codex";
@@ -3660,7 +3674,7 @@ async function readQueueBatch(queuePath, startOffset, maxBuckets) {
   stream.close?.();
   return {
     buckets: Array.from(bucketMap.values()),
-    watermarks: Array.from(watermarkMap.values()),
+    sessionStates: Array.from(sessionStateMap.values()),
     nextOffset: offset,
   };
 }

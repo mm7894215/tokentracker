@@ -16400,7 +16400,6 @@ function normalizeTraeCnState(raw) {
       sessions: {},
       prunedBeforeMs: 0,
       updatedAt: null,
-      lastWatermark: null,
     };
   }
   if (typeof raw !== "object" || Array.isArray(raw)) {
@@ -16418,20 +16417,7 @@ function normalizeTraeCnState(raw) {
     prunedBeforeMs:
       Number.isFinite(raw.prunedBeforeMs) && raw.prunedBeforeMs > 0 ? raw.prunedBeforeMs : 0,
     updatedAt: typeof raw.updatedAt === "string" ? raw.updatedAt : null,
-    lastWatermark: normalizeTraeCnLastWatermark(raw.lastWatermark),
   };
-}
-
-// Advisory watermark echo of the last appended account_sync_watermark. An
-// older CLI build silently drops it on state rewrite (it re-normalizes with
-// its own field list), which only costs one redundant watermark append -
-// cloud upserts are idempotent - so no state-version bump is needed.
-function normalizeTraeCnLastWatermark(raw) {
-  if (!raw || typeof raw !== "object") return null;
-  const start = typeof raw.window_start === "string" ? Date.parse(raw.window_start) : NaN;
-  const end = typeof raw.window_end === "string" ? Date.parse(raw.window_end) : NaN;
-  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return null;
-  return { window_start: raw.window_start, window_end: raw.window_end };
 }
 
 function isValidTraeCnTotals(totals) {
@@ -16613,87 +16599,67 @@ function assertTraeCnBucketCovers(bucketTotals, previousTotals) {
   }
 }
 
-// Account-sync watermark: a queue record (kind: "account_sync_watermark")
-// asserting that this device has just verified the account snapshot for the
-// closed window [window_start, window_end] against the TRAE CN API. The
-// cloud aggregation (account-usage-grouped RPC / leaderboard_hourly_dedup_v2,
-// mirrored by src/lib/account-usage-dedup.js) uses it to pick, per half-hour
-// bucket, ONE canonical owning device - the watermark with the greatest
-// window_end whose coverage FULLY CONTAINS the bucket (bucket start >=
-// first_covered_hour AND bucket end <= window_end; a partially covered bucket
-// is never claimed). Coverage starts at first_covered_hour - the half-hour
-// bucket of the snapshot's FIRST session - NOT at window_start: the contract
-// probes (2026-08-17, trae-cn-contract-evidence-2026-08-17.json) PROVE
-// deterministic window-filtered enumeration from the first observed data
-// point onward (exact-subset cross-check, historical rows addressable,
-// api_total == rows across 9 pages), but "no row before the first data
-// point" cannot be distinguished from an API index/truncation boundary, so
-// that leading range asserts nothing and keeps the legacy dedup. This also
-// makes the empty-payload no-watermark rule a corollary (no first data
-// point -> no coverage) instead of a special case. Watermark rows are
-// IMMUTABLE history: identity is
-// (user_id, device_id, source, window_start, window_end), so an old window
-// is never overwritten by a newer rolling window - once a device corrected a
-// historical bucket, that ownership survives the 30-day window sliding past
-// it (the covering watermark row is still in the table). Cloud-side owner
-// freshness is window_end DESC, window_start DESC, snapshot_verified_at
-// DESC, device_id. snapshot_verified_at is the LOGICAL fetch time (stamped
-// once per real fetch, replayed verbatim from the append-only queue on
-// every transport retry), so a genuinely newer fetch of the SAME window
-// beats an older one regardless of device_id, while an old snapshot's late
-// retry - reusing its original timestamp - cannot. updated_at (first-upload
-// wall time) is NOT freshness.
-// Appended AFTER the bucket rows of the same sync so the queue ordering
-// guarantees a device's rows always land before the watermark covering them.
-// Bucket-row readers skip this record via its kind field (it carries no
-// hour_start and is not a usage row).
-function watermarkWindow(windowStartMs, windowEndMs) {
-  return {
-    window_start: new Date(windowStartMs).toISOString(),
-    window_end: new Date(windowEndMs).toISOString(),
-  };
-}
-
-function isSameTraeCnWatermark(lastWatermark, windowStartMs, windowEndMs) {
-  if (!lastWatermark) return false;
-  if (!Number.isFinite(windowStartMs) || !Number.isFinite(windowEndMs)) return false;
-  return (
-    Date.parse(lastWatermark.window_start) === windowStartMs &&
-    Date.parse(lastWatermark.window_end) === windowEndMs
-  );
-}
-
-async function appendTraeCnSyncWatermark({
-  queuePath,
-  windowStartMs,
-  windowEndMs,
-  firstCoveredMs,
-  verifiedAtMs,
-}) {
-  if (
-    !Number.isFinite(windowStartMs) ||
-    !Number.isFinite(windowEndMs) ||
-    windowEndMs <= windowStartMs ||
-    // Coverage must start inside the verified window (the snapshot's first
-    // data bucket) and carry a logical verification time; without both the
-    // record asserts nothing and is not appended.
-    !Number.isFinite(firstCoveredMs) ||
-    firstCoveredMs < windowStartMs ||
-    firstCoveredMs >= windowEndMs ||
-    !Number.isFinite(verifiedAtMs)
-  ) {
-    return false;
+// Account session state: a queue record (kind: "account_session_state")
+// carrying the CANONICAL observation of ONE provider-side TRAE CN session.
+// Cloud truth for trae-cn lives at the session level
+// (tokentracker_account_session_states; ingest edge upserts via
+// tokentracker_upsert_account_session_states): identity is
+// (user_id, source, session_id) - device_id is NOT identity, because the
+// usage API request carries no device discriminator, so every device of the
+// account observes the same server-side session namespace (PROVEN
+// 2026-08-17: 137/137 sessions persisted across two independent fetches, 0
+// disappearances, one session revised upward KEPT its id, no duplicate ids,
+// cross-window queries return exact subsets).
+//
+// The three correction classes collapse into ONE whole-row replace:
+//   downward  S tokens 100 -> 60
+//   model     S model A -> B
+//   bucket    S bucket 10:00 -> 10:30
+// A fresh device with no cursor history uploads every session it observes;
+// the cloud LWW guard reconciles versions. ABSENCE is NOT PROVEN to mean
+// deletion, so nothing is ever emitted for sessions missing from a
+// non-empty snapshot, and an empty payload emits nothing at all.
+//
+// snapshot_verified_at is the CLIENT logical fetch stamp (the API exposes no
+// provider-side ordering signal - headers carry only CDN trace ids, rows
+// carry no revision). It is stamped once per real fetch and replayed
+// verbatim by this append-only queue; the cloud upsert applies strictly
+// newer (>) stamps only, so replays are idempotent and a transport retry of
+// an older observation cannot displace a newer one. Cross-device ordering
+// under clock skew is a documented residual risk, NOT strict correctness.
+//
+// Appended AFTER the bucket rows of the same sync (queue order guarantees a
+// device's rows land before the states describing them). Bucket-row readers
+// skip this record via its kind field (it carries no hour_start and is not
+// a usage row).
+async function appendTraeCnSessionStates({ queuePath, observations, verifiedAtMs }) {
+  if (!Array.isArray(observations) || observations.length === 0) return 0;
+  if (!Number.isFinite(verifiedAtMs)) {
+    throw new Error("Trae CN session states require a finite verification stamp.");
   }
-  const record = JSON.stringify({
-    kind: "account_sync_watermark",
-    source: TRAE_CN_SOURCE,
-    window_start: new Date(windowStartMs).toISOString(),
-    window_end: new Date(windowEndMs).toISOString(),
-    first_covered_hour: new Date(firstCoveredMs).toISOString(),
-    snapshot_verified_at: new Date(verifiedAtMs).toISOString(),
-  });
-  await fs.appendFile(queuePath, record + "\n", "utf8");
-  return true;
+  const verifiedAt = new Date(verifiedAtMs).toISOString();
+  const lines = [];
+  for (const obs of observations) {
+    const t = obs.totals;
+    lines.push(
+      JSON.stringify({
+        kind: "account_session_state",
+        source: TRAE_CN_SOURCE,
+        session_id: obs.sessionId,
+        model: obs.model,
+        bucket_start: obs.bucketStart,
+        input_tokens: t.input_tokens,
+        output_tokens: t.output_tokens,
+        cached_input_tokens: t.cached_input_tokens,
+        cache_creation_input_tokens: t.cache_creation_input_tokens,
+        reasoning_output_tokens: t.reasoning_output_tokens,
+        total_tokens: t.total_tokens,
+        snapshot_verified_at: verifiedAt,
+      }),
+    );
+  }
+  await fs.appendFile(queuePath, lines.join("\n") + "\n", "utf8");
+  return lines.length;
 }
 
 async function parseTraeCnApiIncremental({
@@ -16721,27 +16687,27 @@ async function parseTraeCnApiIncremental({
   const traeCnState = structuredClone(normalizeTraeCnState(cursors?.traeCn));
 
   if (sessions.length === 0) {
-    // Empty payload is a successful no-op: no usage mutation, NO watermark.
+    // Empty payload is a successful no-op: no usage mutation, no session
+    // state records.
     //
     // Evidence check (2026-08-16, two real fetches 17min apart over the same
     // account: 137 -> 141 sessions, 0 disappeared, 0 rows changed) shows the
     // session set is stable, but NOTHING proves 'absent from the response'
     // means 'authoritatively deleted / zero' — so the absence contract is
     // NOT PROVEN and must stay symmetric everywhere: a session missing from
-    // a non-empty snapshot is never retracted locally, and an empty response
-    // must not assert an authoritative-zero window that would displace other
-    // devices' tuples cloud-side. Fresh-device displacement rides on
-    // non-empty snapshots only.
+    // a non-empty snapshot never emits a retraction, and an empty response
+    // asserts nothing at all. Canonical corrections ride on explicit
+    // observations only.
     return { recordsProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
   }
 
   // Full prevalidation + in-payload dedupe BEFORE any cursor/bucket mutation.
   //
-  // ANY malformed row fails the whole snapshot closed. The sync watermark
-  // asserts this device fully verified the account window, so a partially
-  // understood snapshot (99 valid + 1 uninterpretable row) must never be
-  // enqueued or watermarked: it would become the canonical cloud state for
-  // the window. The provider-level try/catch in cmdSync keeps the failure
+  // ANY malformed row fails the whole snapshot closed. Canonical session
+  // states assert this device actually understood the snapshot, so a
+  // partially understood snapshot (99 valid + 1 uninterpretable row) must
+  // never be enqueued: it would become the canonical cloud state. The
+  // provider-level try/catch in cmdSync keeps the failure
   // isolated (other providers sync on) and the error message carries only
   // the count + reason - no session ids, tokens, or credentials. Confirmed
   // LEGAL variations must not land here: absent cache fields are already
@@ -16776,7 +16742,7 @@ async function parseTraeCnApiIncremental({
   if (skippedRows > 0) {
     // Partial snapshots are not authoritative: one uninterpretable row means
     // the window was NOT fully verified, so fail closed - no bucket rows, no
-    // watermark, no cursor commit. The next sync replays from the same
+    // session states, no cursor commit. The next sync replays from the same
     // cursor state (idempotent).
     throw new Error(
       `Trae CN snapshot is not authoritative: ${skippedRows} malformed row${skippedRows !== 1 ? "s" : ""} (first: ${firstSkipReason}).`,
@@ -16815,8 +16781,11 @@ async function parseTraeCnApiIncremental({
     traeCnState.prunedBeforeMs = windowStartMs;
   }
 
-  // Deterministic: process unique session ids in sorted order.
+  // Deterministic: process unique session ids in sorted order. Sessions
+  // whose canonical observation changed (or that were never seen) are also
+  // collected for the account_session_state queue records.
   const sessionIds = [...bySession.keys()].sort();
+  const changedObservations = [];
   for (const sessionId of sessionIds) {
     const current = bySession.get(sessionId);
     const previousEntry = traeCnState.sessions[sessionId];
@@ -16854,39 +16823,31 @@ async function parseTraeCnApiIncremental({
       totals: { ...current.totals },
       updatedAt: new Date().toISOString(),
     };
+    changedObservations.push({
+      sessionId,
+      model: current.model,
+      bucketStart: current.bucketStart,
+      totals: current.totals,
+    });
     eventsAggregated += 1;
     index += 1;
     if (cb) cb({ index, total, eventsAggregated, bucketsQueued: touchedBuckets.size });
   }
 
   const bucketsQueued = await enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets });
-  // Assert the verified window only after the reconciled bucket rows are
-  // durably queued; a failure here aborts before cursor commit, so the next
-  // sync replays the (idempotent) reconciliation and re-appends both. As in
-  // the empty-payload branch, re-asserting the SAME window as the last sync
-  // is redundant - skip it so a fixed-now no-change sync stays byte-identical.
-  if (!isSameTraeCnWatermark(traeCnState.lastWatermark, windowStartMs, windowEndMs)) {
-    // Coverage starts at the snapshot's FIRST data bucket (min bucketStart):
-    // enumeration is only proven from the first observed session onward.
-    let firstCoveredMs = Infinity;
-    for (const id of sessionIds) {
-      const bucketMs = Date.parse(bySession.get(id).bucketStart);
-      if (Number.isFinite(bucketMs) && bucketMs < firstCoveredMs) firstCoveredMs = bucketMs;
-    }
-    // snapshot_verified_at is stamped once per real fetch; the append-only
-    // queue replays it verbatim, so transport retries never fake freshness.
-    const verifiedAtMs = Number.isFinite(snapshotVerifiedAtMs) ? snapshotVerifiedAtMs : Date.now();
-    const watermarkAppended = await appendTraeCnSyncWatermark({
-      queuePath,
-      windowStartMs,
-      windowEndMs,
-      firstCoveredMs,
-      verifiedAtMs,
-    });
-    if (watermarkAppended) {
-      traeCnState.lastWatermark = watermarkWindow(windowStartMs, windowEndMs);
-    }
-  }
+  // Emit canonical session observations only after the reconciled bucket
+  // rows are durably queued; a failure here aborts before cursor commit, so
+  // the next sync replays the (idempotent) reconciliation and re-appends
+  // both. snapshot_verified_at is stamped once per real fetch; the
+  // append-only queue replays it verbatim, so transport retries never fake
+  // freshness. Unchanged sessions emit nothing - a fixed-now no-change sync
+  // stays byte-identical.
+  const verifiedAtMs = Number.isFinite(snapshotVerifiedAtMs) ? snapshotVerifiedAtMs : Date.now();
+  await appendTraeCnSessionStates({
+    queuePath,
+    observations: changedObservations,
+    verifiedAtMs,
+  });
   const updatedAt = new Date().toISOString();
   hourlyState.updatedAt = updatedAt;
   traeCnState.updatedAt = updatedAt;

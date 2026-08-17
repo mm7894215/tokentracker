@@ -38,6 +38,9 @@ function lastTraeRow(queuePath, model, hourStart) {
   return queueRows(queuePath)
     .filter(
       (row) =>
+        // Usage rows only: the queue also carries account_session_state
+        // control records (same source/model, no hour_start).
+        !row.kind &&
         row.source === "trae-cn" &&
         row.model === model &&
         (hourStart === undefined || row.hour_start === hourStart),
@@ -328,7 +331,7 @@ test("conflicting duplicate ids and malformed rows fail before any mutation", as
 
   // A malformed row FAILS THE WHOLE SNAPSHOT closed (P0: a partially
   // understood snapshot must never become the authoritative window state -
-  // no bucket rows, no watermark, no cursor commit). Confirmed-legal
+  // no bucket rows, no session states, no cursor commit). Confirmed-legal
   // variations (absent cache fields) are handled above and stay legal.
   const mixedQueue = tempQueue();
   const cursorsMixed = {};
@@ -409,12 +412,12 @@ test("empty payload is a no-op and preserves existing contributions", async (t) 
   assert.equal(lastTraeRow(queuePath, "doubao-pro").total_tokens, 110);
 });
 
-test("empty payload asserts nothing: no watermark, no cursor commit (absence contract NOT PROVEN)", async (t) => {
+test("empty payload asserts nothing: no usage mutation, no session states (absence contract NOT PROVEN)", async (t) => {
   // Evidence: two real fetches 17min apart (137 -> 141 sessions, 0
   // disappeared, 0 changed) show a stable session set, but nothing proves
   // that an absent session means deleted/zero. An empty response therefore
-  // asserts NOTHING - no usage mutation AND no account_sync_watermark that
-  // would displace other devices' tuples cloud-side.
+  // asserts NOTHING - no usage mutation AND no account_session_state
+  // observation that could displace another device's canonical rows.
   const { dir, queuePath } = tempQueue();
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const cursors = {};
@@ -430,16 +433,11 @@ test("empty payload asserts nothing: no watermark, no cursor commit (absence con
   });
   assert.equal(empty.recordsProcessed, 0);
   assert.equal(empty.bucketsQueued, 0);
-  assert.equal(fs.readFileSync(queuePath, "utf8"), before, "no watermark appended for an empty response");
-  assert.equal(
-    cursors.traeCn.lastWatermark,
-    null,
-    "the absence contract is not proven - empty asserts no verified window",
-  );
+  assert.equal(fs.readFileSync(queuePath, "utf8"), before, "no session state appended for an empty response");
   assert.equal(cursors.traeCn.sessions.s1.totals.input_tokens, 100, "contribution preserved");
 });
 
-test("a partial snapshot (99 valid + 1 malformed) publishes no watermark even with a window", async (t) => {
+test("a partial snapshot (99 valid + 1 malformed) publishes no session states even with a window", async (t) => {
   const { dir, queuePath } = tempQueue();
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const cursors = {};
@@ -455,7 +453,7 @@ test("a partial snapshot (99 valid + 1 malformed) publishes no watermark even wi
     }),
     /not authoritative/,
   );
-  assert.equal(fs.existsSync(queuePath), false, "neither bucket rows nor a watermark may land");
+  assert.equal(fs.existsSync(queuePath), false, "neither bucket rows nor session states may land");
   assert.equal(cursors.hourly, undefined, "previous canonical state untouched locally");
 });
 test("cursors survive a serialize/parse restart and a later correction", async (t) => {
@@ -646,23 +644,24 @@ test("window prune drops pre-window sessions monotonically and never rewinds", a
   assert.ok(cursors.traeCn.sessions["new-s"], "in-window entry kept");
   assert.equal(cursors.traeCn.prunedBeforeMs, windowStartMs);
 
-  // An earlier window start must not rewind the watermark or re-prune; a
-  // re-reported in-window session still reconciles against its stored entry.
+  // An earlier window start must not rewind the prune watermark
+  // (prunedBeforeMs) or re-prune; a re-reported in-window session still
+  // reconciles against its stored entry.
   await parseTraeCnApiIncremental({
     sessions: [sessionRow({ session_id: "new-s", usage_time: T2 })],
     cursors,
     queuePath,
     windowStartMs: (T1 + 60) * 1000,
   });
-  assert.equal(cursors.traeCn.prunedBeforeMs, windowStartMs, "watermark never rewinds");
+  assert.equal(cursors.traeCn.prunedBeforeMs, windowStartMs, "prune watermark never rewinds");
   assert.ok(cursors.traeCn.sessions["new-s"]);
 });
 
-test("watermark record carries first_covered_hour + snapshot_verified_at (coverage + logical freshness)", async (t) => {
+test("session state records carry the canonical observation + snapshot_verified_at (logical freshness)", async (t) => {
   const { dir, queuePath } = tempQueue();
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const cursors = {};
-  const T_LATE = 1_700_003_500; // 23:05:00Z -> 23:00 bucket (the FIRST data bucket here is 22:00 from s1)
+  const T_LATE = 1_700_003_500; // 23:05:00Z -> 23:00 bucket
   const verifiedAt = 1_700_010_000_000;
   await parseTraeCnApiIncremental({
     sessions: [sessionRow(), sessionRow({ session_id: "s2", usage_time: T_LATE })],
@@ -672,18 +671,25 @@ test("watermark record carries first_covered_hour + snapshot_verified_at (covera
     windowEndMs: 1_700_010_000_000,
     snapshotVerifiedAtMs: verifiedAt,
   });
-  const wm = queueRows(queuePath).find((r) => r.kind === "account_sync_watermark");
-  assert.ok(wm, "watermark appended for a non-empty snapshot");
-  assert.equal(wm.first_covered_hour, B1, "coverage starts at the snapshot's FIRST data bucket (22:00)");
+  const states = queueRows(queuePath).filter((r) => r.kind === "account_session_state");
+  assert.equal(states.length, 2, "one canonical observation per session in the snapshot");
+  const byId = new Map(states.map((r) => [r.session_id, r]));
+  const s1 = byId.get("s1");
+  assert.ok(s1, "s1 observation queued");
+  assert.equal(s1.source, "trae-cn");
+  assert.equal(s1.model, "doubao-pro");
+  assert.equal(s1.bucket_start, B1, "bucket_start is the session's half-hour floor (22:00)");
+  assert.equal(s1.input_tokens, 100, "token columns mirror the session totals");
+  assert.equal(s1.total_tokens, 110);
   assert.equal(
-    wm.snapshot_verified_at,
+    s1.snapshot_verified_at,
     new Date(verifiedAt).toISOString(),
     "logical fetch stamp is the injected real-fetch time",
   );
-  assert.ok(Date.parse(wm.first_covered_hour) >= 1_699_000_000_000, "coverage start within the window");
+  assert.equal(byId.get("s2").bucket_start, "2023-11-14T23:00:00.000Z");
 });
 
-test("transport retry replays the ORIGINAL watermark record verbatim (append-only queue)", async (t) => {
+test("transport retry replays the ORIGINAL session state record verbatim (append-only queue)", async (t) => {
   const { dir, queuePath } = tempQueue();
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const cursors = {};

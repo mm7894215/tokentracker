@@ -1,98 +1,186 @@
 "use strict";
 
 /**
- * Account-level cross-device dedup - JS reference implementation.
+ * Account-level cross-device truth - JS reference implementation.
  *
  * Account-level sources (ACCOUNT_LEVEL_SOURCES in src/lib/source-metadata.js)
  * come from a per-ACCOUNT cloud API, so every device that syncs them stores
- * its own copy of the SAME account data. Worse, TRAE CN's API returns
- * correctable snapshots, not append-only events: a session can be re-reported
- * with a smaller total, a different model, or a shifted time bucket. Two
- * devices therefore hold different snapshot VERSIONS of one account hour, and
- * the old cloud aggregation - per (hour, source, model) pick MAX(total_tokens)
- * - stitches incompatible versions together:
+ * its own copy of the SAME account data. How to dedup depends on the source:
  *
- *   downward correction: old device H/A=100, fresh device H/A=60 -> MAX=100
- *   model migration:     old device H/A=100, fresh device H/B=100 -> 200
- *   bucket migration:    old device 10:00/A=100, fresh 10:30/A=100 -> 200
+ *   - 'cursor' has NO stable session identity: its rows are identical across
+ *     devices, so the legacy whole-row MAX pick per (hour, source, model)
+ *     dedups them (dedupeAccountLevelRows below).
+ *   - 'trae-cn' is a CORRECTABLE snapshot: totals can be revised down, a
+ *     session can move to another model or another half-hour. Hour-level
+ *     dedup CANNOT express that (a fresh device's first data bucket cannot
+ *     safely displace earlier hours - that would need an unproven "absent =
+ *     deleted" contract - and a 10:00 -> 10:30 bucket migration strands the
+ *     old hour). Canonical truth for trae-cn therefore lives at the SESSION
+ *     level (tokentracker_account_session_states; migrations/
+ *     20260817120000_account-session-states.sql): identity is
+ *     (user_id, source, session_id) - device_id is NOT identity, because the
+ *     usage API carries no device discriminator. Every observation of one
+ *     session whole-row-replaces the previous state under a strict LWW
+ *     guard, so the three correction classes collapse into ONE operation:
  *
- * The fix: every successful account-source sync appends a WATERMARK record
- * (kind: "account_sync_watermark") asserting the closed window that device
- * just verified against the API. Aggregation then picks, per hour, ONE
- * canonical owning device - the freshest watermark whose window covers that
- * hour - and counts ONLY that device's rows for the whole hour (every model;
- * a model the owner lacks counts as 0). A fresh device that has never seen
- * the stale tuples still displaces them, because ownership is asserted per
- * hour RANGE, not per tuple. Hours covered by no watermark (sources or
- * devices predating watermarks, e.g. cursor) keep the legacy whole-row MAX
- * dedup, so nothing regresses for watermark-less sources.
+ *     downward  S tokens 100 -> 60        replaced, total 60
+ *     model     S model A -> B            replaced, only B remains
+ *     bucket    S bucket 10:00 -> 10:30   replaced, only 10:30 remains
+ *
+ * ABSENCE is NOT PROVEN to mean deletion, so nothing ever deletes a session
+ * row: a session missing from a non-empty snapshot asserts nothing, and an
+ * empty snapshot asserts nothing at all.
+ *
+ * Freshness: the TRAE API exposes no provider-side ordering signal (probed
+ * 2026-08-17: headers carry only CDN trace ids, rows carry no revision), so
+ * snapshot_verified_at is the CLIENT logical fetch stamp (best-effort
+ * cross-device ordering under clock skew - documented residual risk, NOT
+ * strict correctness). It is stamped once per real fetch and replayed
+ * verbatim by the append-only queue; the LWW guard applies strictly newer
+ * (>) stamps only, so retries are idempotent and a re-delivered older
+ * observation cannot displace a newer one. Equal stamps keep the
+ * first-applied row (stable under retries).
  *
  * This module is the executable specification of that semantics; the
- * deployed SQL (scripts/ops/account-usage-grouped-rpc.sql account branch and
- * migrations/* leaderboard_hourly_dedup_v2) implements the same algorithm and
- * MUST stay in sync - test/account-usage-dedup.test.js pins both.
+ * deployed SQL (migrations/20260817120000_account-session-states.sql upsert,
+ * scripts/ops/account-usage-grouped-rpc.sql + leaderboard_hourly_dedup_v2
+ * aggregation branches) implements the same algorithm and MUST stay in sync
+ * - test/account-usage-dedup.test.js pins both.
  */
 
-const WATERMARK_KIND = "account_sync_watermark";
+// Queue record kind the TRAE CN parser emits for one changed session's
+// canonical observation (src/lib/rollout.js appendTraeCnSessionStates).
+const SESSION_STATE_KIND = "account_session_state";
 
 function parseMs(value) {
   const ms = Date.parse(value);
   return Number.isFinite(ms) ? ms : null;
 }
 
-// Bucket span: usage buckets are half-hours, and a watermark only claims a
-// bucket it FULLY contains (bucketStart >= window_start AND bucketEnd <=
-// window_end). A partially verified bucket (e.g. the in-progress final
-// half-hour of a rolling window ending at floor(now)) is NOT claimed.
-const BUCKET_SPAN_MS = 30 * 60 * 1000;
+// Token columns that make up a canonical session state row (the SQL table's
+// non-key, non-metadata columns).
+const TOKEN_COLUMNS = [
+  "input_tokens",
+  "output_tokens",
+  "cached_input_tokens",
+  "cache_creation_input_tokens",
+  "reasoning_output_tokens",
+  "total_tokens",
+];
 
-// Mirrors SQL owner selection: full-containment coverage starting at
-// first_covered_hour, then ORDER BY window_end DESC, window_start DESC,
-// snapshot_verified_at DESC, device_id. A watermark missing
-// first_covered_hour / snapshot_verified_at owns nothing (the SQL columns are
-// NOT NULL; only the current CLI emits complete rows). snapshot_verified_at
-// is the LOGICAL fetch time replayed verbatim by the append-only queue, so a
-// genuinely newer fetch of the SAME window wins while a transport retry of
-// an old one cannot. updated_at never participates: watermark rows are
-// immutable history and updated_at is the FIRST-upload time.
-function pickOwnerWatermark(watermarks, hourStartMs) {
-  let best = null;
-  for (const wm of watermarks) {
-    const startMs = parseMs(wm.window_start);
-    const endMs = parseMs(wm.window_end);
-    if (startMs === null || endMs === null || endMs <= startMs) continue;
-    const coveredMs = parseMs(wm.first_covered_hour);
-    const verifiedMs = parseMs(wm.snapshot_verified_at);
-    if (coveredMs === null || verifiedMs === null) continue;
-    if (coveredMs < startMs || coveredMs >= endMs) continue;
-    if (hourStartMs < coveredMs || hourStartMs + BUCKET_SPAN_MS > endMs) continue;
-    if (!best) {
-      best = wm;
-      continue;
-    }
-    const bestEnd = parseMs(best.window_end) || 0;
-    const wmEnd = endMs;
-    if (wmEnd !== bestEnd) {
-      if (wmEnd > bestEnd) best = wm;
-      continue;
-    }
-    const bestStart = parseMs(best.window_start) || 0;
-    if (startMs !== bestStart) {
-      if (startMs > bestStart) best = wm;
-      continue;
-    }
-    const bestVerified = parseMs(best.snapshot_verified_at) ?? -Infinity;
-    if (verifiedMs !== bestVerified) {
-      if (verifiedMs > bestVerified) best = wm;
-      continue;
-    }
-    if (String(wm.device_id) < String(best.device_id)) best = wm;
+function normalizeStateRow(observation) {
+  const source = String(observation?.source ?? "").trim().toLowerCase();
+  const sessionId = String(observation?.session_id ?? "").trim();
+  if (!source || !sessionId) return null;
+  const verifiedMs = parseMs(observation?.snapshot_verified_at);
+  if (verifiedMs === null) return null;
+  const bucketStart = String(observation?.bucket_start ?? "");
+  if (parseMs(bucketStart) === null) return null;
+  const model = String(observation?.model ?? "");
+  if (!model) return null;
+  const row = {
+    source,
+    session_id: sessionId,
+    model,
+    bucket_start: bucketStart,
+    snapshot_verified_at: observation.snapshot_verified_at,
+  };
+  for (const column of TOKEN_COLUMNS) {
+    const value = Number(observation?.[column]);
+    row[column] = Number.isFinite(value) ? value : 0;
   }
-  return best;
+  return row;
 }
+
+/**
+ * Whole-row LWW replace of canonical session states - mirrors
+ * tokentracker_upsert_account_session_states() (migrations/
+ * 20260817120000_account-session-states.sql): a row applies only when its
+ * snapshot_verified_at is STRICTLY newer (>) than the stored one. Replays of
+ * the same observation are no-ops; equal stamps keep the first-applied row.
+ *
+ * @param {Map<string, object>} states - canonical table keyed by
+ *   `${source}|${session_id}` (mirrors the (user_id, source, session_id) PK
+ *   for one account; mutated in place).
+ * @param {Array<object>} observations - ingest batch (already deduped to one
+ *   row per session by the edge, like the SQL batch upsert requires).
+ * @returns {number} applied row count (mirrors the SQL ROW_COUNT return).
+ */
+function upsertAccountSessionStates(states, observations) {
+  const table = states instanceof Map ? states : new Map();
+  const batch = Array.isArray(observations) ? observations : [];
+  let applied = 0;
+  for (const observation of batch) {
+    const row = normalizeStateRow(observation);
+    if (!row) continue;
+    const key = `${row.source}|${row.session_id}`;
+    const stored = table.get(key);
+    if (!stored) {
+      table.set(key, row);
+      applied += 1;
+      continue;
+    }
+    const storedMs = parseMs(stored.snapshot_verified_at) ?? -Infinity;
+    const rowMs = parseMs(row.snapshot_verified_at) ?? -Infinity;
+    if (rowMs > storedMs) {
+      table.set(key, row);
+      applied += 1;
+    }
+  }
+  return applied;
+}
+
+/**
+ * Aggregate canonical session states into hourly rows - mirrors the trae-cn
+ * branch of account_usage_grouped (scripts/ops/account-usage-grouped-rpc.sql)
+ * and leaderboard_hourly_dedup_v2: SUM per (bucket_start, source, model),
+ * conversations = session count.
+ *
+ * @param {Map<string, object>|Array<object>} states
+ * @param {{from?: string, to?: string}} [opts] - optional [from, to) window.
+ * @returns {Array<object>} rows shaped like tokentracker_hourly aggregates.
+ */
+function aggregateSessionStates(states, opts = {}) {
+  const values = states instanceof Map ? [...states.values()] : Array.isArray(states) ? states : [];
+  const fromMs = parseMs(opts.from ?? "");
+  const toMs = parseMs(opts.to ?? "");
+  const grouped = new Map();
+  for (const state of values) {
+    const row = normalizeStateRow(state);
+    if (!row) continue;
+    const bucketMs = parseMs(row.bucket_start);
+    if (bucketMs === null) continue;
+    if (fromMs !== null && bucketMs < fromMs) continue;
+    if (toMs !== null && bucketMs >= toMs) continue;
+    const key = `${row.bucket_start}||${row.source}||${row.model}`;
+    const acc = grouped.get(key) || {
+      hour_start: row.bucket_start,
+      source: row.source,
+      model: row.model,
+      input_tokens: 0,
+      output_tokens: 0,
+      cached_input_tokens: 0,
+      cache_creation_input_tokens: 0,
+      reasoning_output_tokens: 0,
+      total_tokens: 0,
+      conversations: 0,
+    };
+    for (const column of TOKEN_COLUMNS) acc[column] += row[column];
+    acc.conversations += 1;
+    grouped.set(key, acc);
+  }
+  return [...grouped.values()].sort(
+    (a, b) =>
+      String(a.hour_start).localeCompare(String(b.hour_start)) ||
+      String(a.source).localeCompare(String(b.source)) ||
+      String(a.model).localeCompare(String(b.model)),
+  );
+}
+
 // Mirrors the legacy SQL DISTINCT ON (hour, source, model)
 // ORDER BY total_tokens DESC, updated_at DESC (device_id asc as the final
-// deterministic tiebreak).
+// deterministic tiebreak). Used ONLY for account-level sources without a
+// stable session identity ('cursor') and watermark-less history.
 function pickLegacyRow(rows) {
   let best = null;
   for (const row of rows) {
@@ -118,29 +206,19 @@ function pickLegacyRow(rows) {
 }
 
 /**
- * Dedupe account-level hourly rows across devices.
+ * Legacy whole-row MAX dedup for account-level hourly rows WITHOUT a stable
+ * session identity ('cursor'): rows are identical across devices, so one
+ * canonical row per (hour, source, model) suffices. Sources with a session
+ * identity ('trae-cn') must instead aggregate from canonical session states
+ * (aggregateSessionStates) - never from per-device hourly rows.
  *
  * @param {Array<{device_id: string, hour_start: string, source: string,
  *   model: string, updated_at?: string, total_tokens: number}>} rows -
- *   every device's tokentracker_hourly-shaped rows for account-level sources.
- * @param {Array<{device_id: string, source: string, window_start: string,
- *   window_end: string, first_covered_hour: string, snapshot_verified_at:
- *   string, updated_at?: string}>} watermarks - per-device verified sync
- *   windows (tokentracker_account_sync_watermarks shape; coverage runs from
- *   first_covered_hour to window_end, NOT from window_start).
- * @returns {Array} canonical rows - one consistent snapshot per hour.
+ *   every device's tokentracker_hourly-shaped rows.
+ * @returns {Array} canonical rows - one consistent row per (hour, model).
  */
-function dedupeAccountLevelRows(rows, watermarks = []) {
+function dedupeAccountLevelRows(rows) {
   if (!Array.isArray(rows)) return [];
-  const watermarkList = Array.isArray(watermarks) ? watermarks : [];
-  const watermarksBySource = new Map();
-  for (const wm of watermarkList) {
-    if (!wm || typeof wm.source !== "string") continue;
-    const list = watermarksBySource.get(wm.source) || [];
-    list.push(wm);
-    watermarksBySource.set(wm.source, list);
-  }
-
   // Group rows by (source, hour_start); keep original row objects untouched.
   const byHour = new Map();
   for (const row of rows) {
@@ -152,22 +230,7 @@ function dedupeAccountLevelRows(rows, watermarks = []) {
   }
 
   const out = [];
-  for (const [key, hourRows] of byHour) {
-    const source = key.split("||")[0];
-    const hourStartMs = parseMs(hourRows[0].hour_start);
-    if (hourStartMs === null) continue;
-    const candidates = watermarksBySource.get(String(source).toLowerCase()) || [];
-    const owner = pickOwnerWatermark(candidates, hourStartMs);
-    if (owner) {
-      // Watermark-covered hour: the owner's rows count exclusively; an owner
-      // with no rows at this hour means the account truly has 0 here and every
-      // other device's stale tuple is displaced.
-      for (const row of hourRows) {
-        if (String(row.device_id) === String(owner.device_id)) out.push(row);
-      }
-      continue;
-    }
-    // Uncovered hour (no watermark asserts it): legacy whole-row MAX dedup.
+  for (const [, hourRows] of byHour) {
     const byModel = new Map();
     for (const row of hourRows) {
       const modelKey = row.model || "unknown";
@@ -191,7 +254,10 @@ function sumTotalTokens(rows) {
 }
 
 module.exports = {
-  WATERMARK_KIND,
+  SESSION_STATE_KIND,
+  TOKEN_COLUMNS,
+  upsertAccountSessionStates,
+  aggregateSessionStates,
   dedupeAccountLevelRows,
   sumTotalTokens,
 };

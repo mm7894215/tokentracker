@@ -28,30 +28,23 @@
 --   * ACCOUNT-LEVEL sources (cursor, trae-cn) come from a per-ACCOUNT cloud
 --     API, NOT machine logs, so SUMming across devices multiplies one
 --     account's usage by its device count (the v0.42.0 double-count bug).
---     Dedup, do not add. HOW to dedup depends on whether the API is
---     append-only per window:
---       - cursor rows are identical across devices, and hours with NO
---         watermark coverage fall back to the legacy whole-row
---         per-(hour, model) MAX pick below.
+--     Dedup, do not add. HOW to dedup depends on the source's identity:
+--       - cursor rows are identical across devices (no session identity):
+--         the legacy whole-row per-(hour, model) MAX pick below.
 --       - trae-cn is a CORRECTABLE snapshot: totals can be revised down, a
---         session can move to another model or another half-hour. Two
---         devices then hold different snapshot VERSIONS of the same hour,
---         and a per-(hour, model) MAX stitches incompatible versions
---         together (a model migration keeps BOTH the old device's stale
---         model row and the fresh device's new row -> 2x). Every successful
---         account-source sync therefore appends a WATERMARK record
---         (kind: account_sync_watermark in the CLI queue; upserted by the
---         ingest edge into tokentracker_account_sync_watermarks) asserting
---         the closed window that device verified against the API. For an
---         hour covered by ANY watermark, the freshest covering watermark's
---         device OWNS the whole hour: only its rows count (all models; a
---         model it lacks is 0) and every other device's row for that hour
---         is displaced. A brand-new device with no prior cursor state still
---         displaces stale tuples, because ownership is asserted per hour
---         RANGE, not per tuple. Mirrored by src/lib/account-usage-dedup.js
---         (executable spec; semantics pinned by test/account-usage-dedup.test.js).
--- DEPLOYMENT: this function reads tokentracker_account_sync_watermarks —
--- apply the account-sync-watermarks migration BEFORE this updated RPC.
+--         session can move to another model or another half-hour. Hour-level
+--         dedup cannot express that (a fresh device's first data bucket
+--         cannot safely displace earlier hours), so trae-cn aggregates from
+--         tokentracker_account_session_states - ONE canonical row per
+--         (user, source, session_id), whole-row-replaced on every change by
+--         the LWW upsert (tokentracker_upsert_account_session_states).
+--         Downward / model / bucket corrections all collapse into that one
+--         replace; cross-device duplication collapses because device_id is
+--         NOT part of the identity. Absence never deletes (contract NOT
+--         PROVEN). Mirrored by src/lib/account-usage-dedup.js (executable
+--         spec; semantics pinned by test/account-usage-dedup.test.js).
+-- DEPLOYMENT: this function reads tokentracker_account_session_states —
+-- apply the account-session-states migration BEFORE this updated RPC.
 -- The account-level source list MUST stay in sync with ACCOUNT_LEVEL_SOURCES in
 -- src/lib/source-metadata.js (parity asserted by test/account-source-parity.test.js).
 --
@@ -112,42 +105,6 @@ AS $func$
   -- Account-level source list — keep in sync with src/lib/source-metadata.js.
   cfg AS (
     SELECT ARRAY['cursor', 'trae-cn']::text[] AS account_sources
-  ),
-  -- Per (account source, hour): the canonical owning device = the watermark
-  -- with the greatest window_end whose coverage FULLY CONTAINS the half-hour
-  -- bucket (NULL when none does, i.e. cursor and any watermark-less or only
-  -- partially-covered history). Full containment: bucket start >=
-  -- first_covered_hour AND bucket end <= window_end - the rolling sync
-  -- window starts bucket-aligned and ends at floor(now), so the in-progress
-  -- final bucket is honestly uncovered until a later sync fully contains it,
-  -- and coverage only starts at the snapshot's FIRST data bucket: the API
-  -- contract probes PROVE enumeration from the first observed session
-  -- onward, but nothing distinguishes "no rows before it" from an index
-  -- boundary, so that leading range stays legacy.
-  -- Freshness is window identity then LOGICAL fetch time (window_end,
-  -- window_start, snapshot_verified_at, device_id): a genuinely newer fetch
-  -- of the SAME window wins via snapshot_verified_at while a transport
-  -- retry replays the original stamp and cannot steal ownership.
-  -- updated_at is the FIRST-upload time of an immutable row and must never
-  -- participate.
-  acct_own AS (
-    SELECT ah.hour_start, ah.source,
-      (SELECT w.device_id
-         FROM tokentracker_account_sync_watermarks w
-        WHERE w.user_id = p_user_id
-          AND w.source = ah.source
-          AND ah.hour_start >= w.first_covered_hour
-          AND ah.hour_start + interval '30 minutes' <= w.window_end
-        ORDER BY w.window_end DESC, w.window_start DESC, w.snapshot_verified_at DESC, w.device_id
-        LIMIT 1) AS owner_device_id
-    FROM (
-      SELECT DISTINCT h.hour_start, h.source
-      FROM tokentracker_hourly h CROSS JOIN cfg
-      WHERE h.user_id = p_user_id
-        AND h.hour_start >= p_from
-        AND h.hour_start <  p_to
-        AND h.source = ANY(cfg.account_sources)
-    ) ah
   ),
   -- Stage 1: canonicalize to the raw hour grain.
   hourly AS (
@@ -218,36 +175,10 @@ AS $func$
 
     UNION ALL
 
-    -- Account-level, WATERMARK-COVERED hours: the owner device's rows count
-    -- exclusively (every model of that one snapshot; a model the owner lacks
-    -- is 0). NOT active-device-filtered: ownership follows verified
-    -- information, and an active-only filter would drop an hour whose
-    -- freshest covering sync came from a since-revoked device. An owner with
-    -- NO row at a covered hour legitimately yields nothing here — that is
-    -- the displacement of another device's stale tuple.
-    SELECT h.hour_start, h.source, h.model,
-      h.total_tokens::bigint                AS total_tokens,
-      h.input_tokens::bigint                AS input_tokens,
-      h.output_tokens::bigint               AS output_tokens,
-      h.cached_input_tokens::bigint         AS cached_input_tokens,
-      h.cache_creation_input_tokens::bigint AS cache_creation_input_tokens,
-      h.reasoning_output_tokens::bigint     AS reasoning_output_tokens,
-      h.conversations::bigint               AS conversations
-    FROM tokentracker_hourly h
-    JOIN acct_own o
-      ON  o.hour_start = h.hour_start
-      AND o.source     = h.source
-      AND o.owner_device_id = h.device_id
-    WHERE h.user_id = p_user_id
-      AND h.hour_start >= p_from
-      AND h.hour_start <  p_to
-
-    UNION ALL
-
-    -- Account-level, UNCOVERED hours (no watermark asserts them: cursor, or
-    -- trae-cn history older than every device's verified window): the legacy
-    -- whole-row MAX pick per (hour, source, model) — one real, internally
-    -- consistent row, never a per-column synth.
+    -- 'cursor' (account-level, no session identity): rows are identical
+    -- across devices, so the legacy whole-row MAX pick per
+    -- (hour, source, model) dedups them. NOT active-device-filtered:
+    -- account truth follows the account, not which device last synced.
     SELECT d.hour_start, d.source, d.model,
       d.total_tokens, d.input_tokens, d.output_tokens,
       d.cached_input_tokens, d.cache_creation_input_tokens,
@@ -263,15 +194,31 @@ AS $func$
         h.reasoning_output_tokens::bigint     AS reasoning_output_tokens,
         h.conversations::bigint               AS conversations
       FROM tokentracker_hourly h
-      JOIN acct_own o
-        ON  o.hour_start = h.hour_start
-        AND o.source     = h.source
-        AND o.owner_device_id IS NULL
       WHERE h.user_id = p_user_id
         AND h.hour_start >= p_from
         AND h.hour_start <  p_to
+        AND h.source = 'cursor'
       ORDER BY h.hour_start, h.source, h.model, h.total_tokens DESC, h.updated_at DESC
     ) d
+
+    UNION ALL
+
+    -- trae-cn: canonical account truth from session states (one row per
+    -- session after the LWW upsert). NOT active-device-filtered.
+    SELECT s.bucket_start AS hour_start, s.source, s.model,
+      SUM(s.total_tokens)::bigint                AS total_tokens,
+      SUM(s.input_tokens)::bigint                AS input_tokens,
+      SUM(s.output_tokens)::bigint               AS output_tokens,
+      SUM(s.cached_input_tokens)::bigint         AS cached_input_tokens,
+      SUM(s.cache_creation_input_tokens)::bigint AS cache_creation_input_tokens,
+      SUM(s.reasoning_output_tokens)::bigint     AS reasoning_output_tokens,
+      COUNT(*)::bigint                           AS conversations
+    FROM tokentracker_account_session_states s
+    WHERE s.user_id = p_user_id
+      AND s.bucket_start >= p_from
+      AND s.bucket_start <  p_to
+      AND s.source = 'trae-cn'
+    GROUP BY s.bucket_start, s.source, s.model
   ),
   -- Stage 2: bucket the canonical hour rows to tz-local trunc, then aggregate.
   loc AS (
