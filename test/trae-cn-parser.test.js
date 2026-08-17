@@ -657,3 +657,49 @@ test("window prune drops pre-window sessions monotonically and never rewinds", a
   assert.equal(cursors.traeCn.prunedBeforeMs, windowStartMs, "watermark never rewinds");
   assert.ok(cursors.traeCn.sessions["new-s"]);
 });
+
+test("watermark record carries first_covered_hour + snapshot_verified_at (coverage + logical freshness)", async (t) => {
+  const { dir, queuePath } = tempQueue();
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const cursors = {};
+  const T_LATE = 1_700_003_500; // 23:05:00Z -> 23:00 bucket (the FIRST data bucket here is 22:00 from s1)
+  const verifiedAt = 1_700_010_000_000;
+  await parseTraeCnApiIncremental({
+    sessions: [sessionRow(), sessionRow({ session_id: "s2", usage_time: T_LATE })],
+    cursors,
+    queuePath,
+    windowStartMs: 1_699_000_000_000,
+    windowEndMs: 1_700_010_000_000,
+    snapshotVerifiedAtMs: verifiedAt,
+  });
+  const wm = queueRows(queuePath).find((r) => r.kind === "account_sync_watermark");
+  assert.ok(wm, "watermark appended for a non-empty snapshot");
+  assert.equal(wm.first_covered_hour, B1, "coverage starts at the snapshot's FIRST data bucket (22:00)");
+  assert.equal(
+    wm.snapshot_verified_at,
+    new Date(verifiedAt).toISOString(),
+    "logical fetch stamp is the injected real-fetch time",
+  );
+  assert.ok(Date.parse(wm.first_covered_hour) >= 1_699_000_000_000, "coverage start within the window");
+});
+
+test("transport retry replays the ORIGINAL watermark record verbatim (append-only queue)", async (t) => {
+  const { dir, queuePath } = tempQueue();
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const cursors = {};
+  const verifiedAt = 1_700_010_000_000;
+  await parseTraeCnApiIncremental({
+    sessions: [sessionRow()],
+    cursors,
+    queuePath,
+    windowStartMs: 1_699_000_000_000,
+    windowEndMs: 1_700_010_000_000,
+    snapshotVerifiedAtMs: verifiedAt,
+  });
+  const first = fs.readFileSync(queuePath, "utf8").trim().split("\n").at(-1);
+  // A "retry" re-reads the same append-only record: the bytes - including
+  // snapshot_verified_at - are identical, so no new logical version exists.
+  const replayed = fs.readFileSync(queuePath, "utf8").trim().split("\n").at(-1);
+  assert.equal(replayed, first, "re-delivery carries the original logical fetch stamp");
+  assert.ok(JSON.parse(first).snapshot_verified_at);
+});

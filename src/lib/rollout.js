@@ -16619,15 +16619,30 @@ function assertTraeCnBucketCovers(bucketTotals, previousTotals) {
 // cloud aggregation (account-usage-grouped RPC / leaderboard_hourly_dedup_v2,
 // mirrored by src/lib/account-usage-dedup.js) uses it to pick, per half-hour
 // bucket, ONE canonical owning device - the watermark with the greatest
-// window_end whose window FULLY CONTAINS the bucket (bucket start >=
-// window_start AND bucket end <= window_end; a partially covered bucket is
-// never claimed). Watermark rows are IMMUTABLE history: identity is
+// window_end whose coverage FULLY CONTAINS the bucket (bucket start >=
+// first_covered_hour AND bucket end <= window_end; a partially covered bucket
+// is never claimed). Coverage starts at first_covered_hour - the half-hour
+// bucket of the snapshot's FIRST session - NOT at window_start: the contract
+// probes (2026-08-17, trae-cn-contract-evidence-2026-08-17.json) PROVE
+// deterministic window-filtered enumeration from the first observed data
+// point onward (exact-subset cross-check, historical rows addressable,
+// api_total == rows across 9 pages), but "no row before the first data
+// point" cannot be distinguished from an API index/truncation boundary, so
+// that leading range asserts nothing and keeps the legacy dedup. This also
+// makes the empty-payload no-watermark rule a corollary (no first data
+// point -> no coverage) instead of a special case. Watermark rows are
+// IMMUTABLE history: identity is
 // (user_id, device_id, source, window_start, window_end), so an old window
 // is never overwritten by a newer rolling window - once a device corrected a
 // historical bucket, that ownership survives the 30-day window sliding past
 // it (the covering watermark row is still in the table). Cloud-side owner
-// freshness is window_end DESC, window_start DESC, device_id - updated_at is
-// NOT freshness (a transport retry must not revive a stale snapshot).
+// freshness is window_end DESC, window_start DESC, snapshot_verified_at
+// DESC, device_id. snapshot_verified_at is the LOGICAL fetch time (stamped
+// once per real fetch, replayed verbatim from the append-only queue on
+// every transport retry), so a genuinely newer fetch of the SAME window
+// beats an older one regardless of device_id, while an old snapshot's late
+// retry - reusing its original timestamp - cannot. updated_at (first-upload
+// wall time) is NOT freshness.
 // Appended AFTER the bucket rows of the same sync so the queue ordering
 // guarantees a device's rows always land before the watermark covering them.
 // Bucket-row readers skip this record via its kind field (it carries no
@@ -16648,11 +16663,24 @@ function isSameTraeCnWatermark(lastWatermark, windowStartMs, windowEndMs) {
   );
 }
 
-async function appendTraeCnSyncWatermark({ queuePath, windowStartMs, windowEndMs }) {
+async function appendTraeCnSyncWatermark({
+  queuePath,
+  windowStartMs,
+  windowEndMs,
+  firstCoveredMs,
+  verifiedAtMs,
+}) {
   if (
     !Number.isFinite(windowStartMs) ||
     !Number.isFinite(windowEndMs) ||
-    windowEndMs <= windowStartMs
+    windowEndMs <= windowStartMs ||
+    // Coverage must start inside the verified window (the snapshot's first
+    // data bucket) and carry a logical verification time; without both the
+    // record asserts nothing and is not appended.
+    !Number.isFinite(firstCoveredMs) ||
+    firstCoveredMs < windowStartMs ||
+    firstCoveredMs >= windowEndMs ||
+    !Number.isFinite(verifiedAtMs)
   ) {
     return false;
   }
@@ -16661,6 +16689,8 @@ async function appendTraeCnSyncWatermark({ queuePath, windowStartMs, windowEndMs
     source: TRAE_CN_SOURCE,
     window_start: new Date(windowStartMs).toISOString(),
     window_end: new Date(windowEndMs).toISOString(),
+    first_covered_hour: new Date(firstCoveredMs).toISOString(),
+    snapshot_verified_at: new Date(verifiedAtMs).toISOString(),
   });
   await fs.appendFile(queuePath, record + "\n", "utf8");
   return true;
@@ -16673,6 +16703,7 @@ async function parseTraeCnApiIncremental({
   onProgress,
   windowStartMs,
   windowEndMs,
+  snapshotVerifiedAtMs,
 } = {}) {
   if (!Array.isArray(sessions)) {
     throw new Error("Trae CN sessions must be an array.");
@@ -16835,7 +16866,23 @@ async function parseTraeCnApiIncremental({
   // the empty-payload branch, re-asserting the SAME window as the last sync
   // is redundant - skip it so a fixed-now no-change sync stays byte-identical.
   if (!isSameTraeCnWatermark(traeCnState.lastWatermark, windowStartMs, windowEndMs)) {
-    const watermarkAppended = await appendTraeCnSyncWatermark({ queuePath, windowStartMs, windowEndMs });
+    // Coverage starts at the snapshot's FIRST data bucket (min bucketStart):
+    // enumeration is only proven from the first observed session onward.
+    let firstCoveredMs = Infinity;
+    for (const id of sessionIds) {
+      const bucketMs = Date.parse(bySession.get(id).bucketStart);
+      if (Number.isFinite(bucketMs) && bucketMs < firstCoveredMs) firstCoveredMs = bucketMs;
+    }
+    // snapshot_verified_at is stamped once per real fetch; the append-only
+    // queue replays it verbatim, so transport retries never fake freshness.
+    const verifiedAtMs = Number.isFinite(snapshotVerifiedAtMs) ? snapshotVerifiedAtMs : Date.now();
+    const watermarkAppended = await appendTraeCnSyncWatermark({
+      queuePath,
+      windowStartMs,
+      windowEndMs,
+      firstCoveredMs,
+      verifiedAtMs,
+    });
     if (watermarkAppended) {
       traeCnState.lastWatermark = watermarkWindow(windowStartMs, windowEndMs);
     }

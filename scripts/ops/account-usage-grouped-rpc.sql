@@ -114,25 +114,31 @@ AS $func$
     SELECT ARRAY['cursor', 'trae-cn']::text[] AS account_sources
   ),
   -- Per (account source, hour): the canonical owning device = the watermark
-  -- with the greatest window_end whose window FULLY CONTAINS the half-hour
+  -- with the greatest window_end whose coverage FULLY CONTAINS the half-hour
   -- bucket (NULL when none does, i.e. cursor and any watermark-less or only
   -- partially-covered history). Full containment: bucket start >=
-  -- window_start AND bucket end <= window_end - the rolling sync window
-  -- starts bucket-aligned and ends at floor(now), so the in-progress final
-  -- bucket is honestly uncovered until a later sync fully contains it.
-  -- Freshness is window identity only (window_end, window_start, device_id):
+  -- first_covered_hour AND bucket end <= window_end - the rolling sync
+  -- window starts bucket-aligned and ends at floor(now), so the in-progress
+  -- final bucket is honestly uncovered until a later sync fully contains it,
+  -- and coverage only starts at the snapshot's FIRST data bucket: the API
+  -- contract probes PROVE enumeration from the first observed session
+  -- onward, but nothing distinguishes "no rows before it" from an index
+  -- boundary, so that leading range stays legacy.
+  -- Freshness is window identity then LOGICAL fetch time (window_end,
+  -- window_start, snapshot_verified_at, device_id): a genuinely newer fetch
+  -- of the SAME window wins via snapshot_verified_at while a transport
+  -- retry replays the original stamp and cannot steal ownership.
   -- updated_at is the FIRST-upload time of an immutable row and must never
-  -- participate, so a transport retry of an old watermark cannot steal
-  -- ownership from a genuinely newer snapshot.
+  -- participate.
   acct_own AS (
     SELECT ah.hour_start, ah.source,
       (SELECT w.device_id
          FROM tokentracker_account_sync_watermarks w
         WHERE w.user_id = p_user_id
           AND w.source = ah.source
-          AND ah.hour_start >= w.window_start
+          AND ah.hour_start >= w.first_covered_hour
           AND ah.hour_start + interval '30 minutes' <= w.window_end
-        ORDER BY w.window_end DESC, w.window_start DESC, w.device_id
+        ORDER BY w.window_end DESC, w.window_start DESC, w.snapshot_verified_at DESC, w.device_id
         LIMIT 1) AS owner_device_id
     FROM (
       SELECT DISTINCT h.hour_start, h.source

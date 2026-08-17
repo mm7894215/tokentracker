@@ -125,15 +125,31 @@ export default async function (req: Request): Promise<Response> {
     const source = typeof w?.source === "string" ? w.source.trim().toLowerCase() : "";
     const start = Date.parse(String(w?.window_start ?? ""));
     const end = Date.parse(String(w?.window_end ?? ""));
+    const firstCovered = Date.parse(String(w?.first_covered_hour ?? ""));
+    const verifiedAt = Date.parse(String(w?.snapshot_verified_at ?? ""));
     // Fail closed on a malformed watermark: writing a bogus window would
-    // corrupt cross-device ownership for the whole account.
-    if (!source || !Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+    // corrupt cross-device ownership for the whole account. Coverage must
+    // start inside the window (the snapshot's first data bucket), and the
+    // logical verification stamp must be present so owner freshness never
+    // depends on server receive time.
+    if (
+      !source ||
+      !Number.isFinite(start) ||
+      !Number.isFinite(end) ||
+      end <= start ||
+      !Number.isFinite(firstCovered) ||
+      firstCovered < start ||
+      firstCovered >= end ||
+      !Number.isFinite(verifiedAt)
+    ) {
       return json({ error: "Invalid account watermark" }, 400);
     }
     watermarks.push({
       source,
       window_start: new Date(start).toISOString(),
       window_end: new Date(end).toISOString(),
+      first_covered_hour: new Date(firstCovered).toISOString(),
+      snapshot_verified_at: new Date(verifiedAt).toISOString(),
     });
   }
 
@@ -203,6 +219,8 @@ export default async function (req: Request): Promise<Response> {
       source: w.source,
       window_start: w.window_start,
       window_end: w.window_end,
+      first_covered_hour: w.first_covered_hour,
+      snapshot_verified_at: w.snapshot_verified_at,
     }));
     const { error: wmErr } = await client.database
       .from("tokentracker_account_sync_watermarks")

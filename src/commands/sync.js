@@ -3601,8 +3601,11 @@ async function readQueueBatch(queuePath, startOffset, maxBuckets) {
   // unique (source, window_start, window_end) — an older window must never
   // be dropped just because a newer rolling window was appended later, or
   // historical ownership would be lost exactly when the 30-day window
-  // slides past a corrected bucket. (The ingest edge caps a batch at 50;
-  // each sync appends one record, well under the cap.)
+  // slides past a corrected bucket. first_covered_hour / snapshot_verified_at
+  // ride along verbatim: the append-only queue replays the ORIGINAL fetch
+  // stamp on every transport retry, so a retry never fakes logical
+  // freshness. (The ingest edge caps a batch at 50; each sync appends one
+  // record, well under the cap.)
   const watermarkMap = new Map();
   let offset = startOffset;
   let linesRead = 0;
@@ -3625,6 +3628,12 @@ async function readQueueBatch(queuePath, startOffset, maxBuckets) {
             source: wmSource,
             window_start: bucket.window_start,
             window_end: bucket.window_end,
+            ...(typeof bucket.first_covered_hour === "string" && bucket.first_covered_hour
+              ? { first_covered_hour: bucket.first_covered_hour }
+              : {}),
+            ...(typeof bucket.snapshot_verified_at === "string" && bucket.snapshot_verified_at
+              ? { snapshot_verified_at: bucket.snapshot_verified_at }
+              : {}),
           });
         }
       }

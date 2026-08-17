@@ -55,12 +55,20 @@ function row(deviceId, hourStart, model, totalTokens) {
   };
 }
 
-function watermark(deviceId, start, end, updatedAt) {
+function watermark(deviceId, start, end, updatedAt, opts = {}) {
   return {
     device_id: deviceId,
     source: "trae-cn",
     window_start: start,
     window_end: end,
+    // Coverage starts at the snapshot's FIRST data bucket. Defaults to
+    // window_start (data spanning the whole window); tests for the narrowed
+    // contract pass a later first_covered_hour via opts.
+    first_covered_hour: opts.firstCovered ?? start,
+    // Logical fetch time (stamped once per real fetch, replayed on
+    // retry). Deliberately independent of updated_at: updated_at is the
+    // TRANSPORT first-upload time and must never masquerade as freshness.
+    snapshot_verified_at: opts.verifiedAt ?? "2027-01-15T00:00:00.000Z",
     updated_at: updatedAt || "2027-01-15T00:00:00.000Z",
   };
 }
@@ -320,8 +328,13 @@ test("account_usage_grouped RPC implements watermark ownership with the same tie
   assert.match(sql, /tokentracker_account_sync_watermarks/, "RPC reads the watermark table");
   assert.match(
     sql,
-    /ORDER BY w\.window_end DESC, w\.window_start DESC, w\.device_id/,
-    "owner tiebreak must be window_end DESC, window_start DESC, device_id - same as pickOwnerWatermark; updated_at never participates",
+    /ORDER BY w\.window_end DESC, w\.window_start DESC, w\.snapshot_verified_at DESC, w\.device_id/,
+    "owner tiebreak must be window_end DESC, window_start DESC, snapshot_verified_at DESC, device_id - same as pickOwnerWatermark; updated_at never participates",
+  );
+  assert.match(
+    sql,
+    /ah\.hour_start >= w\.first_covered_hour/,
+    "coverage starts at the snapshot's first data bucket, not window_start",
   );
   assert.match(
     sql,
@@ -362,8 +375,18 @@ test("leaderboard_hourly_dedup_v2 migration mirrors the RPC ownership semantics 
   // The leaderboard function must agree with account_usage_grouped.
   assert.match(
     sql,
-    /ORDER BY w\.window_end DESC, w\.window_start DESC, w\.device_id/,
+    /ORDER BY w\.window_end DESC, w\.window_start DESC, w\.snapshot_verified_at DESC, w\.device_id/,
     "leaderboard owner tiebreak must equal the account RPC tiebreak",
+  );
+  assert.match(
+    sql,
+    /ah\.hour_start >= w\.first_covered_hour/,
+    "leaderboard coverage also starts at first_covered_hour",
+  );
+  assert.match(
+    sql,
+    /first_covered_hour timestamptz NOT NULL/,
+    "coverage start is a required column (absence cannot be faked)",
   );
   assert.match(sql, /ARRAY\['cursor', 'trae-cn'\]::text\[\] AS account_sources/);
   assert.match(sql, /o\.owner_device_id = h\.device_id/);
@@ -551,4 +574,127 @@ test("H. an old watermark re-delivered late never steals ownership from a newer 
   ];
   const deduped = dedupeAccountLevelRows(rows, watermarks);
   assert.equal(sumTotalTokens(deduped), 60, "window identity, not updated_at, decides ownership");
+});
+
+// ---------------------------------------------------------------------------
+// I. P0 absence narrowing: enumeration is only PROVEN from the snapshot's
+// FIRST data bucket (first_covered_hour) onward. A non-empty snapshot must
+// NOT assert authoritative zero for hours BEFORE its first observed session
+// (contract probe 2026-08-17: "no rows before the first data point" cannot
+// be distinguished from an API index boundary).
+// ---------------------------------------------------------------------------
+test("I1. hours before the snapshot's first data bucket are NOT owned (no absence inference)", () => {
+  // Old device B holds 10:00/model-a=100; new device A's non-empty snapshot
+  // only contains 11:00/model-b=20 (first data at 11:00). The P0 review case:
+  // A must NOT zero out 10:00 merely because its response lacked the session.
+  const rows = [
+    row(OLD, H10, "model-a", 100),
+    row(FRESH, H11, "model-b", 20),
+  ];
+  const watermarks = [
+    watermark(OLD, DAY_WINDOW.start, DAY_WINDOW.end),
+    watermark(FRESH, DAY_WINDOW.start, DAY_WINDOW.end, undefined, {
+      firstCovered: H11, // A's snapshot starts at 11:00
+      verifiedAt: "2027-01-16T00:00:00.000Z", // A fetched after B
+    }),
+  ];
+  const deduped = dedupeAccountLevelRows(rows, watermarks);
+  const byModel = totalByModel(deduped);
+  assert.equal(byModel.get("model-a"), 100, "10:00 stays legacy: B's row is kept, not zeroed");
+  assert.equal(byModel.get("model-b"), 20, "11:00 is owned by FRESH");
+});
+
+test("I2. the first covered bucket itself IS owned (data anchors enumeration from there)", () => {
+  const rows = [
+    row(OLD, H10, "model-a", 100),
+    row(FRESH, H10, "model-a", 60),
+  ];
+  const watermarks = [
+    watermark(OLD, DAY_WINDOW.start, DAY_WINDOW.end),
+    watermark(FRESH, DAY_WINDOW.start, DAY_WINDOW.end, undefined, {
+      firstCovered: H10, // FRESH's first data bucket is exactly H10
+      verifiedAt: "2027-01-16T00:00:00.000Z", // FRESH fetched after OLD
+    }),
+  ];
+  const deduped = dedupeAccountLevelRows(rows, watermarks);
+  assert.equal(sumTotalTokens(deduped), 60, "downward correction still lands on the first covered bucket");
+});
+
+test("I3. a watermark missing first_covered_hour / snapshot_verified_at owns nothing", () => {
+  const rows = [row(OLD, H10, "model-a", 100)];
+  const wm = watermark(FRESH, DAY_WINDOW.start, DAY_WINDOW.end);
+  const broken1 = { ...wm, first_covered_hour: undefined };
+  const broken2 = { ...wm, snapshot_verified_at: undefined };
+  for (const broken of [broken1, broken2]) {
+    const deduped = dedupeAccountLevelRows(rows, [broken]);
+    assert.equal(sumTotalTokens(deduped), 100, "incomplete watermark rows fall back to legacy dedup");
+  }
+});
+
+test("I4. first_covered_hour outside the window is rejected (owns nothing)", () => {
+  const rows = [row(OLD, H10, "model-a", 100)];
+  const watermarks = [
+    watermark(FRESH, DAY_WINDOW.start, DAY_WINDOW.end, undefined, {
+      firstCovered: "2027-01-20T00:00:00.000Z", // after window_end: invalid
+    }),
+  ];
+  const deduped = dedupeAccountLevelRows(rows, watermarks);
+  assert.equal(sumTotalTokens(deduped), 100, "invalid coverage rows assert nothing");
+});
+
+// ---------------------------------------------------------------------------
+// J. P1 same-window logical freshness: two devices can produce the SAME
+// window identity (same-second floor(now)) with different real fetch times.
+// snapshot_verified_at - the logical fetch stamp replayed verbatim by the
+// append-only queue - decides; device_id is only the final tiebreak.
+// ---------------------------------------------------------------------------
+test("J1. same window: the genuinely newer fetch wins regardless of device_id", () => {
+  // OLD fetches at T1 (100); FRESH fetches at T2 > T1 after a correction (60).
+  // OLD has the smaller device_id, which previously decided the tie - wrongly.
+  const rows = [
+    row(OLD, H10, "model-a", 100),
+    row(FRESH, H10, "model-a", 60),
+  ];
+  const watermarks = [
+    watermark(OLD, DAY_WINDOW.start, DAY_WINDOW.end, undefined, {
+      verifiedAt: "2027-01-10T10:00:00.000Z",
+    }),
+    watermark(FRESH, DAY_WINDOW.start, DAY_WINDOW.end, undefined, {
+      verifiedAt: "2027-01-10T10:05:00.000Z",
+    }),
+  ];
+  const deduped = dedupeAccountLevelRows(rows, watermarks);
+  assert.equal(sumTotalTokens(deduped), 60, "newer logical fetch owns the hour, not the smaller device_id");
+});
+
+test("J2. a late transport retry of the older snapshot cannot steal ownership", () => {
+  // OLD verified at T1; FRESH verified at T2 > T1; OLD's queue record is only
+  // uploaded at T3 > T2 (network retry). The retry replays the ORIGINAL T1
+  // stamp - and updated_at (upload time) never participates - so FRESH keeps
+  // the hour.
+  const rows = [
+    row(OLD, H10, "model-a", 100),
+    row(FRESH, H10, "model-a", 60),
+  ];
+  const watermarks = [
+    // OLD re-delivered at T3: original verifiedAt T1, late updated_at T3.
+    watermark(OLD, DAY_WINDOW.start, DAY_WINDOW.end, "2027-01-11T00:00:00.000Z", {
+      verifiedAt: "2027-01-10T10:00:00.000Z",
+    }),
+    watermark(FRESH, DAY_WINDOW.start, DAY_WINDOW.end, "2027-01-10T10:30:00.000Z", {
+      verifiedAt: "2027-01-10T10:05:00.000Z",
+    }),
+  ];
+  const deduped = dedupeAccountLevelRows(rows, watermarks);
+  assert.equal(sumTotalTokens(deduped), 60, "FRESH (verified T2) still owns despite OLD's T3 re-delivery");
+});
+
+test("J3. replaying the same watermark record is idempotent (no new logical version)", () => {
+  const rows = [row(OLD, H10, "model-a", 100), row(FRESH, H10, "model-a", 60)];
+  const wm = watermark(FRESH, DAY_WINDOW.start, DAY_WINDOW.end, undefined, {
+    verifiedAt: "2027-01-10T10:05:00.000Z",
+  });
+  const once = dedupeAccountLevelRows(rows, [wm]);
+  const thrice = dedupeAccountLevelRows(rows, [wm, { ...wm }, { ...wm }]);
+  assert.deepEqual(once, thrice, "duplicate records of one snapshot do not change ownership");
 });

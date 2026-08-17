@@ -44,9 +44,18 @@ CREATE TABLE IF NOT EXISTS public.tokentracker_account_sync_watermarks (
   source text NOT NULL,
   window_start timestamptz NOT NULL,
   window_end timestamptz NOT NULL,
+  -- Coverage starts at the snapshot's FIRST data bucket, not window_start:
+  -- enumeration is only PROVEN from the first observed session onward, so
+  -- [window_start, first_covered_hour) asserts nothing (legacy dedup).
+  first_covered_hour timestamptz NOT NULL,
+  -- Logical fetch time, stamped once per real fetch and replayed verbatim
+  -- by the append-only queue; a transport retry reuses the original value
+  -- and can never fake freshness.
+  snapshot_verified_at timestamptz NOT NULL,
   updated_at timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (user_id, device_id, source, window_start, window_end),
-  CHECK (window_end > window_start)
+  CHECK (window_end > window_start),
+  CHECK (first_covered_hour >= window_start AND first_covered_hour < window_end)
 );
 
 ALTER TABLE public.tokentracker_account_sync_watermarks ENABLE ROW LEVEL SECURITY;
@@ -90,22 +99,26 @@ AS $func$
       AND h.source = ANY(cfg.account_sources)
   ),
   -- Per (user, account source, hour): the watermark with the greatest
-  -- window_end whose window FULLY CONTAINS the half-hour bucket owns it
+  -- window_end whose coverage FULLY CONTAINS the half-hour bucket owns it
   -- (NULL = uncovered, legacy dedup below). Full containment: bucket start
-  -- >= window_start AND bucket end <= window_end - a partially verified
-  -- bucket is never claimed. Freshness is window identity only (window_end,
-  -- then window_start, then device_id): updated_at is the FIRST-upload time
-  -- of an immutable row and must never participate, so a transport retry of
-  -- an old watermark cannot steal ownership from a genuinely newer snapshot.
+  -- >= first_covered_hour AND bucket end <= window_end - a partially
+  -- verified bucket is never claimed, and neither is a bucket before the
+  -- snapshot's first data point (enumeration is only proven from there).
+  -- Freshness is window identity then LOGICAL fetch time (window_end,
+  -- window_start, snapshot_verified_at, device_id): a genuinely newer fetch
+  -- of the SAME window beats an older one via snapshot_verified_at, while a
+  -- transport retry replays the original stamp and cannot steal ownership.
+  -- updated_at is the FIRST-upload time of an immutable row and never
+  -- participates.
   acct_own AS (
     SELECT ah.user_id, ah.source, ah.hour_start,
       (SELECT w.device_id
          FROM tokentracker_account_sync_watermarks w
         WHERE w.user_id = ah.user_id
           AND w.source = ah.source
-          AND ah.hour_start >= w.window_start
+          AND ah.hour_start >= w.first_covered_hour
           AND ah.hour_start + interval '30 minutes' <= w.window_end
-        ORDER BY w.window_end DESC, w.window_start DESC, w.device_id
+        ORDER BY w.window_end DESC, w.window_start DESC, w.snapshot_verified_at DESC, w.device_id
         LIMIT 1) AS owner_device_id
     FROM acct_hours ah
   )

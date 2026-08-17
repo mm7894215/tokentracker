@@ -46,18 +46,26 @@ function parseMs(value) {
 // half-hour of a rolling window ending at floor(now)) is NOT claimed.
 const BUCKET_SPAN_MS = 30 * 60 * 1000;
 
-// Mirrors SQL owner selection: full-containment coverage, then
-// ORDER BY window_end DESC, window_start DESC, device_id. updated_at never
-// participates: watermark rows are immutable history and updated_at is the
-// FIRST-upload time, so a transport retry cannot steal ownership from a
-// genuinely newer snapshot.
+// Mirrors SQL owner selection: full-containment coverage starting at
+// first_covered_hour, then ORDER BY window_end DESC, window_start DESC,
+// snapshot_verified_at DESC, device_id. A watermark missing
+// first_covered_hour / snapshot_verified_at owns nothing (the SQL columns are
+// NOT NULL; only the current CLI emits complete rows). snapshot_verified_at
+// is the LOGICAL fetch time replayed verbatim by the append-only queue, so a
+// genuinely newer fetch of the SAME window wins while a transport retry of
+// an old one cannot. updated_at never participates: watermark rows are
+// immutable history and updated_at is the FIRST-upload time.
 function pickOwnerWatermark(watermarks, hourStartMs) {
   let best = null;
   for (const wm of watermarks) {
     const startMs = parseMs(wm.window_start);
     const endMs = parseMs(wm.window_end);
     if (startMs === null || endMs === null || endMs <= startMs) continue;
-    if (hourStartMs < startMs || hourStartMs + BUCKET_SPAN_MS > endMs) continue;
+    const coveredMs = parseMs(wm.first_covered_hour);
+    const verifiedMs = parseMs(wm.snapshot_verified_at);
+    if (coveredMs === null || verifiedMs === null) continue;
+    if (coveredMs < startMs || coveredMs >= endMs) continue;
+    if (hourStartMs < coveredMs || hourStartMs + BUCKET_SPAN_MS > endMs) continue;
     if (!best) {
       best = wm;
       continue;
@@ -71,6 +79,11 @@ function pickOwnerWatermark(watermarks, hourStartMs) {
     const bestStart = parseMs(best.window_start) || 0;
     if (startMs !== bestStart) {
       if (startMs > bestStart) best = wm;
+      continue;
+    }
+    const bestVerified = parseMs(best.snapshot_verified_at) ?? -Infinity;
+    if (verifiedMs !== bestVerified) {
+      if (verifiedMs > bestVerified) best = wm;
       continue;
     }
     if (String(wm.device_id) < String(best.device_id)) best = wm;
@@ -111,8 +124,10 @@ function pickLegacyRow(rows) {
  *   model: string, updated_at?: string, total_tokens: number}>} rows -
  *   every device's tokentracker_hourly-shaped rows for account-level sources.
  * @param {Array<{device_id: string, source: string, window_start: string,
- *   window_end: string, updated_at?: string}>} watermarks - per-device
- *   verified sync windows (tokentracker_account_sync_watermarks shape).
+ *   window_end: string, first_covered_hour: string, snapshot_verified_at:
+ *   string, updated_at?: string}>} watermarks - per-device verified sync
+ *   windows (tokentracker_account_sync_watermarks shape; coverage runs from
+ *   first_covered_hour to window_end, NOT from window_start).
  * @returns {Array} canonical rows - one consistent snapshot per hour.
  */
 function dedupeAccountLevelRows(rows, watermarks = []) {
