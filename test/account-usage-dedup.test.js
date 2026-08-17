@@ -153,10 +153,12 @@ test("D. fresh device with no old cursors displaces stale tuples it has never se
   assert.equal(byHour.get(H1030), 60);
 });
 
-test("D2. fresh device verified-empty window zeros out stale tuples completely", () => {
-  // The strongest displacement case: the API now reports NOTHING for the
-  // window that the old device's stale tuples live in. The fresh device
-  // contributes no rows at all - only its watermark.
+test("D2. an owner with no rows at covered hours displaces every stale tuple", () => {
+  // Aggregation-level displacement: the owning device's snapshot holds
+  // nothing at a covered hour (e.g. every session there migrated away), so
+  // the stale tuples must not survive. NOTE: an EMPTY API response produces
+  // NO watermark at all (the TRAE absence contract is NOT PROVEN), so this
+  // displacement only ever rides on NON-EMPTY verified snapshots.
   const rows = [row(OLD, H10, "model-a", 100), row(OLD, H11, "model-b", 50)];
   const watermarks = [watermark(FRESH, DAY_WINDOW.start, DAY_WINDOW.end)];
   const deduped = dedupeAccountLevelRows(rows, watermarks);
@@ -240,27 +242,30 @@ test("partial coverage: covered hours use ownership, uncovered hours stay legacy
   assert.equal(byHour.get(H1030), 90, "uncovered hour: legacy MAX");
 });
 
-test("owner selection tiebreak is deterministic: window_end, then updated_at, then device_id", () => {
+test("owner selection tiebreak is deterministic: window_end, then window_start, then device_id", () => {
   const rows = [
     row("aaaa0000-0000-0000-0000-000000000000", H10, "model-a", 10),
     row("bbbb0000-0000-0000-0000-000000000000", H10, "model-a", 20),
   ];
-  // Equal windows + equal updated_at -> smaller device_id wins (matches the
-  // SQL ORDER BY ... w.device_id LIMIT 1).
+  // Equal window identity -> smaller device_id wins (deterministic, mirrors
+  // the SQL ORDER BY ... w.device_id LIMIT 1).
   const watermarks = [
-    watermark("bbbb0000-0000-0000-0000-000000000000", DAY_WINDOW.start, DAY_WINDOW.end, "2027-01-15T00:00:00.000Z"),
-    watermark("aaaa0000-0000-0000-0000-000000000000", DAY_WINDOW.start, DAY_WINDOW.end, "2027-01-15T00:00:00.000Z"),
+    watermark("bbbb0000-0000-0000-0000-000000000000", DAY_WINDOW.start, DAY_WINDOW.end),
+    watermark("aaaa0000-0000-0000-0000-000000000000", DAY_WINDOW.start, DAY_WINDOW.end),
   ];
   const deduped = dedupeAccountLevelRows(rows, watermarks);
   assert.equal(sumTotalTokens(deduped), 10, "device_id aaa... owns the tie");
 
-  // Later updated_at on the same window_end wins over device_id order.
+  // updated_at is IRRELEVANT to ownership: watermark rows are immutable
+  // (first-upload timestamp only), so a wildly later updated_at on the SAME
+  // window identity must NOT flip the pick — this is what makes transport
+  // retries harmless (regression E.23).
   const watermarks2 = [
     watermark("aaaa0000-0000-0000-0000-000000000000", DAY_WINDOW.start, DAY_WINDOW.end, "2027-01-15T00:00:00.000Z"),
-    watermark("bbbb0000-0000-0000-0000-000000000000", DAY_WINDOW.start, DAY_WINDOW.end, "2027-01-16T00:00:00.000Z"),
+    watermark("bbbb0000-0000-0000-0000-000000000000", DAY_WINDOW.start, DAY_WINDOW.end, "2027-02-16T00:00:00.000Z"),
   ];
   const deduped2 = dedupeAccountLevelRows(rows, watermarks2);
-  assert.equal(sumTotalTokens(deduped2), 20, "later updated_at owns the tie");
+  assert.equal(sumTotalTokens(deduped2), 10, "later updated_at on the same window must not steal ownership");
 
   // A strictly later window_end wins outright (aaaa verified through
   // 01-13, bbbb only through 01-12 -> aaaa owns despite the device_id order).
@@ -271,7 +276,6 @@ test("owner selection tiebreak is deterministic: window_end, then updated_at, th
   const deduped3 = dedupeAccountLevelRows(rows, watermarks3);
   assert.equal(sumTotalTokens(deduped3), 10, "larger window_end owns");
 });
-
 test("watermarks are scoped per source: a cursor watermark never owns trae-cn hours", () => {
   const rows = [row(OLD, H10, "model-a", 100)];
   const watermarks = [
@@ -316,8 +320,13 @@ test("account_usage_grouped RPC implements watermark ownership with the same tie
   assert.match(sql, /tokentracker_account_sync_watermarks/, "RPC reads the watermark table");
   assert.match(
     sql,
-    /ORDER BY w\.window_end DESC, w\.updated_at DESC, w\.device_id/,
-    "owner tiebreak must be window_end DESC, updated_at DESC, device_id - same as pickOwnerWatermark",
+    /ORDER BY w\.window_end DESC, w\.window_start DESC, w\.device_id/,
+    "owner tiebreak must be window_end DESC, window_start DESC, device_id - same as pickOwnerWatermark; updated_at never participates",
+  );
+  assert.match(
+    sql,
+    /ah\.hour_start \+ interval '30 minutes' <= w\.window_end/,
+    "a bucket is owned only when FULLY contained (bucket end <= window end)",
   );
   assert.match(
     sql,
@@ -345,15 +354,15 @@ test("leaderboard_hourly_dedup_v2 migration mirrors the RPC ownership semantics 
   assert.match(sql, /CREATE TABLE IF NOT EXISTS public\.tokentracker_account_sync_watermarks/);
   assert.match(
     sql,
-    /PRIMARY KEY \(user_id, device_id, source\)/,
-    "watermark identity is per (user, device, source) - last upsert per device wins",
+    /PRIMARY KEY \(user_id, device_id, source, window_start, window_end\)/,
+    "watermark identity is the full window - rows are immutable history, never overwritten",
   );
   assert.match(sql, /CHECK \(window_end > window_start\)/);
   assert.match(sql, /ENABLE ROW LEVEL SECURITY/);
   // The leaderboard function must agree with account_usage_grouped.
   assert.match(
     sql,
-    /ORDER BY w\.window_end DESC, w\.updated_at DESC, w\.device_id/,
+    /ORDER BY w\.window_end DESC, w\.window_start DESC, w\.device_id/,
     "leaderboard owner tiebreak must equal the account RPC tiebreak",
   );
   assert.match(sql, /ARRAY\['cursor', 'trae-cn'\]::text\[\] AS account_sources/);
@@ -371,8 +380,13 @@ test("ingest edge accepts account_watermarks and upserts them after the bucket r
   );
   assert.match(
     ts,
-    /onConflict: "user_id,device_id,source"/,
-    "upsert conflict target matches the table PK",
+    /onConflict: "user_id,device_id,source,window_start,window_end"/,
+    "upsert conflict target matches the immutable window identity PK",
+  );
+  assert.match(
+    ts,
+    /ignoreDuplicates: true/,
+    "a re-delivered watermark is a no-op (retry never refreshes updated_at / freshness)",
   );
   // Watermark upsert must come AFTER the hourly upsert in file order.
   assert.ok(
@@ -396,4 +410,145 @@ test("local queue readers never surface watermark control records as usage rows"
     /account_watermarks/,
     "drainQueueToCloud must forward watermarks to the ingest edge",
   );
+});
+// ---------------------------------------------------------------------------
+// F. Historical ownership survives the 30-day window sliding past (>30 days
+// regression - merge-blocker): watermark rows are IMMUTABLE history, so the
+// covering watermark that displaced a stale tuple stays in the table even
+// after BOTH devices' current rolling windows no longer cover the hour.
+// ---------------------------------------------------------------------------
+test("F. corrected history stays corrected after the 30-day window slides past it", () => {
+  // Day 0: OLD synced H10/model-a=100 (its watermark covered H10 then).
+  // Day 1: TRAE corrects the session to model-b=60; FRESH syncs the
+  // corrected snapshot - FRESH's day-1 watermark (greater window_end) owns H10.
+  // Day 31+: both devices' CURRENT windows have slid past H10; only the
+  // immutable historical rows still cover it. FRESH's day-1 watermark row
+  // must STILL own H10 - the correction must never resurrect via the legacy
+  // MAX fallback, and the stale model-a tuple must stay displaced.
+  const rows = [
+    row(OLD, H10, "model-a", 100), // OLD's stale row (uploaded day 0)
+    row(FRESH, H10, "model-b", 60), // FRESH's corrected row (uploaded day 1)
+  ];
+  const watermarks = [
+    // OLD: day-0 window (covered H10) + current day-31 window (does not).
+    watermark(OLD, "2026-12-11T00:00:00.000Z", "2027-01-10T11:00:00.000Z"),
+    watermark(OLD, "2027-02-10T00:00:00.000Z", "2027-03-12T00:00:00.000Z"),
+    // FRESH: day-1 corrected window (still covers H10 - immutable history)
+    // + current day-32 window (does not).
+    watermark(FRESH, "2026-12-11T00:00:00.000Z", "2027-01-12T00:00:00.000Z"),
+    watermark(FRESH, "2027-02-11T00:00:00.000Z", "2027-03-13T00:00:00.000Z"),
+  ];
+  const deduped = dedupeAccountLevelRows(rows, watermarks);
+  const byModel = totalByModel(deduped);
+  assert.equal(byModel.get("model-a") || 0, 0, "stale model-a must stay displaced");
+  assert.equal(byModel.get("model-b"), 60, "corrected value survives the window slide");
+  assert.equal(sumTotalTokens(deduped), 60, "must stay 60 - never 100, never 160");
+});
+
+test("F2. downward correction also survives the 30-day window slide", () => {
+  const rows = [
+    row(OLD, H10, "model-a", 100),
+    row(FRESH, H10, "model-a", 60),
+  ];
+  const watermarks = [
+    watermark(OLD, "2026-12-11T00:00:00.000Z", "2027-01-10T11:00:00.000Z"),
+    watermark(OLD, "2027-02-10T00:00:00.000Z", "2027-03-12T00:00:00.000Z"),
+    watermark(FRESH, "2026-12-11T00:00:00.000Z", "2027-01-12T00:00:00.000Z"),
+    watermark(FRESH, "2027-02-11T00:00:00.000Z", "2027-03-13T00:00:00.000Z"),
+  ];
+  const deduped = dedupeAccountLevelRows(rows, watermarks);
+  assert.equal(sumTotalTokens(deduped), 60, "must stay the corrected 60, never MAX 100");
+});
+
+test("F3. no fallback to stale MAX: a once-covered hour never reverts to legacy dedup", () => {
+  // Even when the ONLY covering watermark is months old (the correcting
+  // device long retired), the hour is covered - legacy MAX must not run.
+  const rows = [
+    row(OLD, H10, "model-a", 100),
+    row(FRESH, H10, "model-a", 60),
+  ];
+  const watermarks = [
+    watermark(FRESH, "2026-12-11T00:00:00.000Z", "2027-01-12T00:00:00.000Z", "2027-06-01T00:00:00.000Z"),
+  ];
+  const deduped = dedupeAccountLevelRows(rows, watermarks);
+  assert.equal(sumTotalTokens(deduped), 60);
+});
+
+// ---------------------------------------------------------------------------
+// G. Bucket-coverage boundary contract: a watermark claims a half-hour
+// bucket only when the bucket is FULLY inside [window_start, window_end].
+// The rolling fetch start is bucket-aligned down and the end is floor(now),
+// so honest gaps stay uncovered (legacy fallback) instead of being claimed.
+// ---------------------------------------------------------------------------
+test("G1. left boundary: a window starting mid-bucket does not claim that bucket", () => {
+  // Unaligned start 08:37: the 08:30 bucket is only PARTIALLY verified.
+  const rows = [
+    row(OLD, "2027-01-10T08:30:00.000Z", "model-a", 100),
+    row(FRESH, "2027-01-10T08:30:00.000Z", "model-a", 60),
+  ];
+  const watermarks = [watermark(FRESH, "2027-01-10T08:37:00.000Z", DAY_WINDOW.end)];
+  const deduped = dedupeAccountLevelRows(rows, watermarks);
+  assert.equal(
+    sumTotalTokens(deduped),
+    100,
+    "partial bucket falls back to legacy MAX - never claimed by a partial window",
+  );
+});
+
+test("G2. right boundary: window_end exactly at a bucket start does not claim it", () => {
+  // end = 10:30:00: the 10:30 bucket spans [10:30, 11:00) - only its first
+  // instant is verified. Not claimed.
+  const rows = [
+    row(OLD, H1030, "model-a", 100),
+    row(FRESH, H1030, "model-a", 60),
+  ];
+  const watermarks = [watermark(FRESH, DAY_WINDOW.start, "2027-01-10T10:30:00.000Z")];
+  const deduped = dedupeAccountLevelRows(rows, watermarks);
+  assert.equal(sumTotalTokens(deduped), 100, "the 10:30 bucket is NOT claimed by a window ending 10:30");
+});
+
+test("G3. right boundary: window_end mid-bucket does not claim the in-progress bucket", () => {
+  // end = 10:47: the 10:30 bucket [10:30, 11:00) is only verified through
+  // 10:47. Not claimed.
+  const rows = [
+    row(OLD, H1030, "model-a", 100),
+    row(FRESH, H1030, "model-a", 60),
+  ];
+  const watermarks = [watermark(FRESH, DAY_WINDOW.start, "2027-01-10T10:47:00.000Z")];
+  const deduped = dedupeAccountLevelRows(rows, watermarks);
+  assert.equal(sumTotalTokens(deduped), 100, "in-progress bucket stays uncovered (legacy fallback)");
+});
+
+test("G4. right boundary: window_end at the bucket END fully claims the bucket", () => {
+  // end = 11:00: the 10:30 bucket [10:30, 11:00) is fully contained.
+  const rows = [
+    row(OLD, H1030, "model-a", 100),
+    row(FRESH, H1030, "model-a", 60),
+  ];
+  const watermarks = [watermark(FRESH, DAY_WINDOW.start, "2027-01-10T11:00:00.000Z")];
+  const deduped = dedupeAccountLevelRows(rows, watermarks);
+  assert.equal(sumTotalTokens(deduped), 60, "a fully-contained bucket is owned by its verifier");
+});
+
+// ---------------------------------------------------------------------------
+// H. Transport retry idempotence (E.23): a re-delivered watermark of an
+// older snapshot must never outrank a genuinely newer verified window,
+// even if its updated_at looks fresher.
+// ---------------------------------------------------------------------------
+test("H. an old watermark re-delivered late never steals ownership from a newer snapshot", () => {
+  const A = "aaaa0000-0000-0000-0000-000000000000";
+  const B = "bbbb0000-0000-0000-0000-000000000000";
+  const rows = [
+    row(A, H10, "model-a", 100), // A's stale row
+    row(B, H10, "model-a", 60), // B's corrected row
+  ];
+  const watermarks = [
+    // A's snapshot verified at T1; its queue record re-delivered at T3
+    // (updated_at refreshed by the retry - the legacy failure mode).
+    watermark(A, DAY_WINDOW.start, "2027-01-11T00:00:00.000Z", "2027-03-01T00:00:00.000Z"),
+    // B's genuinely newer window (verified T2): later window_end.
+    watermark(B, DAY_WINDOW.start, "2027-01-12T00:00:00.000Z", "2027-01-20T00:00:00.000Z"),
+  ];
+  const deduped = dedupeAccountLevelRows(rows, watermarks);
+  assert.equal(sumTotalTokens(deduped), 60, "window identity, not updated_at, decides ownership");
 });

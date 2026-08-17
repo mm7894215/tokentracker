@@ -1701,7 +1701,15 @@ async function cmdSync(argv, context = {}) {
       const nowMs = Number.isFinite(traeCnNowMs) ? traeCnNowMs : Date.now();
       const fetchImpl = typeof traeCnFetchImpl === "function" ? traeCnFetchImpl : fetch;
       const endTime = Math.floor(nowMs / 1000);
-      const startTime = Math.max(1, endTime - 30 * 24 * 60 * 60);
+      // Align the REAL fetch start down to a half-hour boundary so the API
+      // range fully contains every bucket it can touch (a raw 08:37 start
+      // would only partially cover the 08:30 bucket) and the watermark
+      // asserts exactly the same range the API was queried with.
+      const HALF_HOUR_SEC = 30 * 60;
+      const startTime = Math.max(
+        1,
+        Math.floor((endTime - 30 * 24 * 60 * 60) / HALF_HOUR_SEC) * HALF_HOUR_SEC,
+      );
       try {
         // Absent storage means "not signed in" — a silent skip, not an error.
         const traeCnStoragePath = resolveTraeCnStoragePath({ env: process.env, home });
@@ -1717,10 +1725,11 @@ async function cmdSync(argv, context = {}) {
             home,
           });
           const traeCnSessions = Array.isArray(traeCnUsage?.sessions) ? traeCnUsage.sessions : [];
-          // Parse even an empty payload: the parser is a local no-op but
-          // still appends the account-sync watermark asserting this window
-          // was verified, which is what displaces stale cross-device tuples
-          // for the covered hours (fresh-device invariant).
+          // An empty payload parses as a pure no-op: the TRAE absence
+          // contract is NOT PROVEN (no evidence that a missing session means
+          // deleted/zero), so an empty response asserts nothing - no usage
+          // mutation and no watermark. Non-empty snapshots append the
+          // watermark that displaces stale cross-device tuples.
           {
             if (progress?.enabled && traeCnSessions.length > 0) {
               progress.start(
@@ -1737,15 +1746,10 @@ async function cmdSync(argv, context = {}) {
               windowStartMs: startTime * 1000,
               windowEndMs: endTime * 1000,
             });
-            // Row-level isolation means a malformed row is skipped, not fatal;
-            // surface the skip count even on auto runs (warnProviderParseFailure
-            // is silenced there) so it stays diagnosable.
-            const skipped = Number(traeCnResult?.skippedRows) || 0;
-            if (skipped > 0) {
-              process.stderr.write(
-                `TRAE Work CN sync: skipped ${skipped} malformed session row${skipped !== 1 ? "s" : ""}.\n`,
-              );
-            }
+            // A partially malformed snapshot throws inside the parser (fail
+            // closed - it must not become the authoritative window state);
+            // warnProviderParseFailure below reports it without sensitive
+            // data while unrelated providers continue.
           }
         }
       } catch (err) {
@@ -3535,9 +3539,8 @@ async function drainQueueToCloud({ baseUrl, deviceToken, queuePath, queueStatePa
     if (offset >= queueSize) break;
     const result = await readQueueBatch(queuePath, offset, limit);
     // A watermark-only tail (e.g. a sync whose reconciled buckets were all
-    // unchanged, or a verified-empty window) is still a meaningful upload:
-    // it advances the account-sync coverage that displaces stale
-    // cross-device tuples cloud-side.
+    // unchanged) is still a meaningful upload: it advances the account-sync
+    // coverage that displaces stale cross-device tuples cloud-side.
     if (result.buckets.length === 0 && result.watermarks.length === 0) break;
 
     const root = baseUrl.replace(/\/$/, "");
@@ -3594,8 +3597,12 @@ async function readQueueBatch(queuePath, startOffset, maxBuckets) {
   // Account-sync watermarks (kind: "account_sync_watermark") are queue
   // control records, not usage rows: collect them separately so they ride
   // the same upload (after the bucket rows in file order) without entering
-  // the bucket stream. Last record per source wins - records are appended
-  // chronologically, one per verified sync window.
+  // the bucket stream. Watermarks are IMMUTABLE history: collect EVERY
+  // unique (source, window_start, window_end) — an older window must never
+  // be dropped just because a newer rolling window was appended later, or
+  // historical ownership would be lost exactly when the 30-day window
+  // slides past a corrected bucket. (The ingest edge caps a batch at 50;
+  // each sync appends one record, well under the cap.)
   const watermarkMap = new Map();
   let offset = startOffset;
   let linesRead = 0;
@@ -3611,11 +3618,15 @@ async function readQueueBatch(queuePath, startOffset, maxBuckets) {
     }
     if (bucket?.kind === "account_sync_watermark") {
       if (typeof bucket.source === "string" && bucket.source.trim()) {
-        watermarkMap.set(bucket.source.trim().toLowerCase(), {
-          source: bucket.source.trim().toLowerCase(),
-          window_start: bucket.window_start,
-          window_end: bucket.window_end,
-        });
+        const wmSource = bucket.source.trim().toLowerCase();
+        const wmKey = wmSource + "|" + bucket.window_start + "|" + bucket.window_end;
+        if (!watermarkMap.has(wmKey)) {
+          watermarkMap.set(wmKey, {
+            source: wmSource,
+            window_start: bucket.window_start,
+            window_end: bucket.window_end,
+          });
+        }
       }
       continue;
     }

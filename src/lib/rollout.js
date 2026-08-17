@@ -16617,11 +16617,17 @@ function assertTraeCnBucketCovers(bucketTotals, previousTotals) {
 // asserting that this device has just verified the account snapshot for the
 // closed window [window_start, window_end] against the TRAE CN API. The
 // cloud aggregation (account-usage-grouped RPC / leaderboard_hourly_dedup_v2,
-// mirrored by src/lib/account-usage-dedup.js) uses it to pick, per hour, ONE
-// canonical owning device - the freshest watermark whose window covers that
-// hour - so cross-device downward/model/bucket corrections displace stale
-// tuples from devices holding older snapshot versions, and a fresh device
-// with no prior cursor state still displaces tuples it has never seen.
+// mirrored by src/lib/account-usage-dedup.js) uses it to pick, per half-hour
+// bucket, ONE canonical owning device - the watermark with the greatest
+// window_end whose window FULLY CONTAINS the bucket (bucket start >=
+// window_start AND bucket end <= window_end; a partially covered bucket is
+// never claimed). Watermark rows are IMMUTABLE history: identity is
+// (user_id, device_id, source, window_start, window_end), so an old window
+// is never overwritten by a newer rolling window - once a device corrected a
+// historical bucket, that ownership survives the 30-day window sliding past
+// it (the covering watermark row is still in the table). Cloud-side owner
+// freshness is window_end DESC, window_start DESC, device_id - updated_at is
+// NOT freshness (a transport retry must not revive a stale snapshot).
 // Appended AFTER the bucket rows of the same sync so the queue ordering
 // guarantees a device's rows always land before the watermark covering them.
 // Bucket-row readers skip this record via its kind field (it carries no
@@ -16684,33 +16690,33 @@ async function parseTraeCnApiIncremental({
   const traeCnState = structuredClone(normalizeTraeCnState(cursors?.traeCn));
 
   if (sessions.length === 0) {
-    // Empty payload is a successful no-op for usage state: it never erases
-    // prior contributions. The verified-empty window is still asserted
-    // cloud-side via the watermark so stale cross-device tuples inside the
-    // window are displaced (fresh-device invariant D) without rewriting any
-    // usage rows locally. Re-asserting the SAME window as the last sync is
-    // redundant (the cloud upsert is idempotent), so skip it to keep a
-    // fixed-now no-change sync byte-identical; a window that ADVANCED (the
-    // production rolling window moves with now) is always re-asserted.
-    if (!isSameTraeCnWatermark(traeCnState.lastWatermark, windowStartMs, windowEndMs)) {
-      const appended = await appendTraeCnSyncWatermark({ queuePath, windowStartMs, windowEndMs });
-      if (appended) {
-        traeCnState.lastWatermark = watermarkWindow(windowStartMs, windowEndMs);
-        traeCnState.updatedAt = new Date().toISOString();
-        // Sessions/prunedBeforeMs pass through the clone untouched, so this
-        // commits ONLY the watermark echo - prior contributions survive.
-        cursors.traeCn = traeCnState;
-      }
-    }
+    // Empty payload is a successful no-op: no usage mutation, NO watermark.
+    //
+    // Evidence check (2026-08-16, two real fetches 17min apart over the same
+    // account: 137 -> 141 sessions, 0 disappeared, 0 rows changed) shows the
+    // session set is stable, but NOTHING proves 'absent from the response'
+    // means 'authoritatively deleted / zero' — so the absence contract is
+    // NOT PROVEN and must stay symmetric everywhere: a session missing from
+    // a non-empty snapshot is never retracted locally, and an empty response
+    // must not assert an authoritative-zero window that would displace other
+    // devices' tuples cloud-side. Fresh-device displacement rides on
+    // non-empty snapshots only.
     return { recordsProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
   }
 
   // Full prevalidation + in-payload dedupe BEFORE any cursor/bucket mutation.
-  // Row-level schema failures are isolated per row: one malformed row (e.g. a
-  // negative or non-integer token count) is skipped and counted instead of
-  // discarding the whole payload — but structural failures (non-array
-  // sessions, unwritable cursors) and conflicting duplicate contributions
-  // still fail closed above/below.
+  //
+  // ANY malformed row fails the whole snapshot closed. The sync watermark
+  // asserts this device fully verified the account window, so a partially
+  // understood snapshot (99 valid + 1 uninterpretable row) must never be
+  // enqueued or watermarked: it would become the canonical cloud state for
+  // the window. The provider-level try/catch in cmdSync keeps the failure
+  // isolated (other providers sync on) and the error message carries only
+  // the count + reason - no session ids, tokens, or credentials. Confirmed
+  // LEGAL variations must not land here: absent cache fields are already
+  // coerced to 0 inside normalizeTraeCnSession (models without a prompt
+  // cache concept); only truly uninterpretable rows (bad session_id /
+  // usage_time / token numbers / model, impossible schema) throw.
   const bySession = new Map();
   let skippedRows = 0;
   let firstSkipReason = "";
@@ -16736,14 +16742,15 @@ async function parseTraeCnApiIncremental({
     }
     bySession.set(normalized.sessionId, normalized);
   }
-  if (bySession.size === 0 && skippedRows > 0) {
-    // Every row was malformed: fail closed rather than enqueue an empty,
-    // authoritative-looking snapshot that would read as "no usage".
+  if (skippedRows > 0) {
+    // Partial snapshots are not authoritative: one uninterpretable row means
+    // the window was NOT fully verified, so fail closed - no bucket rows, no
+    // watermark, no cursor commit. The next sync replays from the same
+    // cursor state (idempotent).
     throw new Error(
-      `Trae CN session rows are all malformed (${skippedRows} skipped; first: ${firstSkipReason}).`,
+      `Trae CN snapshot is not authoritative: ${skippedRows} malformed row${skippedRows !== 1 ? "s" : ""} (first: ${firstSkipReason}).`,
     );
   }
-
   const touchedBuckets = new Set();
   const cb = typeof onProgress === "function" ? onProgress : null;
   const total = sessions.length;

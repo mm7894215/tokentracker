@@ -190,22 +190,25 @@ export default async function (req: Request): Promise<Response> {
   if (upsertErr) return json({ error: upsertErr.message }, 500);
 
   if (watermarks.length > 0) {
-    // Upsert AFTER the bucket rows of the same upload landed, so a watermark
-    // never covers hours whose owning rows failed to write. updated_at is
-    // set explicitly: freshness ordering (window_end DESC, updated_at DESC)
-    // must see this sync as newer than the previous one from this device.
+    // Insert AFTER the bucket rows of the same upload landed, so a watermark
+    // never covers hours whose owning rows failed to write. Watermark rows
+    // are IMMUTABLE history keyed by the full window identity
+    // (user_id, device_id, source, window_start, window_end): a re-delivered
+    // watermark (queue/upload retry of the SAME verified window) is a no-op
+    // (DO NOTHING), so updated_at stays the FIRST-upload time and a transport
+    // retry can never masquerade as a fresher snapshot in owner selection.
     const wmRows = watermarks.map((w) => ({
       user_id: userId,
       device_id: deviceId,
       source: w.source,
       window_start: w.window_start,
       window_end: w.window_end,
-      updated_at: new Date().toISOString(),
     }));
     const { error: wmErr } = await client.database
       .from("tokentracker_account_sync_watermarks")
       .upsert(wmRows, {
-        onConflict: "user_id,device_id,source",
+        onConflict: "user_id,device_id,source,window_start,window_end",
+        ignoreDuplicates: true,
       });
     if (wmErr) return json({ error: wmErr.message }, 500);
   }

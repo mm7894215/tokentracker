@@ -326,28 +326,39 @@ test("conflicting duplicate ids and malformed rows fail before any mutation", as
   assert.equal(cursorsOptional.traeCn.sessions[canary].totals.cached_input_tokens, 0);
   fs.rmSync(optionalQueue.dir, { recursive: true, force: true });
 
-  // A malformed row is isolated: skipped and counted, the rest still imports.
+  // A malformed row FAILS THE WHOLE SNAPSHOT closed (P0: a partially
+  // understood snapshot must never become the authoritative window state -
+  // no bucket rows, no watermark, no cursor commit). Confirmed-legal
+  // variations (absent cache fields) are handled above and stay legal.
   const mixedQueue = tempQueue();
   const cursorsMixed = {};
-  const mixedResult = await parseTraeCnApiIncremental({
-    sessions: [
-      sessionRow({ session_id: canary, cache_read_token: "lots" }),
-      sessionRow({ session_id: "healthy-row" }),
-    ],
-    cursors: cursorsMixed,
-    queuePath: mixedQueue.queuePath,
-  });
-  assert.equal(mixedResult.skippedRows, 1);
-  assert.equal(cursorsMixed.traeCn.sessions[canary], undefined, "bad row never imported");
-  assert.ok(cursorsMixed.traeCn.sessions["healthy-row"], "healthy row imported");
+  await assert.rejects(
+    parseTraeCnApiIncremental({
+      sessions: [
+        sessionRow({ session_id: canary, cache_read_token: "lots" }),
+        sessionRow({ session_id: "healthy-row" }),
+      ],
+      cursors: cursorsMixed,
+      queuePath: mixedQueue.queuePath,
+    }),
+    (error) => {
+      assert.match(error.message, /not authoritative/);
+      assert.match(error.message, /1 malformed row/);
+      assert.match(error.message, /invalid cache_read_token/);
+      assert.ok(!error.message.includes(canary));
+      return true;
+    },
+  );
+  assert.equal(cursorsMixed.hourly, undefined, "no state assigned on a partial snapshot");
+  assert.equal(cursorsMixed.traeCn, undefined, "no traeCn state on a partial snapshot");
+  assert.equal(fs.existsSync(mixedQueue.queuePath), false, "no queue rows written (no buckets, no watermark)");
   fs.rmSync(mixedQueue.dir, { recursive: true, force: true });
-
-  // A payload where EVERY row is malformed fails closed (never an empty,
-  // authoritative-looking snapshot) and the reason stays diagnosable + id-free.
+  // A payload where EVERY row is malformed fails with the same unified
+  // not-authoritative error (reason stays diagnosable + id-free).
   await assert.rejects(
     parseTraeCnApiIncremental({ sessions: [sessionRow({ session_id: canary, cache_read_token: "lots" })], cursors, queuePath }),
     (error) => {
-      assert.match(error.message, /all malformed/);
+      assert.match(error.message, /not authoritative/);
       assert.match(error.message, /invalid cache_read_token/);
       assert.ok(!error.message.includes(canary));
       return true;
@@ -357,7 +368,7 @@ test("conflicting duplicate ids and malformed rows fail before any mutation", as
   await assert.rejects(
     parseTraeCnApiIncremental({ sessions: [sessionRow({ session_id: canary, model_name: "bad|model" })], cursors, queuePath }),
     (error) => {
-      assert.match(error.message, /all malformed/);
+      assert.match(error.message, /not authoritative/);
       assert.match(error.message, /unsupported model name/);
       assert.ok(!error.message.includes(canary));
       return true;
@@ -398,6 +409,55 @@ test("empty payload is a no-op and preserves existing contributions", async (t) 
   assert.equal(lastTraeRow(queuePath, "doubao-pro").total_tokens, 110);
 });
 
+test("empty payload asserts nothing: no watermark, no cursor commit (absence contract NOT PROVEN)", async (t) => {
+  // Evidence: two real fetches 17min apart (137 -> 141 sessions, 0
+  // disappeared, 0 changed) show a stable session set, but nothing proves
+  // that an absent session means deleted/zero. An empty response therefore
+  // asserts NOTHING - no usage mutation AND no account_sync_watermark that
+  // would displace other devices' tuples cloud-side.
+  const { dir, queuePath } = tempQueue();
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const cursors = {};
+  await parseTraeCnApiIncremental({ sessions: [sessionRow()], cursors, queuePath });
+  const before = fs.readFileSync(queuePath, "utf8");
+
+  const empty = await parseTraeCnApiIncremental({
+    sessions: [],
+    cursors,
+    queuePath,
+    windowStartMs: 1_700_000_000_000,
+    windowEndMs: 1_700_000_000_000 + 30 * 24 * 3600 * 1000,
+  });
+  assert.equal(empty.recordsProcessed, 0);
+  assert.equal(empty.bucketsQueued, 0);
+  assert.equal(fs.readFileSync(queuePath, "utf8"), before, "no watermark appended for an empty response");
+  assert.equal(
+    cursors.traeCn.lastWatermark,
+    null,
+    "the absence contract is not proven - empty asserts no verified window",
+  );
+  assert.equal(cursors.traeCn.sessions.s1.totals.input_tokens, 100, "contribution preserved");
+});
+
+test("a partial snapshot (99 valid + 1 malformed) publishes no watermark even with a window", async (t) => {
+  const { dir, queuePath } = tempQueue();
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const cursors = {};
+  await assert.rejects(
+    parseTraeCnApiIncremental({
+      sessions: [sessionRow({ session_id: "bad-row", usage_time: "x" })].concat(
+        Array.from({ length: 3 }, (_, i) => sessionRow({ session_id: "ok-" + i })),
+      ),
+      cursors,
+      queuePath,
+      windowStartMs: 1_700_000_000_000,
+      windowEndMs: 1_700_000_000_000 + 30 * 24 * 3600 * 1000,
+    }),
+    /not authoritative/,
+  );
+  assert.equal(fs.existsSync(queuePath), false, "neither bucket rows nor a watermark may land");
+  assert.equal(cursors.hourly, undefined, "previous canonical state untouched locally");
+});
 test("cursors survive a serialize/parse restart and a later correction", async (t) => {
   const { dir, queuePath } = tempQueue();
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));

@@ -40,14 +40,24 @@ function parseMs(value) {
   return Number.isFinite(ms) ? ms : null;
 }
 
-// Mirrors SQL: ORDER BY w.window_end DESC, w.updated_at DESC, w.device_id LIMIT 1
+// Bucket span: usage buckets are half-hours, and a watermark only claims a
+// bucket it FULLY contains (bucketStart >= window_start AND bucketEnd <=
+// window_end). A partially verified bucket (e.g. the in-progress final
+// half-hour of a rolling window ending at floor(now)) is NOT claimed.
+const BUCKET_SPAN_MS = 30 * 60 * 1000;
+
+// Mirrors SQL owner selection: full-containment coverage, then
+// ORDER BY window_end DESC, window_start DESC, device_id. updated_at never
+// participates: watermark rows are immutable history and updated_at is the
+// FIRST-upload time, so a transport retry cannot steal ownership from a
+// genuinely newer snapshot.
 function pickOwnerWatermark(watermarks, hourStartMs) {
   let best = null;
   for (const wm of watermarks) {
     const startMs = parseMs(wm.window_start);
     const endMs = parseMs(wm.window_end);
     if (startMs === null || endMs === null || endMs <= startMs) continue;
-    if (hourStartMs < startMs || hourStartMs >= endMs) continue;
+    if (hourStartMs < startMs || hourStartMs + BUCKET_SPAN_MS > endMs) continue;
     if (!best) {
       best = wm;
       continue;
@@ -58,17 +68,15 @@ function pickOwnerWatermark(watermarks, hourStartMs) {
       if (wmEnd > bestEnd) best = wm;
       continue;
     }
-    const bestUpdated = parseMs(best.updated_at ?? best.window_end) || 0;
-    const wmUpdated = parseMs(wm.updated_at ?? wm.window_end) || 0;
-    if (wmUpdated !== bestUpdated) {
-      if (wmUpdated > bestUpdated) best = wm;
+    const bestStart = parseMs(best.window_start) || 0;
+    if (startMs !== bestStart) {
+      if (startMs > bestStart) best = wm;
       continue;
     }
     if (String(wm.device_id) < String(best.device_id)) best = wm;
   }
   return best;
 }
-
 // Mirrors the legacy SQL DISTINCT ON (hour, source, model)
 // ORDER BY total_tokens DESC, updated_at DESC (device_id asc as the final
 // deterministic tiebreak).

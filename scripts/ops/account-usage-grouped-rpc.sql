@@ -113,10 +113,17 @@ AS $func$
   cfg AS (
     SELECT ARRAY['cursor', 'trae-cn']::text[] AS account_sources
   ),
-  -- Per (account source, hour): the canonical owning device = the freshest
-  -- watermark window covering that hour (NULL when no watermark covers it,
-  -- i.e. cursor and any watermark-less history). Deterministic tiebreak:
-  -- window_end DESC, updated_at DESC, device_id.
+  -- Per (account source, hour): the canonical owning device = the watermark
+  -- with the greatest window_end whose window FULLY CONTAINS the half-hour
+  -- bucket (NULL when none does, i.e. cursor and any watermark-less or only
+  -- partially-covered history). Full containment: bucket start >=
+  -- window_start AND bucket end <= window_end - the rolling sync window
+  -- starts bucket-aligned and ends at floor(now), so the in-progress final
+  -- bucket is honestly uncovered until a later sync fully contains it.
+  -- Freshness is window identity only (window_end, window_start, device_id):
+  -- updated_at is the FIRST-upload time of an immutable row and must never
+  -- participate, so a transport retry of an old watermark cannot steal
+  -- ownership from a genuinely newer snapshot.
   acct_own AS (
     SELECT ah.hour_start, ah.source,
       (SELECT w.device_id
@@ -124,8 +131,8 @@ AS $func$
         WHERE w.user_id = p_user_id
           AND w.source = ah.source
           AND ah.hour_start >= w.window_start
-          AND ah.hour_start <  w.window_end
-        ORDER BY w.window_end DESC, w.updated_at DESC, w.device_id
+          AND ah.hour_start + interval '30 minutes' <= w.window_end
+        ORDER BY w.window_end DESC, w.window_start DESC, w.device_id
         LIMIT 1) AS owner_device_id
     FROM (
       SELECT DISTINCT h.hour_start, h.source
