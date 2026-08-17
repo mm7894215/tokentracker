@@ -61,6 +61,7 @@ export function NetworkSection({ proxySettings }) {
     if (config.effective === "manual") return copy("settings.network.effective.manual");
     if (config.effective === "env") return copy("settings.network.effective.env");
     if (config.effective === "system") return copy("settings.network.effective.system");
+    if (config.effective === "blocked") return copy("settings.network.effective.blocked");
     return copy("settings.network.effective.none");
   }, [config.effective]);
 

@@ -463,7 +463,7 @@ settings.section.account,ui,SettingsPage,SettingsPage,sec_account,"Account",,act
 settings.section.limits,ui,SettingsPage,SettingsPage,sec_limits,"Limits Display",,active
 settings.section.network,ui,SettingsPage,NetworkSection,sec_network,"Network",,active
 settings.network.mode.label,ui,SettingsPage,NetworkSection,mode_label,"Outbound proxy",,active
-settings.network.mode.hint,ui,SettingsPage,NetworkSection,mode_hint,"Choose how Token Tracker reaches the internet for cloud sync and updates.",,active
+settings.network.mode.hint,ui,SettingsPage,NetworkSection,mode_hint,"Choose how Token Tracker reaches the internet for cloud sync. App updates always follow the system proxy.",,active
 settings.network.mode.system,ui,SettingsPage,NetworkSection,mode_system,"System",,active
 settings.network.mode.manual,ui,SettingsPage,NetworkSection,mode_manual,"Manual",,active
 settings.network.mode.off,ui,SettingsPage,NetworkSection,mode_off,"Off",,active
@@ -488,6 +488,7 @@ settings.network.effective.manual,ui,SettingsPage,NetworkSection,effective_manua
 settings.network.effective.env,ui,SettingsPage,NetworkSection,effective_env,"Currently using an environment-variable proxy.",,active
 settings.network.effective.system,ui,SettingsPage,NetworkSection,effective_system,"Currently using the system proxy.",,active
 settings.network.effective.none,ui,SettingsPage,NetworkSection,effective_none,"Currently connecting directly.",,active
+settings.network.effective.blocked,ui,SettingsPage,NetworkSection,effective_blocked,"Outbound traffic is blocked: the manual proxy could not be applied.",,active
 settings.network.apply_error,ui,SettingsPage,NetworkSection,apply_error,"The saved proxy could not be applied: {{error}}. The proxy is not in effect and outbound traffic is blocked. Check your proxy settings.",,active
 settings.network.save_error,ui,SettingsPage,NetworkSection,save_error,"Could not save proxy settings: {{error}}",,active
 settings.network.save_error_unprotected,ui,SettingsPage,NetworkSection,save_error_unprotected,"Could not save proxy settings: {{error}}. Outbound traffic is currently unprotected — even blocking it failed.",,active

@@ -37,6 +37,18 @@ describe("NetworkSection", () => {
     hookMock.testConnection.mockReset();
   });
 
+  it("labels the fail-closed state as blocked, not as a direct connection", () => {
+    hookMock.config = {
+      ...hookMock.config,
+      effective: "blocked",
+      applyError: "invalid port",
+    };
+    render(<NetworkSection proxySettings={hookMock} />);
+
+    expect(screen.getByText("settings.network.effective.blocked")).toBeTruthy();
+    expect(screen.queryByText("settings.network.effective.none")).toBeNull();
+  });
+
   it("does not save in manual mode when host and port fail validation", async () => {
     const user = userEvent.setup();
     render(<NetworkSection proxySettings={hookMock} />);

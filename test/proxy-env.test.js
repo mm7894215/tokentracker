@@ -694,3 +694,35 @@ test("bin/tracker.js aborts when apply reports unprotected", () => {
   assert.match(src, /手动代理无法生效且无法阻断出站流量，已中止/);
   assert.match(src, /outbound traffic could not be blocked/);
 });
+
+test("fail-closed manual configs report effective 'blocked', never 'none'", () => {
+  resetProxyApplyStateForTests();
+  // Corrupt manual config: normalizes back to system, but apply() fail-closes,
+  // so the UI must not be told traffic is flowing directly.
+  const corrupt = resolveEffectiveProxySource({
+    env: {},
+    platform: "darwin",
+    commandRunner: () => ({ status: 0, stdout: "HTTPSEnable : 1\nHTTPSProxy : 10.0.0.9\nHTTPSPort : 9\n" }),
+    proxyConfig: { mode: "manual", protocol: "http", host: "127.0.0.1", port: 99999 },
+  });
+  assert.equal(corrupt.source, "blocked");
+  assert.equal(corrupt.proxyUrl, null);
+
+  // Manual config that normalizes but cannot build a URL (malformed colon host).
+  const unbuildable = resolveEffectiveProxySource({
+    env: {},
+    platform: "linux",
+    proxyConfig: { mode: "manual", protocol: "http", host: "1:2:3", port: 1080 },
+  });
+  assert.equal(unbuildable.source, "blocked");
+
+  // A usable manual config is unaffected.
+  const good = resolveEffectiveProxySource({
+    env: {},
+    platform: "linux",
+    proxyConfig: { mode: "manual", protocol: "socks5", host: "127.0.0.1", port: 1080 },
+  });
+  assert.equal(good.source, "manual");
+  assert.equal(good.proxyUrl, "socks5://127.0.0.1:1080");
+  resetProxyApplyStateForTests();
+});

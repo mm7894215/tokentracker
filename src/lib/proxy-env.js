@@ -114,13 +114,15 @@ function resolveEffectiveProxyUrl({
     return { source: "none", proxyUrl: null, config };
   }
   // Dirty persisted "manual" normalizes to system; do not pretend a system
-  // proxy is in effect — apply() fail-closes this case separately.
+  // proxy is in effect. apply() fail-closes this case, so report "blocked"
+  // rather than "none" — the UI must not say "connecting directly" while
+  // outbound traffic is actually being refused.
   if (isDeclaredManual(proxyConfig) && config.mode !== "manual") {
-    return { source: "none", proxyUrl: null, config };
+    return { source: "blocked", proxyUrl: null, config };
   }
   if (config.mode === "manual") {
     const proxyUrl = buildProxyUrl(config);
-    return { source: proxyUrl ? "manual" : "none", proxyUrl, config };
+    return { source: proxyUrl ? "manual" : "blocked", proxyUrl, config };
   }
   const envUrl = pickProxyUrl(env);
   if (envUrl) return { source: "env", proxyUrl: envUrl, config };

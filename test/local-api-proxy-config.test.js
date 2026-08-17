@@ -275,7 +275,9 @@ test("GET proxy-config falls back to system for truly invalid persisted proxy va
   assert.equal(res.statusCode, 200);
   const body = res.json();
   assert.equal(body.mode, "system");
-  assert.notEqual(body.effective, "manual");
+  // Fail-closed, not direct: the UI must not render "connecting directly"
+  // while apply() is refusing outbound traffic.
+  assert.equal(body.effective, "blocked");
 
   let installed = null;
   const applyResult = applyUndiciProxyIfNeeded({
