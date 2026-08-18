@@ -79,6 +79,68 @@ final class DynamicIslandCompactPolicyTests: XCTestCase {
         )
     }
 
+    func testResolveRingMetricFallbackSkipsTheMetricOnTheOppositeWing() throws {
+        let limits = try response(overrides: [
+            "claude": ["configured": true, "five_hour": ["utilization": 79.0]],
+            "codex": ["configured": true, "primary_window": ["used_percent": 40]],
+        ])
+
+        // Without the exclusion the ring would mirror the right wing exactly.
+        XCTAssertEqual(
+            DynamicIslandCompactPolicy.resolveRingMetric(
+                primarySlot: .todayCost,
+                secondarySlot: .claude5h,
+                limits: limits,
+                hiddenProviders: []
+            ),
+            .codex5h
+        )
+    }
+
+    func testResolveRingMetricFallbackStaysEmptyWhenOnlyCandidateIsOnTheOtherWing() throws {
+        let limits = try response(claude: ["configured": true, "five_hour": ["utilization": 79.0]])
+
+        XCTAssertNil(DynamicIslandCompactPolicy.resolveRingMetric(
+            primarySlot: .todayCost,
+            secondarySlot: .claude5h,
+            limits: limits,
+            hiddenProviders: []
+        ))
+    }
+
+    func testResolveRingMetricKeepsAnExplicitPrimaryEvenIfItMatchesSecondary() throws {
+        let limits = try response(claude: ["configured": true, "five_hour": ["utilization": 79.0]])
+
+        // Slot normalization rejects duplicate slots, so an explicit Primary is
+        // honored rather than second-guessed.
+        XCTAssertEqual(
+            DynamicIslandCompactPolicy.resolveRingMetric(
+                primarySlot: .claude5h,
+                secondarySlot: .claude5h,
+                limits: limits,
+                hiddenProviders: []
+            ),
+            .claude5h
+        )
+    }
+
+    func testAutoRingMetricExclusionFallsThroughToTheNextWindowOfSameProvider() throws {
+        let limits = try response(claude: [
+            "configured": true,
+            "five_hour": ["utilization": 79.0],
+            "seven_day": ["utilization": 42.0],
+        ])
+
+        XCTAssertEqual(
+            DynamicIslandCompactPolicy.resolveAutoRingMetric(
+                limits: limits,
+                hiddenProviders: [],
+                excluding: .claude5h
+            ),
+            .claude7d
+        )
+    }
+
     func testResolveRingMetricHonorsExplicitNone() throws {
         let limits = try response(claude: ["configured": true, "five_hour": ["utilization": 30.0]])
 

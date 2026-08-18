@@ -17,9 +17,14 @@ enum DynamicIslandCompactPolicy {
     /// The first currently healthy, visible limit metric. `keepingSelected` is
     /// deliberately empty: a stale selected slot must not become an auto-ring
     /// candidate while its provider is unavailable.
+    ///
+    /// `excluding` keeps the auto-picked ring from landing on a metric the
+    /// opposite wing already renders — otherwise both wings show the same
+    /// window and the ring carries no information the user cannot already read.
     static func resolveAutoRingMetric(
         limits: UsageLimitsResponse?,
-        hiddenProviders: Set<String>
+        hiddenProviders: Set<String>,
+        excluding: MenuBarDisplayMetric? = nil
     ) -> MenuBarDisplayMetric? {
         MenuBarDisplayPreferences.availableItemIDs(
             for: limits,
@@ -27,18 +32,24 @@ enum DynamicIslandCompactPolicy {
             hiddenProviders: hiddenProviders
         )
         .compactMap(MenuBarDisplayMetric.init(rawValue:))
-        .first { $0.settingsCategory == "limits" }
+        .first { $0.settingsCategory == "limits" && $0 != excluding }
     }
 
     /// Uses a viable Primary slot directly. A non-limit or unavailable Primary
     /// falls back to auto, while nil preserves the user's explicit empty slot.
+    ///
+    /// Only the fallback path can collide with the opposite wing: slot
+    /// normalization already rejects the same metric in both slots, so an
+    /// explicitly chosen Primary is always distinct from `secondarySlot` and is
+    /// honored as-is. When the fallback has no distinct candidate left, the ring
+    /// stays empty rather than mirroring the other wing.
     static func resolveRingMetric(
         primarySlot: MenuBarDisplayMetric?,
+        secondarySlot: MenuBarDisplayMetric? = nil,
         limits: UsageLimitsResponse?,
         hiddenProviders: Set<String>
     ) -> MenuBarDisplayMetric? {
         guard let primarySlot else { return nil }
-        let auto = resolveAutoRingMetric(limits: limits, hiddenProviders: hiddenProviders)
         let available = MenuBarDisplayPreferences.availableItemIDs(
             for: limits,
             keepingSelected: [],
@@ -46,7 +57,11 @@ enum DynamicIslandCompactPolicy {
         )
         guard primarySlot.settingsCategory == "limits",
               available.contains(primarySlot.rawValue) else {
-            return auto
+            return resolveAutoRingMetric(
+                limits: limits,
+                hiddenProviders: hiddenProviders,
+                excluding: secondarySlot
+            )
         }
         return primarySlot
     }

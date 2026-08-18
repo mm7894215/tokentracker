@@ -280,6 +280,7 @@ struct DynamicIslandView: View {
     private var ringMetric: MenuBarDisplayMetric? {
         DynamicIslandCompactPolicy.resolveRingMetric(
             primarySlot: wingMetrics.left,
+            secondarySlot: wingMetrics.right,
             limits: viewModel.usageLimits,
             hiddenProviders: LimitsSettingsStore.shared.hiddenProviders
         )
