@@ -461,6 +461,37 @@ settings.page.subtitle,ui,SettingsPage,SettingsPage,subtitle,"Manage your accoun
 settings.section.appearance,ui,SettingsPage,SettingsPage,sec_appearance,"Appearance",,active
 settings.section.account,ui,SettingsPage,SettingsPage,sec_account,"Account",,active
 settings.section.limits,ui,SettingsPage,SettingsPage,sec_limits,"Limits Display",,active
+settings.section.network,ui,SettingsPage,NetworkSection,sec_network,"Network",,active
+settings.network.mode.label,ui,SettingsPage,NetworkSection,mode_label,"Outbound proxy",,active
+settings.network.mode.hint,ui,SettingsPage,NetworkSection,mode_hint,"Choose how Token Tracker reaches the internet for cloud sync. App updates always follow the system proxy.",,active
+settings.network.mode.system,ui,SettingsPage,NetworkSection,mode_system,"System",,active
+settings.network.mode.manual,ui,SettingsPage,NetworkSection,mode_manual,"Manual",,active
+settings.network.mode.off,ui,SettingsPage,NetworkSection,mode_off,"Off",,active
+settings.network.protocol.label,ui,SettingsPage,NetworkSection,protocol_label,"Protocol",,active
+settings.network.protocol.http,ui,SettingsPage,NetworkSection,protocol_http,"HTTP",,active
+settings.network.protocol.https,ui,SettingsPage,NetworkSection,protocol_https,"HTTPS",,active
+settings.network.protocol.socks5,ui,SettingsPage,NetworkSection,protocol_socks5,"SOCKS5",,active
+settings.network.host.label,ui,SettingsPage,NetworkSection,host_label,"Host",,active
+settings.network.host.placeholder,ui,SettingsPage,NetworkSection,host_placeholder,"127.0.0.1",,active
+settings.network.port.label,ui,SettingsPage,NetworkSection,port_label,"Port",,active
+settings.network.port.placeholder,ui,SettingsPage,NetworkSection,port_placeholder,"7890",,active
+settings.network.test,ui,SettingsPage,NetworkSection,test,"Test connection",,active
+settings.network.test.testing,ui,SettingsPage,NetworkSection,test_testing,"Testing…",,active
+settings.network.test.ok,ui,SettingsPage,NetworkSection,test_ok,"Reached the test URL (HTTP {{status}}).",,active
+settings.network.test.fail,ui,SettingsPage,NetworkSection,test_fail,"Could not connect: {{error}}",,active
+settings.network.save,ui,SettingsPage,NetworkSection,save,"Save",,active
+settings.network.saving,ui,SettingsPage,NetworkSection,saving,"Saving…",,active
+settings.network.saved,ui,SettingsPage,NetworkSection,saved,"Proxy settings saved.",,active
+settings.network.error.host,ui,SettingsPage,NetworkSection,error_host,"Enter a host without http:// or a path.",,active
+settings.network.error.port,ui,SettingsPage,NetworkSection,error_port,"Enter a port between 1 and 65535.",,active
+settings.network.effective.manual,ui,SettingsPage,NetworkSection,effective_manual,"Currently using the manual proxy.",,active
+settings.network.effective.env,ui,SettingsPage,NetworkSection,effective_env,"Currently using an environment-variable proxy.",,active
+settings.network.effective.system,ui,SettingsPage,NetworkSection,effective_system,"Currently using the system proxy.",,active
+settings.network.effective.none,ui,SettingsPage,NetworkSection,effective_none,"Currently connecting directly.",,active
+settings.network.effective.blocked,ui,SettingsPage,NetworkSection,effective_blocked,"Outbound traffic is blocked: the manual proxy could not be applied.",,active
+settings.network.apply_error,ui,SettingsPage,NetworkSection,apply_error,"The saved proxy could not be applied: {{error}}. The proxy is not in effect and outbound traffic is blocked. Check your proxy settings.",,active
+settings.network.save_error,ui,SettingsPage,NetworkSection,save_error,"Could not save proxy settings: {{error}}",,active
+settings.network.save_error_unprotected,ui,SettingsPage,NetworkSection,save_error_unprotected,"Could not save proxy settings: {{error}}. Outbound traffic is currently unprotected — even blocking it failed.",,active
 settings.limits.providers,ui,SettingsPage,SettingsPage,limits_providers,"Providers",,active
 settings.labs.island.label,ui,SettingsPage,LabsSection,island_label,"Dynamic Island",,active
 settings.labs.island.hint,ui,SettingsPage,LabsSection,island_hint,"Turn the MacBook notch into a Dynamic Island: today's tokens and spend at a glance, hover for spend and limit details.",,active
@@ -1473,3 +1504,17 @@ landing.v3.how.scene.files_changed,landing,LandingPage,HowItWorksSection,scene_f
 landing.v3.how.scene.session_title,landing,LandingPage,HowItWorksSection,scene_session_title,"session log · last turn",,active
 landing.v3.how.scene.appended,landing,LandingPage,HowItWorksSection,scene_appended,"appended locally",,active
 landing.v3.how.scene.total_tokens,landing,LandingPage,HowItWorksSection,scene_total_tokens,"total tokens",,active
+limits.provider.ark_coding_plan,ui,LimitsPage,UsageLimitsPanel,provider_ark_coding_plan,"Ark Coding Plan",,active
+limits.label.ark_coding_plan_5h,ui,LimitsPage,UsageLimitsPanel,ark_coding_plan_5h,"5h",,active
+limits.label.ark_coding_plan_weekly,ui,LimitsPage,UsageLimitsPanel,ark_coding_plan_weekly,"Weekly",,active
+limits.label.ark_coding_plan_monthly,ui,LimitsPage,UsageLimitsPanel,ark_coding_plan_monthly,"Monthly",,active
+limits.codingPlan.setupHint.title,ui,LimitsPage,UsageLimitsPanel,coding_plan_hint_title,"Connect Ark Coding Plan",,active
+limits.codingPlan.setupHint.subtitle,ui,LimitsPage,UsageLimitsPanel,coding_plan_hint_subtitle,"Quota is read from the official Ark CLI (arkcli) on this machine.",,active
+limits.codingPlan.setupHint.step1,ui,LimitsPage,UsageLimitsPanel,coding_plan_hint_step1,"Install the Ark CLI from npm.",,active
+limits.codingPlan.setupHint.cta,ui,LimitsPage,UsageLimitsPanel,coding_plan_hint_cta,"View install guide",,active
+limits.codingPlan.setupHint.step2,ui,LimitsPage,UsageLimitsPanel,coding_plan_hint_step2,"Sign in with your Volcengine account (browser SSO recommended).",,active
+limits.codingPlan.setupHint.step2_remote,ui,LimitsPage,UsageLimitsPanel,coding_plan_hint_step2_remote,"Headless / remote terminals: arkcli auth login --no-browser",,active
+limits.codingPlan.setupHint.step3,ui,LimitsPage,UsageLimitsPanel,coding_plan_hint_step3,"Run these, then refresh this page:",,active
+limits.codingPlan.setupHint.note_app,ui,LimitsPage,UsageLimitsPanel,coding_plan_hint_note_app,"Refresh after signing in — no app restart needed.",,active
+limits.codingPlan.setupHint.copy,ui,LimitsPage,UsageLimitsPanel,coding_plan_hint_copy,"Copy",,active
+limits.codingPlan.setupHint.copied,ui,LimitsPage,UsageLimitsPanel,coding_plan_hint_copied,"Copied",,active

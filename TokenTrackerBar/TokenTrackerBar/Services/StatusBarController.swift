@@ -27,6 +27,7 @@ final class StatusBarController: NSObject {
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let popover = NSPopover()
     private var popoverAnchorWindow: NSWindow?
+    private var popoverDismissMonitor: Any?
     private let viewModel: DashboardViewModel
     private let serverManager: ServerManager
     private let launchAtLoginManager: LaunchAtLoginManager
@@ -776,6 +777,10 @@ final class StatusBarController: NSObject {
     }
 
     private func handlePopoverDidClose() {
+        if let popoverDismissMonitor {
+            NSEvent.removeMonitor(popoverDismissMonitor)
+            self.popoverDismissMonitor = nil
+        }
         viewModel.setPopoverVisible(false)
         popoverAnchorWindow?.orderOut(nil)
         updateStatsDisplay()
@@ -816,8 +821,18 @@ final class StatusBarController: NSObject {
             // while the Dashboard window is frontmost). .fullScreenAuxiliary matches
             // the anchor window so the popover also shows over full-screen Spaces.
             window.collectionBehavior.insert([.canJoinAllSpaces, .fullScreenAuxiliary])
-            NSApp.activate(ignoringOtherApps: true)
             window.makeKey()
+
+            // Keep the status-bar popover non-activating. App-wide activation can
+            // restore a Dashboard window on another display/Space and move the
+            // popover away from the menu-bar item that was clicked (#481). Tahoe's
+            // inactive Liquid Glass treatment is preferable to incorrect placement.
+        }
+
+        popoverDismissMonitor = NSEvent.addGlobalMonitorForEvents(
+            matching: [.leftMouseDown, .rightMouseDown]
+        ) { [weak self] _ in
+            Task { @MainActor in self?.closePopoverIfShown() }
         }
 
         // Opportunistically sync stale local data before refreshing the popover.
@@ -966,13 +981,25 @@ final class StatusBarController: NSObject {
         // Display Metrics Submenu (affects both Dynamic Island & Menu Bar Icon)
         let displayItem = NSMenuItem(title: Strings.menuDisplayMetrics, action: nil, keyEquivalent: "")
         let displayMenu = NSMenu()
+        displayMenu.autoenablesItems = false
 
         let statsItem = NSMenuItem(title: Strings.menuShowStats, action: #selector(toggleStats), keyEquivalent: "")
         statsItem.target = self
         statsItem.state = showStats ? .on : .off
         displayMenu.addItem(statsItem)
 
-        if showStats {
+        let compactItem = NSMenuItem(title: Strings.menuDynamicIslandCompactMode, action: #selector(toggleDynamicIslandCompact), keyEquivalent: "")
+        compactItem.target = self
+        compactItem.state = DynamicIslandCompactPolicy.isEnabled() ? .on : .off
+        compactItem.isEnabled = islandEnabled
+        displayMenu.addItem(compactItem)
+
+        let remainingItem = NSMenuItem(title: Strings.menuRingShowsRemaining, action: #selector(selectRingDisplayMode(_:)), keyEquivalent: "")
+        remainingItem.target = self
+        remainingItem.state = LimitsSettingsStore.shared.displayMode == .remaining ? .on : .off
+        displayMenu.addItem(remainingItem)
+
+        if showStats || islandEnabled {
             displayMenu.addItem(.separator())
             let selectedIDs = MenuBarDisplayPreferences.read()
             let payload = MenuBarDisplayPreferences.availableItemsPayload(
@@ -1145,6 +1172,17 @@ final class StatusBarController: NSObject {
 
     @objc private func toggleStats() {
         showStats.toggle()
+    }
+
+    @objc private func toggleDynamicIslandCompact() {
+        DynamicIslandCompactPolicy.write(!DynamicIslandCompactPolicy.isEnabled())
+        NotificationCenter.default.post(name: .nativeSettingsChanged, object: nil)
+    }
+
+    @objc private func selectRingDisplayMode(_ sender: NSMenuItem) {
+        let next: LimitDisplayMode =
+            LimitsSettingsStore.shared.displayMode == .remaining ? .used : .remaining
+        LimitsSettingsStore.shared.setDisplayModeFromMenu(next)
     }
 
     @objc private func selectMenuBarSlotMetric(_ sender: NSMenuItem) {

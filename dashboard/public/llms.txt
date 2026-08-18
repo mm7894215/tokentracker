@@ -23,7 +23,7 @@ timestamps, never prompts, responses, or source code.
 - [npm package](https://www.npmjs.com/package/tokentracker-cli)
 - [Latest release](https://github.com/xiufengsun/TokenTracker/releases/latest)
 
-## Supported AI coding tools (32)
+## Supported AI coding tools (33)
 - Claude Code
 - Codex CLI
 - Cursor
@@ -41,6 +41,7 @@ timestamps, never prompts, responses, or source code.
 - Grok Build
 - oh-my-pi
 - pi
+- Prime Agent
 - Craft Agents
 - Reasonix
 - Kilo CLI

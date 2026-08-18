@@ -12397,6 +12397,57 @@ function resolvePiDefaultModel() {
   return "pi-unknown";
 }
 
+// Prime Agent (PrimeIntellect-ai/prime-agent) persists the same metadata-only
+// assistant usage envelope as pi, but uses a flat sessions directory:
+//   ~/.prime/agent/sessions/<session-id>.jsonl
+// Keep its path and cursor namespace independent from pi so installations of
+// both tools can never suppress or double-count each other.
+function resolvePrimeAgentHome(env = process.env) {
+  if (env.TOKENTRACKER_PRIME_AGENT_HOME) {
+    return expandHomePath(env.TOKENTRACKER_PRIME_AGENT_HOME, env);
+  }
+  const home = env.HOME || require("node:os").homedir();
+  if (process.platform === "win32") {
+    return pickWin32ProviderPath({
+      env,
+      nativeValue: path.join(home, ".prime"),
+      wslProviderDir: ".prime",
+    });
+  }
+  return path.join(home, ".prime");
+}
+
+function resolvePrimeAgentDir(env = process.env) {
+  if (env.TOKENTRACKER_PRIME_AGENT_DIR) {
+    return expandHomePath(env.TOKENTRACKER_PRIME_AGENT_DIR, env);
+  }
+  const primeHome = resolvePrimeAgentHome(env);
+  return primeHome ? path.join(primeHome, "agent") : null;
+}
+
+function resolvePrimeAgentSessionFiles(env = process.env) {
+  const agentDir = resolvePrimeAgentDir(env);
+  if (!agentDir) return [];
+  const sessionsDir = path.join(agentDir, "sessions");
+  if (!fssync.existsSync(sessionsDir)) return [];
+  const files = [];
+  const walk = (dir) => {
+    let entries;
+    try { entries = fssync.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const entry of entries) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (entry.isFile() && entry.name.endsWith(".jsonl")) files.push(full);
+    }
+  };
+  walk(sessionsDir);
+  return files.sort((a, b) => a.localeCompare(b));
+}
+
+function resolvePrimeAgentDefaultModel() {
+  return "prime-agent-unknown";
+}
+
 // Pi is a router: the same session can send turns to Anthropic, GitHub
 // Copilot, or another backend. Keep provider names in the queue source so
 // those turns cannot collapse into one bucket (or inherit the wrong pricing).
@@ -12413,30 +12464,47 @@ function piSourceForProvider(provider) {
   return slug ? `pi-${slug}` : "pi";
 }
 
-async function parsePiIncremental({
+function primeAgentSourceForProvider(provider) {
+  if (typeof provider !== "string" || !provider.trim()) return "prime-agent";
+  const slug = provider
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 64);
+  return slug ? `prime-agent-${slug}` : "prime-agent";
+}
+
+async function parsePiLikeIncremental({
   sessionFiles,
   cursors,
   queuePath,
   onProgress,
   env,
   defaultModel,
+  stateKey,
+  resolveSessionFiles,
+  resolveDefaultModel,
+  sourceForProvider,
 } = {}) {
   await ensureDir(path.dirname(queuePath));
-  const piState = cursors.pi && typeof cursors.pi === "object" ? cursors.pi : {};
-  const seenIds = new Set(Array.isArray(piState.seenIds) ? piState.seenIds : []);
+  const providerState = cursors[stateKey] && typeof cursors[stateKey] === "object"
+    ? cursors[stateKey]
+    : {};
+  const seenIds = new Set(Array.isArray(providerState.seenIds) ? providerState.seenIds : []);
   const fileOffsets =
-    piState.fileOffsets && typeof piState.fileOffsets === "object"
-      ? { ...piState.fileOffsets }
+    providerState.fileOffsets && typeof providerState.fileOffsets === "object"
+      ? { ...providerState.fileOffsets }
       : {};
 
   const files = Array.isArray(sessionFiles)
     ? sessionFiles
-    : resolvePiSessionFiles(env || process.env);
-  const fallbackModel = defaultModel || resolvePiDefaultModel();
+    : resolveSessionFiles(env || process.env);
+  const fallbackModel = defaultModel || resolveDefaultModel();
 
   if (files.length === 0) {
-    cursors.pi = {
-      ...piState,
+    cursors[stateKey] = {
+      ...providerState,
       seenIds: Array.from(seenIds),
       fileOffsets,
       updatedAt: new Date().toISOString(),
@@ -12463,12 +12531,29 @@ async function parsePiIncremental({
     if (stat.size <= startOffset) continue;
 
     let stream;
+    let streamedBytes = 0;
+    let lastCompleteOffset = startOffset;
     try {
       stream = fssync.createReadStream(filePath, {
         encoding: "utf8",
         start: startOffset,
       });
     } catch { continue; }
+    // readline emits an unterminated final fragment as if it were a line. If
+    // the producer is still writing that JSON object, parsing fails; advancing
+    // to stat.size here would then lose the completed record forever. Track the
+    // last physical newline and commit only through that byte boundary.
+    stream.on("data", (chunk) => {
+      let searchFrom = 0;
+      let newlineIndex;
+      while ((newlineIndex = chunk.indexOf("\n", searchFrom)) !== -1) {
+        lastCompleteOffset = startOffset
+          + streamedBytes
+          + Buffer.byteLength(chunk.slice(0, newlineIndex + 1), "utf8");
+        searchFrom = newlineIndex + 1;
+      }
+      streamedBytes += Buffer.byteLength(chunk, "utf8");
+    });
     const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
 
     for await (const line of rl) {
@@ -12529,7 +12614,7 @@ async function parsePiIncremental({
           : input + output + cacheRead + cacheWrite + reasoningTokens;
 
       const model = normalizeModelInput(msg.model) || fallbackModel;
-      const source = piSourceForProvider(msg.provider);
+      const source = sourceForProvider(msg.provider);
 
       const delta = {
         input_tokens: input,
@@ -12561,7 +12646,7 @@ async function parsePiIncremental({
     let postStat = stat;
     try { postStat = fssync.statSync(filePath); } catch {}
     fileOffsets[filePath] = {
-      size: postStat.size,
+      size: Math.min(lastCompleteOffset, postStat.size),
       mtimeMs: postStat.mtimeMs,
       ino: postStat.ino,
     };
@@ -12579,14 +12664,34 @@ async function parsePiIncremental({
   const updatedAt = new Date().toISOString();
   hourlyState.updatedAt = updatedAt;
   cursors.hourly = hourlyState;
-  cursors.pi = {
-    ...piState,
+  cursors[stateKey] = {
+    ...providerState,
     seenIds: cappedSeen,
     fileOffsets,
     updatedAt,
   };
 
   return { recordsProcessed, eventsAggregated, bucketsQueued };
+}
+
+async function parsePiIncremental(options = {}) {
+  return parsePiLikeIncremental({
+    ...options,
+    stateKey: "pi",
+    resolveSessionFiles: resolvePiSessionFiles,
+    resolveDefaultModel: resolvePiDefaultModel,
+    sourceForProvider: piSourceForProvider,
+  });
+}
+
+async function parsePrimeAgentIncremental(options = {}) {
+  return parsePiLikeIncremental({
+    ...options,
+    stateKey: "primeAgent",
+    resolveSessionFiles: resolvePrimeAgentSessionFiles,
+    resolveDefaultModel: resolvePrimeAgentDefaultModel,
+    sourceForProvider: primeAgentSourceForProvider,
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -16901,6 +17006,38 @@ function resolveDshHome(env = process.env) {
   return path.join(os.homedir(), ".dsh");
 }
 
+// Windows users commonly run Harness inside WSL while TokenTracker itself runs
+// natively. Respect the repository-wide WSL mode contract and keep explicit
+// DSH home overrides authoritative: an override is a complete user choice, not
+// one half of an automatic native/WSL discovery pair.
+function resolveDshHomes(env = process.env, deps = {}) {
+  const overridden = Boolean(
+    (typeof env?.TOKENTRACKER_DSH_HOME === "string" && env.TOKENTRACKER_DSH_HOME.trim()) ||
+    (typeof env?.DSH_HOME === "string" && env.DSH_HOME.trim()),
+  );
+  const nativeHome = deps.nativeHome || resolveDshHome(env);
+  const platform = deps.platform || process.platform;
+  if (overridden || platform !== "win32") return [nativeHome];
+
+  const existsSync = deps.existsSync || fssync.existsSync;
+  let nativeValue = null;
+  try {
+    if (existsSync(nativeHome)) nativeValue = nativeHome;
+  } catch (_error) {}
+
+  const discoverWslHome = deps.discoverWslHome || wsl.discoverWslHome;
+  const wslValue = wsl.shouldProbeWsl(env)
+    ? discoverWslHome(".dsh", { ...deps, env })
+    : null;
+  const resolved = wsl.resolveAllWin32Paths({
+    nativeValue,
+    wslValue,
+    env,
+    platform,
+  });
+  return [...new Set([resolved.native, resolved.wsl].filter(Boolean))];
+}
+
 function isDshSessionLogName(name) {
   return name === "session.jsonl" || name === "session.jsonl.zstd";
 }
@@ -16908,47 +17045,55 @@ function isDshSessionLogName(name) {
 // Walk the harness sessions root for per-session log artifacts. The tree is
 // `<sessions-root>/<project-key>/<session-id>/session.jsonl[.zstd]`; only the
 // exact leaf names are collected so unrelated harness files are ignored.
-async function resolveDshSessionFiles(env = process.env) {
-  const sessionsRoot = path.join(resolveDshHome(env), "sessions");
+async function resolveDshSessionFiles(env = process.env, deps = {}) {
   const out = [];
-  const projects = await safeReadDir(sessionsRoot);
-  for (const project of projects) {
-    if (!project.isDirectory()) continue;
-    const projectDir = path.join(sessionsRoot, project.name);
-    const sessions = await safeReadDir(projectDir);
-    for (const session of sessions) {
-      if (!session.isDirectory()) continue;
-      const sessionDir = path.join(projectDir, session.name);
-      const artifacts = await safeReadDir(sessionDir);
-      const transcripts = artifacts.filter(
-        (artifact) => artifact.isFile() && isDshSessionLogName(artifact.name),
-      );
-      if (transcripts.length === 1) {
-        out.push(path.join(sessionDir, transcripts[0].name));
-      } else if (transcripts.length > 1) {
-        // Harness itself rejects mixed encodings in one root. For a passive
-        // reader, choose the actively-written artifact instead of counting the
-        // same session twice; a tie prefers the default zstd encoding.
-        const ranked = await Promise.all(transcripts.map(async (artifact) => {
-          const full = path.join(sessionDir, artifact.name);
-          const handle = await fs.open(full, "r").catch(() => null);
-          if (!handle) return { full, name: artifact.name, mtimeMs: 0 };
-          try {
-            const stat = await handle.stat().catch(() => null);
-            return {
-              full,
-              name: artifact.name,
-              mtimeMs: stat?.isFile() ? Number(stat.mtimeMs || 0) : 0,
-            };
-          } finally {
-            await handle.close().catch(() => {});
-          }
-        }));
-        ranked.sort((left, right) =>
-          right.mtimeMs - left.mtimeMs ||
-          Number(right.name.endsWith(".zstd")) - Number(left.name.endsWith(".zstd")),
+  const seen = new Set();
+  for (const dshHome of resolveDshHomes(env, deps)) {
+    const sessionsRoot = path.join(dshHome, "sessions");
+    const projects = await safeReadDir(sessionsRoot);
+    for (const project of projects) {
+      if (!project.isDirectory()) continue;
+      const projectDir = path.join(sessionsRoot, project.name);
+      const sessions = await safeReadDir(projectDir);
+      for (const session of sessions) {
+        if (!session.isDirectory()) continue;
+        const sessionDir = path.join(projectDir, session.name);
+        const artifacts = await safeReadDir(sessionDir);
+        const transcripts = artifacts.filter(
+          (artifact) => artifact.isFile() && isDshSessionLogName(artifact.name),
         );
-        if (ranked[0]) out.push(ranked[0].full);
+        let selected = null;
+        if (transcripts.length === 1) {
+          selected = path.join(sessionDir, transcripts[0].name);
+        } else if (transcripts.length > 1) {
+          // Harness itself rejects mixed encodings in one root. For a passive
+          // reader, choose the actively-written artifact instead of counting the
+          // same session twice; a tie prefers the default zstd encoding.
+          const ranked = await Promise.all(transcripts.map(async (artifact) => {
+            const full = path.join(sessionDir, artifact.name);
+            const handle = await fs.open(full, "r").catch(() => null);
+            if (!handle) return { full, name: artifact.name, mtimeMs: 0 };
+            try {
+              const stat = await handle.stat().catch(() => null);
+              return {
+                full,
+                name: artifact.name,
+                mtimeMs: stat?.isFile() ? Number(stat.mtimeMs || 0) : 0,
+              };
+            } finally {
+              await handle.close().catch(() => {});
+            }
+          }));
+          ranked.sort((left, right) =>
+            right.mtimeMs - left.mtimeMs ||
+            Number(right.name.endsWith(".zstd")) - Number(left.name.endsWith(".zstd")),
+          );
+          selected = ranked[0]?.full || null;
+        }
+        if (selected && !seen.has(selected)) {
+          seen.add(selected);
+          out.push(selected);
+        }
       }
     }
   }
@@ -17625,6 +17770,11 @@ module.exports = {
   resolvePiDefaultModel,
   parsePiIncremental,
   piAgentDirCollidesWithOmp,
+  resolvePrimeAgentHome,
+  resolvePrimeAgentDir,
+  resolvePrimeAgentSessionFiles,
+  resolvePrimeAgentDefaultModel,
+  parsePrimeAgentIncremental,
   resolveCraftConfigDir,
   resolveCraftWorkspaceRoots,
   resolveCraftSessionFiles,
@@ -17672,6 +17822,7 @@ module.exports = {
   parseTraeCnApiIncremental,
   // DeepSeek Harness (dsh) — passive session-log reader
   resolveDshHome,
+  resolveDshHomes,
   resolveDshSessionFiles,
   readDshSessionText,
   decodeDshZstd,
