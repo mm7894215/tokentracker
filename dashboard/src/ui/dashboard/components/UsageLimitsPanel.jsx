@@ -681,10 +681,14 @@ function OpenCodeGoSetupHint() {
       setApiKey("");
       setAuthCookie("");
       setWorkspaceId("");
+      // Bust the 2-minute usage-limits cache so the next Limits fetch
+      // doesn't flash the previous error (see src/lib/usage-limits.js CACHE_TTL_MS).
+      try {
+        await fetch("/functions/tokentracker-usage-limits?refresh=1", { cache: "no-store" });
+      } catch {}
       setTimeout(() => {
-        // Refresh limits without a full page reload when possible.
         if (typeof window !== "undefined") window.location.reload();
-      }, 900);
+      }, 600);
     } catch (err) {
       setSaveState("error");
       setSaveError(err?.message || String(err));
@@ -700,7 +704,10 @@ function OpenCodeGoSetupHint() {
       await clear();
       setSaveState("saved");
       setSaveError("");
-      setTimeout(() => window.location.reload(), 700);
+      try {
+        await fetch("/functions/tokentracker-usage-limits?refresh=1", { cache: "no-store" });
+      } catch {}
+      setTimeout(() => window.location.reload(), 400);
     } catch (err) {
       setSaveState("error");
       setSaveError(err?.message || String(err));
