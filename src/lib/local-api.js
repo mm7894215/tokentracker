@@ -3063,6 +3063,115 @@ function createLocalApiHandler({ queuePath }) {
       return true;
     }
 
+    // --- OpenCode Go: persisted credentials for direct-fill UI ---
+    // Stored in config.json next to the queue (chmod 600) so the dashboard
+    // can save an API key without touching the shell profile.
+    // GET is unauthenticated but never returns the raw secret (masked only);
+    // POST/DELETE require the local-auth token.
+    if (p === "/functions/tokentracker-opencode-go-config") {
+      const { writeFileAtomic, chmod600IfPossible } = require("./fs");
+      const configPath = path.join(path.dirname(qp), "config.json");
+      const readConfig = () => {
+        try {
+          const parsed = JSON.parse(fs.readFileSync(configPath, "utf8"));
+          return parsed && typeof parsed === "object" ? parsed : {};
+        } catch {
+          return {};
+        }
+      };
+      const maskSecret = (value) => {
+        const s = String(value || "").trim();
+        if (!s) return null;
+        if (s.length <= 8) return `${s.slice(0, 2)}…${s.slice(-2)}`;
+        return `${s.slice(0, 4)}…${s.slice(-4)}`;
+      };
+      const method = String(req.method || "GET").toUpperCase();
+      if (method === "GET") {
+        const cfg = readConfig();
+        const oc = cfg?.opencodeGo && typeof cfg.opencodeGo === "object" ? cfg.opencodeGo : {};
+        const apiKey = typeof oc.apiKey === "string" ? oc.apiKey.trim() : "";
+        const authCookie = typeof oc.authCookie === "string" ? oc.authCookie.trim() : "";
+        const workspaceId = typeof oc.workspaceId === "string" ? oc.workspaceId.trim() : "";
+        json(res, {
+          hasApiKey: Boolean(apiKey),
+          hasAuthCookie: Boolean(authCookie),
+          hasWorkspaceId: Boolean(workspaceId),
+          apiKeyMasked: maskSecret(apiKey),
+          authCookieMasked: maskSecret(authCookie),
+          workspaceIdMasked: workspaceId ? maskSecret(workspaceId) : null,
+          workspaceId: workspaceId || "",
+        });
+        return true;
+      }
+      if (method === "POST" || method === "PUT") {
+        if (!isAuthorizedLocalMutation(req)) {
+          json(res, { ok: false, error: "Unauthorized" }, 401);
+          return true;
+        }
+        let body = {};
+        try {
+          body = await readJsonBody(req);
+        } catch {
+          json(res, { ok: false, error: "invalid JSON" }, 400);
+          return true;
+        }
+        const apiKey = typeof body.apiKey === "string" ? body.apiKey.trim() : typeof body.OPENCODE_GO_API_KEY === "string" ? body.OPENCODE_GO_API_KEY.trim() : "";
+        const authCookie = typeof body.authCookie === "string" ? body.authCookie.trim() : typeof body.OPENCODE_GO_AUTH_COOKIE === "string" ? body.OPENCODE_GO_AUTH_COOKIE.trim() : "";
+        const workspaceId = typeof body.workspaceId === "string" ? body.workspaceId.trim() : typeof body.OPENCODE_GO_WORKSPACE_ID === "string" ? body.OPENCODE_GO_WORKSPACE_ID.trim() : "";
+        if (apiKey && apiKey.length < 8) {
+          json(res, { ok: false, error: "API key too short" }, 400);
+          return true;
+        }
+        if (!apiKey && !authCookie && !workspaceId) {
+          json(res, { ok: false, error: "Provide at least one of apiKey or authCookie" }, 400);
+          return true;
+        }
+        const current = readConfig();
+        const next = { ...current };
+        const oc = (next.opencodeGo && typeof next.opencodeGo === "object" && !Array.isArray(next.opencodeGo)) ? { ...next.opencodeGo } : {};
+        if ("apiKey" in body || "OPENCODE_GO_API_KEY" in body) oc.apiKey = apiKey || "";
+        if ("authCookie" in body || "OPENCODE_GO_AUTH_COOKIE" in body) oc.authCookie = authCookie || "";
+        if ("workspaceId" in body || "OPENCODE_GO_WORKSPACE_ID" in body) oc.workspaceId = workspaceId || "";
+        // Prune empty object
+        if (!oc.apiKey && !oc.authCookie && !oc.workspaceId) {
+          delete next.opencodeGo;
+        } else {
+          // Remove empty strings to keep file tidy
+          if (!oc.apiKey) delete oc.apiKey;
+          if (!oc.authCookie) delete oc.authCookie;
+          if (!oc.workspaceId) delete oc.workspaceId;
+          next.opencodeGo = oc;
+        }
+        try {
+          await writeFileAtomic(configPath, JSON.stringify(next, null, 2));
+          await chmod600IfPossible(configPath);
+        } catch (error) {
+          json(res, { ok: false, error: error?.message || "failed to save" }, 500);
+          return true;
+        }
+        json(res, { ok: true });
+        return true;
+      }
+      if (method === "DELETE") {
+        if (!isAuthorizedLocalMutation(req)) {
+          json(res, { ok: false, error: "Unauthorized" }, 401);
+          return true;
+        }
+        const current = readConfig();
+        if (current.opencodeGo) {
+          delete current.opencodeGo;
+          try {
+            const { writeFileAtomic } = require("./fs");
+            await writeFileAtomic(configPath, JSON.stringify(current, null, 2));
+          } catch {}
+        }
+        json(res, { ok: true });
+        return true;
+      }
+      json(res, { error: "Method Not Allowed" }, 405);
+      return true;
+    }
+
     // --- usage-limits ---
     if (p === "/functions/tokentracker-usage-limits") {
       const { getUsageLimits, resetUsageLimitsCache } = require("./usage-limits");
@@ -3072,9 +3181,29 @@ function createLocalApiHandler({ queuePath }) {
         if (forceRefresh) {
           resetUsageLimitsCache();
         }
+        // Merge persisted OpenCode Go credentials (local UI direct-fill) into
+        // the env so getUsageLimits can prefer the API without requiring a
+        // shell-level export. Env still wins if explicitly set.
+        let mergedEnv = process.env;
+        try {
+          const cfgRaw = fs.readFileSync(path.join(path.dirname(qp), "config.json"), "utf8");
+          const cfg = JSON.parse(cfgRaw);
+          const oc = cfg?.opencodeGo;
+          if (oc && typeof oc === "object") {
+            const persistedApiKey = typeof oc.apiKey === "string" ? oc.apiKey.trim() : "";
+            const persistedCookie = typeof oc.authCookie === "string" ? oc.authCookie.trim() : "";
+            const persistedWorkspace = typeof oc.workspaceId === "string" ? oc.workspaceId.trim() : "";
+            if ((persistedApiKey || persistedCookie || persistedWorkspace)) {
+              mergedEnv = { ...process.env };
+              if (persistedApiKey && !String(mergedEnv.OPENCODE_GO_API_KEY || "").trim()) mergedEnv.OPENCODE_GO_API_KEY = persistedApiKey;
+              if (persistedCookie && !String(mergedEnv.OPENCODE_GO_AUTH_COOKIE || "").trim()) mergedEnv.OPENCODE_GO_AUTH_COOKIE = persistedCookie;
+              if (persistedWorkspace && !String(mergedEnv.OPENCODE_GO_WORKSPACE_ID || "").trim()) mergedEnv.OPENCODE_GO_WORKSPACE_ID = persistedWorkspace;
+            }
+          }
+        } catch {}
         const data = await getUsageLimits({
           home: os.homedir(),
-          env: process.env,
+          env: mergedEnv,
           platform: process.platform,
           // Punches through the Claude disk fresh-cache (but not the 429
           // cooldown) — an explicit user refresh should hit upstream.

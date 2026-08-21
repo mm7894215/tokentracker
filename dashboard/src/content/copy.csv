@@ -1255,6 +1255,22 @@ limits.opencodeGo.setupHint.step3,ui,LimitsPage,UsageLimitsPanel,opencode_go_hin
 limits.opencodeGo.setupHint.note_app,ui,LimitsPage,UsageLimitsPanel,opencode_go_hint_note_app,"macOS app: set with launchctl setenv, then reopen the app.",,active
 limits.opencodeGo.setupHint.copy,ui,LimitsPage,UsageLimitsPanel,opencode_go_hint_copy,"Copy",,active
 limits.opencodeGo.setupHint.copied,ui,LimitsPage,UsageLimitsPanel,opencode_go_hint_copied,"Copied",,active
+limits.opencodeGo.directFill.title,ui,LimitsPage,UsageLimitsPanel,opencode_go_direct_title,"Or paste directly here (no Terminal needed)",,active
+limits.opencodeGo.directFill.apiKeyLabel,ui,LimitsPage,UsageLimitsPanel,opencode_go_direct_api_label,"API Key (recommended)",,active
+limits.opencodeGo.directFill.apiKeyPlaceholder,ui,LimitsPage,UsageLimitsPanel,opencode_go_direct_api_placeholder,"sk-... or Go API key",,active
+limits.opencodeGo.directFill.workspaceIdLabel,ui,LimitsPage,UsageLimitsPanel,opencode_go_direct_wrk_label,"Workspace ID (optional)",,active
+limits.opencodeGo.directFill.authCookieLabel,ui,LimitsPage,UsageLimitsPanel,opencode_go_direct_cookie_label,"Auth cookie (fallback)",,active
+limits.opencodeGo.directFill.hint,ui,LimitsPage,UsageLimitsPanel,opencode_go_direct_hint,"Stored locally in ~/.tokentracker/tracker/config.json (chmod 600) and never uploaded. Takes effect on next Limits refresh.",,active
+limits.opencodeGo.directFill.save,ui,LimitsPage,UsageLimitsPanel,opencode_go_direct_save,"Save",,active
+limits.opencodeGo.directFill.saving,ui,LimitsPage,UsageLimitsPanel,opencode_go_direct_saving,"Saving…",,active
+limits.opencodeGo.directFill.saved,ui,LimitsPage,UsageLimitsPanel,opencode_go_direct_saved,"Saved — refreshing…",,active
+limits.opencodeGo.directFill.clear,ui,LimitsPage,UsageLimitsPanel,opencode_go_direct_clear,"Clear",,active
+limits.opencodeGo.directFill.showMore,ui,LimitsPage,UsageLimitsPanel,opencode_go_direct_show_more,"Show legacy cookie fields",,active
+limits.opencodeGo.directFill.hideMore,ui,LimitsPage,UsageLimitsPanel,opencode_go_direct_hide_more,"Hide legacy fields",,active
+limits.opencodeGo.directFill.hasApiKey,ui,LimitsPage,UsageLimitsPanel,opencode_go_direct_has_api,"API key saved ({{masked}})",,active
+limits.opencodeGo.directFill.hasCookie,ui,LimitsPage,UsageLimitsPanel,opencode_go_direct_has_cookie,"Cookie saved ({{masked}})",,active
+limits.opencodeGo.directFill.terminalToggle,ui,LimitsPage,UsageLimitsPanel,opencode_go_direct_terminal,"Or via Terminal",,active
+limits.opencodeGo.directFill.error,ui,LimitsPage,UsageLimitsPanel,opencode_go_direct_error,"Save failed: {{error}}",,active
 settings.menubar.updates.checking,ui,SettingsPage,NativeAppFooter,updates_checking,"Checking...","正在检测...",active
 settings.menubar.updates.upToDate,ui,SettingsPage,NativeAppFooter,updates_uptodate,"You are up to date!","已是最新版本",active
 settings.menubar.updates.failed,ui,SettingsPage,NativeAppFooter,updates_failed,"Failed to check for updates. Please try again.","检查更新失败，请重试",active

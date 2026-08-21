@@ -3,6 +3,8 @@ import { Card } from "../../components";
 import { FadeIn } from "../../foundation/FadeIn.jsx";
 import { copy, getCopyLocale } from "../../../lib/copy";
 import { LIMIT_DISPLAY_MODES } from "../../../hooks/use-limits-display-prefs.js";
+import { useOpencodeGoConfig } from "../../../hooks/use-opencode-go-config.js";
+import { isLocalDashboardHost } from "../../../lib/host-mode";
 import {
   LIMIT_PROVIDER_IDS,
   limitProviderIconKey,
@@ -621,12 +623,22 @@ function ExternalArrow() {
 
 // OpenCode Go prefers the official usage API (GET https://opencode.ai/zen/go/v1/usage
 // with `Authorization: Bearer <OPENCODE_GO_API_KEY>`, cf. anomalyco/opencode#16513).
-// The signed-in workspace cookie scrape remains as a compatibility fallback for
-// existing users. The macOS/Windows apps have no settings field for these yet,
-// so this inline guide shows up wherever OpenCode Go is enabled but
-// unconfigured (or the credential has gone stale).
+// The signed-in workspace cookie scrape remains as a compatibility fallback.
+// On a local dashboard the key can be pasted directly here and is stored in
+// ~/.tokentracker/tracker/config.json (chmod 600); otherwise the shell-export
+// snippet is the fallback.
 function OpenCodeGoSetupHint() {
   const [copied, setCopied] = useState(false);
+  const [showLegacy, setShowLegacy] = useState(false);
+  const [showTerminal, setShowTerminal] = useState(false);
+  const [apiKey, setApiKey] = useState("");
+  const [workspaceId, setWorkspaceId] = useState("");
+  const [authCookie, setAuthCookie] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saveState, setSaveState] = useState("");
+  const [saveError, setSaveError] = useState("");
+  const isLocal = isLocalDashboardHost();
+  const { available, config, save, clear } = useOpencodeGoConfig();
   const snippet = [
     'export OPENCODE_GO_API_KEY="..."',
     '# Legacy fallback (optional):',
@@ -642,6 +654,58 @@ function OpenCodeGoSetupHint() {
       setTimeout(() => setCopied(false), 1600);
     } catch (_e) {
       // Clipboard can be unavailable in embedded or restricted contexts.
+    }
+  };
+
+  const onSave = async (e) => {
+    e.stopPropagation();
+    const payload = {};
+    const trimmedKey = apiKey.trim();
+    const trimmedWrk = workspaceId.trim();
+    const trimmedCookie = authCookie.trim();
+    if (trimmedKey) payload.apiKey = trimmedKey;
+    if (trimmedWrk) payload.workspaceId = trimmedWrk;
+    if (trimmedCookie) payload.authCookie = trimmedCookie;
+    if (!payload.apiKey && !payload.workspaceId && !payload.authCookie) {
+      setSaveError(copy("limits.opencodeGo.directFill.error", { error: "enter an API key or cookie" }));
+      setSaveState("error");
+      return;
+    }
+    setSaving(true);
+    setSaveState("");
+    setSaveError("");
+    try {
+      await save(payload);
+      setSaveState("saved");
+      setSaveError("");
+      setApiKey("");
+      setAuthCookie("");
+      setWorkspaceId("");
+      setTimeout(() => {
+        // Refresh limits without a full page reload when possible.
+        if (typeof window !== "undefined") window.location.reload();
+      }, 900);
+    } catch (err) {
+      setSaveState("error");
+      setSaveError(err?.message || String(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const onClear = async (e) => {
+    e.stopPropagation();
+    setSaving(true);
+    try {
+      await clear();
+      setSaveState("saved");
+      setSaveError("");
+      setTimeout(() => window.location.reload(), 700);
+    } catch (err) {
+      setSaveState("error");
+      setSaveError(err?.message || String(err));
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -671,21 +735,121 @@ function OpenCodeGoSetupHint() {
             <li>{copy("limits.opencodeGo.setupHint.step2_cookie")}</li>
           </ul>
         </HintStep>
-        <HintStep n="3">
-          <div className="flex items-center gap-2">
-            <span>{copy("limits.opencodeGo.setupHint.step3")}</span>
+      </ol>
+
+      {isLocal && available ? (
+        <div className="mt-3 rounded-md border border-oai-gray-200 dark:border-oai-gray-700 bg-white/60 dark:bg-oai-gray-900/40 p-2.5">
+          <div className="text-[11px] font-semibold text-oai-gray-700 dark:text-oai-gray-200">{copy("limits.opencodeGo.directFill.title")}</div>
+          {(config.hasApiKey || config.hasAuthCookie) ? (
+            <div className="mt-1 text-[10.5px] text-oai-gray-500 dark:text-oai-gray-400">
+              {config.hasApiKey ? <div>{copy("limits.opencodeGo.directFill.hasApiKey", { masked: config.apiKeyMasked || "" })}</div> : null}
+              {config.hasAuthCookie ? <div>{copy("limits.opencodeGo.directFill.hasCookie", { masked: config.authCookieMasked || "" })}</div> : null}
+            </div>
+          ) : null}
+          <div className="mt-2 space-y-2">
+            <div>
+              <label className="block text-[10.5px] font-medium text-oai-gray-600 dark:text-oai-gray-300">{copy("limits.opencodeGo.directFill.apiKeyLabel")}</label>
+              <input
+                type="password"
+                value={apiKey}
+                onChange={(e) => { setApiKey(e.target.value); setSaveState(""); setSaveError(""); }}
+                onClick={(e) => e.stopPropagation()}
+                placeholder={config.apiKeyMasked ? config.apiKeyMasked : copy("limits.opencodeGo.directFill.apiKeyPlaceholder")}
+                autoComplete="off"
+                spellCheck={false}
+                className="mt-1 w-full rounded-md border border-oai-gray-300 bg-white px-2 py-1.5 text-[11px] text-oai-black outline-none placeholder:text-oai-gray-400 focus:border-oai-brand-500 focus:ring-1 focus:ring-inset focus:ring-oai-brand-500 dark:border-oai-gray-700 dark:bg-oai-gray-900 dark:text-white"
+              />
+            </div>
             <button
               type="button"
-              onClick={onCopy}
-              className="shrink-0 rounded-md border border-oai-gray-300 dark:border-oai-gray-700 px-2 py-0.5 text-[10.5px] text-oai-gray-700 dark:text-oai-gray-200 hover:bg-oai-gray-100 dark:hover:bg-oai-gray-800 transition-colors"
+              onClick={(e) => { e.stopPropagation(); setShowLegacy((v) => !v); }}
+              className="text-[10.5px] font-medium text-oai-brand hover:underline"
             >
-              {copied ? copy("limits.opencodeGo.setupHint.copied") : copy("limits.opencodeGo.setupHint.copy")}
+              {showLegacy ? copy("limits.opencodeGo.directFill.hideMore") : copy("limits.opencodeGo.directFill.showMore")}
             </button>
+            {showLegacy ? (
+              <div className="space-y-2">
+                <div>
+                  <label className="block text-[10.5px] font-medium text-oai-gray-600 dark:text-oai-gray-300">{copy("limits.opencodeGo.directFill.workspaceIdLabel")}</label>
+                  <input
+                    type="text"
+                    value={workspaceId}
+                    onChange={(e) => { setWorkspaceId(e.target.value); setSaveState(""); }}
+                    onClick={(e) => e.stopPropagation()}
+                    placeholder="wrk_..."
+                    autoComplete="off"
+                    spellCheck={false}
+                    className="mt-1 w-full rounded-md border border-oai-gray-300 bg-white px-2 py-1.5 text-[11px] text-oai-black outline-none placeholder:text-oai-gray-400 focus:border-oai-brand-500 focus:ring-1 focus:ring-inset focus:ring-oai-brand-500 dark:border-oai-gray-700 dark:bg-oai-gray-900 dark:text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10.5px] font-medium text-oai-gray-600 dark:text-oai-gray-300">{copy("limits.opencodeGo.directFill.authCookieLabel")}</label>
+                  <input
+                    type="password"
+                    value={authCookie}
+                    onChange={(e) => { setAuthCookie(e.target.value); setSaveState(""); }}
+                    onClick={(e) => e.stopPropagation()}
+                    placeholder={config.authCookieMasked || "auth=..."}
+                    autoComplete="off"
+                    spellCheck={false}
+                    className="mt-1 w-full rounded-md border border-oai-gray-300 bg-white px-2 py-1.5 text-[11px] text-oai-black outline-none placeholder:text-oai-gray-400 focus:border-oai-brand-500 focus:ring-1 focus:ring-inset focus:ring-oai-brand-500 dark:border-oai-gray-700 dark:bg-oai-gray-900 dark:text-white"
+                  />
+                </div>
+              </div>
+            ) : null}
           </div>
-          <pre className="mt-1.5 overflow-x-auto rounded-md bg-oai-gray-100 dark:bg-oai-gray-900/60 px-2 py-1.5 font-mono text-[10.5px] leading-relaxed whitespace-pre">{snippet}</pre>
-          <div className="mt-1 text-[10px] text-oai-gray-400 dark:text-oai-gray-500">{copy("limits.opencodeGo.setupHint.note_app")}</div>
-        </HintStep>
-      </ol>
+          <div className="mt-2 text-[10px] leading-snug text-oai-gray-400 dark:text-oai-gray-500">{copy("limits.opencodeGo.directFill.hint")}</div>
+          <div className="mt-2.5 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onSave}
+              disabled={saving}
+              className="rounded-md bg-oai-brand-500 px-3 py-1.5 text-[11px] font-medium text-white transition-colors hover:bg-oai-brand-600 disabled:opacity-50"
+            >
+              {saving ? copy("limits.opencodeGo.directFill.saving") : saveState === "saved" ? copy("limits.opencodeGo.directFill.saved") : copy("limits.opencodeGo.directFill.save")}
+            </button>
+            {(config.hasApiKey || config.hasAuthCookie) ? (
+              <button
+                type="button"
+                onClick={onClear}
+                disabled={saving}
+                className="rounded-md border border-oai-gray-300 px-2.5 py-1.5 text-[11px] text-oai-gray-600 hover:bg-oai-gray-50 disabled:opacity-50 dark:border-oai-gray-700 dark:text-oai-gray-300 dark:hover:bg-oai-gray-800"
+              >
+                {copy("limits.opencodeGo.directFill.clear")}
+              </button>
+            ) : null}
+          </div>
+          {saveState === "error" ? (
+            <div className="mt-2 text-[11px] text-red-600 dark:text-red-400">{copy("limits.opencodeGo.directFill.error", { error: saveError || "" })}</div>
+          ) : null}
+        </div>
+      ) : null}
+
+      <div className="mt-3">
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); setShowTerminal((v) => !v); }}
+          className="text-[11px] font-medium text-oai-gray-500 hover:text-oai-gray-700 dark:text-oai-gray-400 dark:hover:text-oai-gray-200"
+        >
+          {copy("limits.opencodeGo.directFill.terminalToggle")} {showTerminal ? "▾" : "▸"}
+        </button>
+        {showTerminal ? (
+          <div className="mt-2">
+            <div className="flex items-center gap-2 text-[11px] text-oai-gray-600 dark:text-oai-gray-300">
+              <span>{copy("limits.opencodeGo.setupHint.step3")}</span>
+              <button
+                type="button"
+                onClick={onCopy}
+                className="shrink-0 rounded-md border border-oai-gray-300 dark:border-oai-gray-700 px-2 py-0.5 text-[10.5px] text-oai-gray-700 dark:text-oai-gray-200 hover:bg-oai-gray-100 dark:hover:bg-oai-gray-800 transition-colors"
+              >
+                {copied ? copy("limits.opencodeGo.setupHint.copied") : copy("limits.opencodeGo.setupHint.copy")}
+              </button>
+            </div>
+            <pre className="mt-1.5 overflow-x-auto rounded-md bg-oai-gray-100 dark:bg-oai-gray-900/60 px-2 py-1.5 font-mono text-[10.5px] leading-relaxed whitespace-pre">{snippet}</pre>
+            <div className="mt-1 text-[10px] text-oai-gray-400 dark:text-oai-gray-500">{copy("limits.opencodeGo.setupHint.note_app")}</div>
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }

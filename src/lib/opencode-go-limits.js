@@ -69,25 +69,49 @@ function detectSubscriptionStatus(html) {
     : "unknown";
 }
 
-function readConfig(env = process.env) {
-  if (!env || typeof env !== "object") return null;
+function readPersistedOpencodeGoConfig({ home, env = process.env } = {}) {
+  // Dashboard direct-fill stores keys in ~/.tokentracker/tracker/config.json
+  // (chmod 600) so users don't need shell exports. Keep this fallback narrow
+  // and env-primary: env wins if set.
+  try {
+    const base = home || env?.HOME || env?.USERPROFILE || require("node:os").homedir();
+    if (!base) return null;
+    const configPath = path.join(base, ".tokentracker", "tracker", "config.json");
+    const raw = fssync.readFileSync(configPath, "utf8");
+    const parsed = JSON.parse(raw);
+    const oc = parsed?.opencodeGo;
+    if (!oc || typeof oc !== "object") return null;
+    const apiKey = typeof oc.apiKey === "string" ? oc.apiKey.trim() : "";
+    const workspaceId = typeof oc.workspaceId === "string" ? oc.workspaceId.trim() : "";
+    const authCookie = typeof oc.authCookie === "string" ? oc.authCookie.trim() : "";
+    if (!apiKey && !workspaceId && !authCookie) return null;
+    return { apiKey, workspaceId, authCookie };
+  } catch {
+    return null;
+  }
+}
+
+function readConfig(env = process.env, opts = {}) {
+  if (!env || typeof env !== "object") env = {};
+  const persisted = readPersistedOpencodeGoConfig(opts);
   const workspaceId =
-    typeof env.OPENCODE_GO_WORKSPACE_ID === "string"
+    typeof env.OPENCODE_GO_WORKSPACE_ID === "string" && env.OPENCODE_GO_WORKSPACE_ID.trim()
       ? env.OPENCODE_GO_WORKSPACE_ID.trim()
-      : "";
+      : persisted?.workspaceId || "";
   const authCookie =
-    typeof env.OPENCODE_GO_AUTH_COOKIE === "string"
+    typeof env.OPENCODE_GO_AUTH_COOKIE === "string" && env.OPENCODE_GO_AUTH_COOKIE.trim()
       ? env.OPENCODE_GO_AUTH_COOKIE.trim()
-      : "";
+      : persisted?.authCookie || "";
   if (!authCookie) return null;
   return { workspaceId, authCookie };
 }
 
-function readApiKey(env = process.env) {
-  if (!env || typeof env !== "object") return "";
-  return typeof env.OPENCODE_GO_API_KEY === "string"
-    ? env.OPENCODE_GO_API_KEY.trim()
-    : "";
+function readApiKey(env = process.env, opts = {}) {
+  if (!env || typeof env !== "object") env = {};
+  const direct = typeof env.OPENCODE_GO_API_KEY === "string" ? env.OPENCODE_GO_API_KEY.trim() : "";
+  if (direct) return direct;
+  const persisted = readPersistedOpencodeGoConfig(opts);
+  return persisted?.apiKey || "";
 }
 
 function clampPercent(value) {
@@ -664,8 +688,8 @@ async function fetchOpencodeGoLimits({
   timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
   sqliteOptions = {},
 } = {}) {
-  const apiKey = readApiKey(env);
-  const cfg = readConfig(env);
+  const apiKey = readApiKey(env, { home, env });
+  const cfg = readConfig(env, { home, env });
   const allowLocalEstimate = localEstimateEnabled(env);
 
   // Prefer the documented API whenever an API key is explicitly configured.
@@ -712,6 +736,7 @@ module.exports = {
   fetchOpencodeGoApiLimits,
   readConfig,
   readApiKey,
+  readPersistedOpencodeGoConfig,
   localEstimateEnabled,
   detectSubscriptionStatus,
   extractWindows,
