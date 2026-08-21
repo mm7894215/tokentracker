@@ -72,9 +72,12 @@ function detectSubscriptionStatus(html) {
 function readPersistedOpencodeGoConfig({ home, env = process.env } = {}) {
   // Dashboard direct-fill stores keys in ~/.tokentracker/tracker/config.json
   // (chmod 600) so users don't need shell exports. Keep this fallback narrow
-  // and env-primary: env wins if set.
+  // and env-primary: env wins if set. Deliberately do NOT fall back to
+  // os.homedir() when both `home` and env HOME are absent — synthetic test
+  // envs (no home, no HOME) must stay isolated from the developer's real
+  // config, same as resolveOpencodeDataDir.
   try {
-    const base = home || env?.HOME || env?.USERPROFILE || require("node:os").homedir();
+    const base = home || env?.HOME || env?.USERPROFILE;
     if (!base) return null;
     const configPath = path.join(base, ".tokentracker", "tracker", "config.json");
     const raw = fssync.readFileSync(configPath, "utf8");
@@ -93,7 +96,7 @@ function readPersistedOpencodeGoConfig({ home, env = process.env } = {}) {
 
 function readConfig(env = process.env, opts = {}) {
   if (!env || typeof env !== "object") env = {};
-  const persisted = readPersistedOpencodeGoConfig(opts);
+  const persisted = readPersistedOpencodeGoConfig({ home: opts.home, env: opts.env || env });
   const workspaceId =
     typeof env.OPENCODE_GO_WORKSPACE_ID === "string" && env.OPENCODE_GO_WORKSPACE_ID.trim()
       ? env.OPENCODE_GO_WORKSPACE_ID.trim()
@@ -110,7 +113,7 @@ function readApiKey(env = process.env, opts = {}) {
   if (!env || typeof env !== "object") env = {};
   const direct = typeof env.OPENCODE_GO_API_KEY === "string" ? env.OPENCODE_GO_API_KEY.trim() : "";
   if (direct) return direct;
-  const persisted = readPersistedOpencodeGoConfig(opts);
+  const persisted = readPersistedOpencodeGoConfig({ home: opts.home, env: opts.env || env });
   return persisted?.apiKey || "";
 }
 
@@ -567,21 +570,35 @@ async function fetchOpencodeGoApiLimits({ apiKey, fetchImpl, nowMs, timeoutMs })
     };
   }
 
-  const rolling = buildWindow({
-    usagePercent: payload?.rollingUsage?.usagePercent,
-    resetInSec: payload?.rollingUsage?.resetInSec,
-    nowMs,
-  });
-  const weekly = buildWindow({
-    usagePercent: payload?.weeklyUsage?.usagePercent,
-    resetInSec: payload?.weeklyUsage?.resetInSec,
-    nowMs,
-  });
-  const monthly = buildWindow({
-    usagePercent: payload?.monthlyUsage?.usagePercent,
-    resetInSec: payload?.monthlyUsage?.resetInSec,
-    nowMs,
-  });
+  // Upstream has shipped two shapes:
+  // - Early spec (anomalyco/opencode#16513): { rollingUsage: { usagePercent, resetInSec } ... }
+  // - Live API (2026-08): { usage: { rolling: { percent, resetsAt }, weekly: {}, monthly: {} } }
+  const resolveApiWindow = (legacy, modern) => {
+    if (modern && typeof modern === "object") {
+      const pct = modern.percent ?? modern.usagePercent ?? modern.usage_percent;
+      const resetsAt = modern.resetsAt ?? modern.resets_at ?? modern.resetAt ?? modern.reset_at;
+      if (pct != null || resetsAt != null) {
+        const resetInSec = (() => {
+          if (typeof modern.resetInSec === "number" || typeof modern.resetInSec === "string") return Number(modern.resetInSec);
+          if (typeof modern.reset_in_sec === "number" || typeof modern.reset_in_sec === "string") return Number(modern.reset_in_sec);
+          if (typeof resetsAt === "string" && resetsAt) {
+            const ts = Date.parse(resetsAt);
+            if (Number.isFinite(ts)) return Math.max(0, Math.floor((ts - nowMs) / 1000));
+          }
+          return undefined;
+        })();
+        return buildWindow({ usagePercent: pct, resetInSec, nowMs });
+      }
+    }
+    if (legacy && typeof legacy === "object") {
+      return buildWindow({ usagePercent: legacy.usagePercent ?? legacy.percent, resetInSec: legacy.resetInSec ?? legacy.reset_in_sec, nowMs });
+    }
+    return null;
+  };
+
+  const rolling = resolveApiWindow(payload?.rollingUsage, payload?.usage?.rolling ?? payload?.rolling);
+  const weekly = resolveApiWindow(payload?.weeklyUsage, payload?.usage?.weekly ?? payload?.weekly);
+  const monthly = resolveApiWindow(payload?.monthlyUsage, payload?.usage?.monthly ?? payload?.monthly);
 
   if (!rolling && !weekly && !monthly) {
     return {
