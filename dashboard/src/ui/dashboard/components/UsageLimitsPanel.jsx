@@ -619,16 +619,19 @@ function ExternalArrow() {
   );
 }
 
-// OpenCode Go has no public quota API (anomalyco/opencode#16017), so limits are
-// read from the user's signed-in opencode.ai session via two env vars. The
-// macOS/Windows apps have no settings field for these yet, so this inline guide
-// shows up wherever OpenCode Go is enabled but unconfigured (or the cookie has
-// gone stale): sign in, grab two values, paste them in.
+// OpenCode Go prefers the official usage API (GET https://opencode.ai/zen/go/v1/usage
+// with `Authorization: Bearer <OPENCODE_GO_API_KEY>`, cf. anomalyco/opencode#16513).
+// The signed-in workspace cookie scrape remains as a compatibility fallback for
+// existing users. The macOS/Windows apps have no settings field for these yet,
+// so this inline guide shows up wherever OpenCode Go is enabled but
+// unconfigured (or the credential has gone stale).
 function OpenCodeGoSetupHint() {
   const [copied, setCopied] = useState(false);
   const snippet = [
-    'export OPENCODE_GO_AUTH_COOKIE="..."',
-    '# Optional: export OPENCODE_GO_WORKSPACE_ID="wrk_..." (Only if auto-discovery fails)',
+    'export OPENCODE_GO_API_KEY="..."',
+    '# Legacy fallback (optional):',
+    '# export OPENCODE_GO_AUTH_COOKIE="..."',
+    '# export OPENCODE_GO_WORKSPACE_ID="wrk_..."',
   ].join("\n");
 
   const onCopy = async (e) => {
