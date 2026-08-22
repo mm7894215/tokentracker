@@ -560,7 +560,11 @@ async function fetchOpencodeGoApiLimits({ apiKey, fetchImpl, nowMs, timeoutMs })
           }
           return undefined;
         })();
-        return buildWindow({ usagePercent: pct, resetInSec, nowMs });
+        const modernWindow = buildWindow({ usagePercent: pct, resetInSec, nowMs });
+        // Only prefer the modern window when it actually parsed; an incomplete
+        // modern object (e.g. percent without reset info) must fall through to
+        // a valid legacy window instead of losing it.
+        if (modernWindow) return modernWindow;
       }
     }
     if (legacy && typeof legacy === "object") {
