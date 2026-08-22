@@ -628,9 +628,9 @@ function ExternalArrow() {
 function OpenCodeGoSetupHint() {
   const [copied, setCopied] = useState(false);
   const snippet = [
-    'export OPENCODE_GO_API_KEY="..."',
-    "# macOS app only:",
-    'launchctl setenv OPENCODE_GO_API_KEY "..."',
+    "read -r -s OPENCODE_GO_API_KEY",
+    "export OPENCODE_GO_API_KEY",
+    'launchctl setenv OPENCODE_GO_API_KEY "$OPENCODE_GO_API_KEY"',
   ].join("\n");
 
   const onCopy = async (e) => {

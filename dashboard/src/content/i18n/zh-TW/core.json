@@ -566,7 +566,7 @@
   "limits.opencodeGo.setupHint.step1": "登入 opencode.ai 並訂閱 Go。",
   "limits.opencodeGo.setupHint.cta": "開啟 opencode.ai",
   "limits.opencodeGo.setupHint.step2": "在主控台建立並複製 API Key。",
-  "limits.opencodeGo.setupHint.step3": "把 Key 貼進這條命令並執行，然後重新啟動 Token Tracker：",
+  "limits.opencodeGo.setupHint.step3": "執行這條命令並在提示時貼上 API Key，然後重新啟動 Token Tracker：",
   "limits.opencodeGo.setupHint.note_app": "macOS App：使用 launchctl setenv 那一行，然後重新開啟 App。",
   "limits.opencodeGo.setupHint.copy": "複製",
   "limits.opencodeGo.setupHint.copied": "已複製",

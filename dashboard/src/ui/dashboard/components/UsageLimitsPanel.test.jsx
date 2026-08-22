@@ -36,6 +36,7 @@ beforeEach(() => {
 
 afterEach(() => {
   getContextSpy?.mockRestore();
+  vi.unstubAllGlobals();
   vi.useRealTimers();
 });
 
@@ -195,11 +196,12 @@ describe("UsageLimitsPanel", () => {
     expect(screen.getByText("OpenCode Go")).toBeInTheDocument();
     expect(screen.getByText("Not connected")).toBeInTheDocument();
 
-    // Setup hint teaches the official API key flow (issue #497 follow-up).
+    // Setup hint teaches the official API key flow (follow-up to the closed
+    // PR about OpenCode Go direct fill).
     expect(screen.getByText("Connect OpenCode Go")).toBeInTheDocument();
     expect(screen.getByText(/Sign in at opencode.ai and subscribe to Go\./)).toBeInTheDocument();
     expect(screen.getByText(/Create and copy an API key in the console\./)).toBeInTheDocument();
-    expect(screen.getByText(/Paste your key into this command/)).toBeInTheDocument();
+    expect(screen.getByText(/Run this command and paste your API key when prompted/)).toBeInTheDocument();
   });
 
   it("copies an API-key setup snippet without sending the key anywhere", async () => {
@@ -214,10 +216,12 @@ describe("UsageLimitsPanel", () => {
       expect(writeText).toHaveBeenCalledTimes(1);
     });
     const snippet = writeText.mock.calls[0][0];
-    // The snippet is a template only: it must contain no real credential and
-    // cover both the shell profile path and the macOS app (launchctl) path.
-    expect(snippet).toContain('export OPENCODE_GO_API_KEY="..."');
-    expect(snippet).toContain('launchctl setenv OPENCODE_GO_API_KEY "..."');
+    // The snippet reads the key interactively (`read -r -s`) so it never lands
+    // in shell history, then exports it for both the shell profile path and
+    // the macOS app (launchctl) path. It is a template only: no real key.
+    expect(snippet).toContain("read -r -s OPENCODE_GO_API_KEY");
+    expect(snippet).toContain("export OPENCODE_GO_API_KEY");
+    expect(snippet).toContain('launchctl setenv OPENCODE_GO_API_KEY "$OPENCODE_GO_API_KEY"');
     expect(snippet).not.toMatch(/sk-/);
     expect(screen.getByRole("button", { name: "Copied" })).toBeInTheDocument();
   });
