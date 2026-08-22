@@ -1249,7 +1249,7 @@ limits.opencodeGo.setupHint.subtitle,ui,LimitsPage,UsageLimitsPanel,opencode_go_
 limits.opencodeGo.setupHint.step1,ui,LimitsPage,UsageLimitsPanel,opencode_go_hint_step1,"Sign in at opencode.ai and subscribe to Go.",,active
 limits.opencodeGo.setupHint.cta,ui,LimitsPage,UsageLimitsPanel,opencode_go_hint_cta,"Open opencode.ai",,active
 limits.opencodeGo.setupHint.step2,ui,LimitsPage,UsageLimitsPanel,opencode_go_hint_step2,"Create and copy an API key in the console.",,active
-limits.opencodeGo.setupHint.step3,ui,LimitsPage,UsageLimitsPanel,opencode_go_hint_step3,"Run this command and paste your API key when prompted, then restart TokenTracker:",,active
+limits.opencodeGo.setupHint.step3,ui,LimitsPage,UsageLimitsPanel,opencode_go_hint_step3,"Run this command, paste your API key (input stays invisible), then restart TokenTracker:",,active
 limits.opencodeGo.setupHint.note_app,ui,LimitsPage,UsageLimitsPanel,opencode_go_hint_note_app,"macOS app: use the launchctl setenv line, then reopen the app.",,active
 limits.opencodeGo.setupHint.copy,ui,LimitsPage,UsageLimitsPanel,opencode_go_hint_copy,"Copy",,active
 limits.opencodeGo.setupHint.copied,ui,LimitsPage,UsageLimitsPanel,opencode_go_hint_copied,"Copied",,active

@@ -121,7 +121,7 @@
   "limits.opencodeGo.setupHint.step1": "Melde dich bei opencode.ai an und abonniere Go.",
   "limits.opencodeGo.setupHint.cta": "opencode.ai öffnen",
   "limits.opencodeGo.setupHint.step2": "Erstelle in der Konsole einen API-Schlüssel und kopiere ihn.",
-  "limits.opencodeGo.setupHint.step3": "Führe diesen Befehl aus, füge deinen Schlüssel bei der Eingabeaufforderung ein und starte TokenTracker neu:",
+  "limits.opencodeGo.setupHint.step3": "Führe diesen Befehl aus, füge deinen Schlüssel ein (die Eingabe bleibt unsichtbar) und starte TokenTracker neu:",
   "limits.opencodeGo.setupHint.note_app": "macOS-App: die launchctl-setenv-Zeile verwenden, dann die App neu öffnen.",
   "limits.opencodeGo.setupHint.copy": "Kopieren",
   "limits.opencodeGo.setupHint.copied": "Kopiert",

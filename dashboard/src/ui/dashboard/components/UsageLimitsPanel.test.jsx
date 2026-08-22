@@ -201,7 +201,7 @@ describe("UsageLimitsPanel", () => {
     expect(screen.getByText("Connect OpenCode Go")).toBeInTheDocument();
     expect(screen.getByText(/Sign in at opencode.ai and subscribe to Go\./)).toBeInTheDocument();
     expect(screen.getByText(/Create and copy an API key in the console\./)).toBeInTheDocument();
-    expect(screen.getByText(/Run this command and paste your API key when prompted/)).toBeInTheDocument();
+    expect(screen.getByText(/Run this command, paste your API key \(input stays invisible\)/)).toBeInTheDocument();
   });
 
   it("copies an API-key setup snippet without sending the key anywhere", async () => {

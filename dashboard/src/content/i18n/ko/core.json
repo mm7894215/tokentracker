@@ -206,7 +206,7 @@
   "limits.opencodeGo.setupHint.step1": "opencode.ai에 로그인하고 Go를 구독합니다.",
   "limits.opencodeGo.setupHint.cta": "opencode.ai 열기",
   "limits.opencodeGo.setupHint.step2": "콘솔에서 API 키를 만들어 복사합니다.",
-  "limits.opencodeGo.setupHint.step3": "이 명령어를 실행하고 프롬프트에 API 키를 붙여넣은 뒤 TokenTracker를 재시작하세요:",
+  "limits.opencodeGo.setupHint.step3": "이 명령어를 실행하고 API 키를 붙여넣은 뒤(입력이 표시되지 않음) TokenTracker를 재시작하세요:",
   "limits.opencodeGo.setupHint.note_app": "macOS 앱: launchctl setenv 줄을 사용한 후 앱을 다시 여세요.",
   "limits.opencodeGo.setupHint.copy": "복사",
   "limits.opencodeGo.setupHint.copied": "복사됨",

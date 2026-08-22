@@ -206,7 +206,7 @@
   "limits.opencodeGo.setupHint.step1": "opencode.ai にサインインして Go を購読します。",
   "limits.opencodeGo.setupHint.cta": "opencode.ai を開く",
   "limits.opencodeGo.setupHint.step2": "コンソールで API キーを作成してコピーします。",
-  "limits.opencodeGo.setupHint.step3": "このコマンドを実行し、プロンプトにキーを貼り付けてから、TokenTracker を再起動してください：",
+  "limits.opencodeGo.setupHint.step3": "このコマンドを実行し、キーを貼り付けて（入力は表示されません）から、TokenTracker を再起動してください：",
   "limits.opencodeGo.setupHint.note_app": "macOS アプリ：launchctl setenv の行を使って、アプリを開き直してください。",
   "limits.opencodeGo.setupHint.copy": "コピー",
   "limits.opencodeGo.setupHint.copied": "コピーしました",
