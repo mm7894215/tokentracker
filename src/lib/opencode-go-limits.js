@@ -445,29 +445,30 @@ function buildGoAggregateSql({ sessionStart, weekStart, weekEnd, monthStart, mon
   );
 }
 
-// Detect which message-table generation a database carries ("v1" / "v2" /
-// null when sqlite_master cannot be read, e.g. mocked readers in tests).
-// A database carrying BOTH tables resolves to "v1" on purpose: unlike the
+// Detect whether the database has any rows in session_message. This is the
+// shared opencode2 probe (see src/lib/rollout.js): a pure v1 database has an
+// empty session_message table, and blindly running the v2 aggregate against it
+// is harmless here (no JOIN, no directory lookup) — but the probe result still
+// drives variant ordering so v2 is preferred when data exists.
+//
+// A database carrying BOTH tables resolves to "v1 first" on purpose: unlike the
 // message parser (which dedups rows by sessionID|messageID), this aggregate is
 // a blind SUM with no key to dedup on, so unioning two generations could
 // double-count cost if the tables overlap. Undercounting an opt-in estimate is
 // the safe side of that trade.
-async function detectOpencodeDbGeneration(dbPath, sqliteOptions = {}) {
+async function detectOpencodeGoHasSessionMessages(dbPath, sqliteOptions = {}) {
   let rows;
   try {
     rows = await readSqliteJsonRowsAsync(
       dbPath,
-      `SELECT name FROM sqlite_master WHERE type='table' AND name IN ('message','session_message')`,
+      `SELECT (SELECT 1 FROM session_message LIMIT 1) AS hasRows`,
       { label: "OpenCode Go", timeout: 5_000, ...sqliteOptions },
     );
   } catch (_e) {
     return null;
   }
-  if (!Array.isArray(rows)) return null;
-  const names = new Set(rows.map((r) => String(r?.name || "").trim()).filter(Boolean));
-  if (names.size === 0) return null;
-  if (!names.has("message") && names.has("session_message")) return "v2";
-  return "v1";
+  if (!Array.isArray(rows) || rows.length === 0) return null;
+  return Boolean(rows[0]?.hasRows);
 }
 
 // Returns { source:'local', primary/secondary/tertiary_window } or null when no
@@ -487,8 +488,8 @@ async function collectOpencodeGoLocal({ home, env = process.env, nowMs = Date.no
   for (const dbPath of paths) {
     // Each database can be a different OpenCode generation. When sqlite_master
     // is unreadable, fall back to v1-then-v2 so the legacy query runs first.
-    const generation = await detectOpencodeDbGeneration(dbPath, sqliteOptions);
-    const variants = generation === "v2" ? ["v2"] : generation === "v1" ? ["v1"] : ["v1", "v2"];
+    const hasRows = await detectOpencodeGoHasSessionMessages(dbPath, sqliteOptions);
+    const variants = hasRows === true ? ["v2", "v1"] : hasRows === false ? ["v1", "v2"] : ["v1", "v2"];
 
     for (const variant of variants) {
       const sql = buildGoAggregateSql(windowArgs, variant);
@@ -497,8 +498,8 @@ async function collectOpencodeGoLocal({ home, env = process.env, nowMs = Date.no
         rows = await readSqliteJsonRowsAsync(dbPath, sql, {
           label: "OpenCode Go",
           timeout: 5_000,
-          throwOnReadFailure: true,
           ...sqliteOptions,
+          throwOnReadFailure: true,
         });
       } catch (_e) {
         continue;

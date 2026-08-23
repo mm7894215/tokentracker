@@ -230,8 +230,12 @@ describe("collectOpencodeGoLocal (opencode2 session_message fixture)", { skip: !
   function buildV2FixtureDb(dir) {
     const dbPath = path.join(dir, "opencode.db");
     const db = new sqlite.DatabaseSync(dbPath);
+    // C-type (upstream v2): session_message carries data, session table exists
+    // for the FK target. go-limits does not JOIN, but the table presence keeps
+    // the fixture aligned with the real upstream schema.
     db.exec(
-      "CREATE TABLE session_message (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, type TEXT NOT NULL, seq INTEGER NOT NULL, time_created INTEGER NOT NULL, time_updated INTEGER NOT NULL, data TEXT NOT NULL)",
+      "CREATE TABLE session (id TEXT PRIMARY KEY, directory TEXT NOT NULL)" +
+      ";CREATE TABLE session_message (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, type TEXT NOT NULL, seq INTEGER NOT NULL, time_created INTEGER NOT NULL, time_updated INTEGER NOT NULL, data TEXT NOT NULL)",
     );
     const weekStart = weekStartMs(NOW_MS);
     const monthStart = Date.UTC(2026, 5, 1);
@@ -257,6 +261,69 @@ describe("collectOpencodeGoLocal (opencode2 session_message fixture)", { skip: !
     assert.ok(out, "expected a local result");
     assert.equal(out.source, "local");
     // Same expectations as the v1 fixture: A / A+B / A+B+C.
+    assert.equal(out.primary_window.used_percent, 50);
+    assert.equal(out.secondary_window.used_percent, 30);
+    assert.equal(out.tertiary_window.used_percent, 35);
+  });
+});
+
+// Type A (pure v1): the session_message table exists but is empty. The probe
+// reports hasRows=false, so the v1 variant runs first and the v2 aggregate is
+// never fired (it would find no rows anyway, but the ordering proves the probe
+// drives variant selection correctly).
+describe("collectOpencodeGoLocal (type A: empty session_message → v1 path)", { skip: !sqlite }, () => {
+  let tmpDir;
+  before(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "oc-go-v1-test-"));
+    buildTypeAFixtureDb(tmpDir);
+  });
+  after(() => {
+    try {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    } catch (_e) {
+      /* best effort */
+    }
+  });
+
+  function makeMessageRow(db, { id, providerID, role, cost, createdMs }) {
+    const data = JSON.stringify({
+      providerID,
+      role,
+      cost,
+      time: { created: createdMs },
+    });
+    db.prepare(
+      "INSERT INTO message (id, session_id, time_created, time_updated, data) VALUES (?, ?, ?, ?, ?)",
+    ).run(id, "sess_1", createdMs, createdMs, data);
+  }
+
+  function buildTypeAFixtureDb(dir) {
+    const dbPath = path.join(dir, "opencode.db");
+    const db = new sqlite.DatabaseSync(dbPath);
+    // Type A: message table has data, session_message exists but is empty.
+    db.exec(
+      "CREATE TABLE message (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, time_created INTEGER NOT NULL, time_updated INTEGER NOT NULL, data TEXT NOT NULL)" +
+      ";CREATE TABLE session_message (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, type TEXT NOT NULL, seq INTEGER NOT NULL, time_created INTEGER NOT NULL, time_updated INTEGER NOT NULL, data TEXT NOT NULL)",
+    );
+    const weekStart = weekStartMs(NOW_MS);
+    const monthStart = Date.UTC(2026, 5, 1);
+    const rows = [
+      { id: "A", providerID: "opencode-go", role: "assistant", cost: 6.0, createdMs: NOW_MS - 1 * HOUR },
+      { id: "B", providerID: "opencode-go", role: "assistant", cost: 3.0, createdMs: NOW_MS - 6 * HOUR },
+      { id: "C", providerID: "opencode-go", role: "assistant", cost: 12.0, createdMs: monthStart + 1 * HOUR },
+      { id: "D", providerID: "opencode-go", role: "assistant", cost: 100.0, createdMs: monthStart - 1 * HOUR },
+      { id: "E", providerID: "opencode", role: "assistant", cost: 50.0, createdMs: NOW_MS - 1 * HOUR },
+      { id: "F", providerID: "opencode-go", role: "user", cost: 50.0, createdMs: NOW_MS - 1 * HOUR },
+    ];
+    for (const r of rows) makeMessageRow(db, r);
+    db.close();
+    assert.ok(monthStart + 1 * HOUR < weekStart, "fixture: C must precede the week start");
+  }
+
+  it("reads v1 message rows when session_message is empty", async () => {
+    const out = await collectOpencodeGoLocal({ env: { OPENCODE_HOME: tmpDir }, nowMs: NOW_MS });
+    assert.ok(out, "expected a local result from the v1 message table");
+    assert.equal(out.source, "local");
     assert.equal(out.primary_window.used_percent, 50);
     assert.equal(out.secondary_window.used_percent, 30);
     assert.equal(out.tertiary_window.used_percent, 35);

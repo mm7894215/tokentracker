@@ -4332,43 +4332,73 @@ async function walkOpencodeMessages(dir, out) {
 // ---------------------------------------------------------------------------
 // OpenCode SQLite DB reader
 //
-// Two storage generations share the same file (~/.local/share/opencode/opencode.db):
-//   v1 (`opencode` ≤1.x): messages in the `message` table, role inside the JSON
-//     blob (`$.role`), flat `modelID`/`providerID` strings.
-//   v2 (`opencode2` beta): messages moved to `session_message` (role is now the
-//     `type` column), model nested as `model: { id, providerID }`, and the
-//     project directory lives on `session_v2.directory`.
-// Detect the generation via sqlite_master and fall back to trying both so
-// exotic setups (or partial mocks in tests) still read something sensible.
+// Four real database shapes exist in the wild (see PR #501 / opencode2):
+//   A  pure v1:        `message`(data) + `session_message`(empty) [+ `session`]
+//   B  beta-17887:     `session_message`(data) + `session_v2`
+//   C  upstream v2:    `session_message`(data) + `session`
+//   D  transitional:   `message`(old data) + `session_message`(new data)
+//
+// The reader must serve all four without firing a doomed SQL at type A (an
+// empty `session_message` table still EXISTS — querying it with a JOIN against
+// `session_v2` that does not exist throws "no such table" every sync, and the
+// old code silently swallowed that error). The combined probe below answers
+// both "is there v2 data?" and "which session table exists?" in one round-trip.
 // ---------------------------------------------------------------------------
 
 const OPENCODE_DB_V1_MESSAGE_SQL =
   `SELECT id, session_id, time_updated, data FROM message ` +
   `WHERE json_extract(data, '$.role') = 'assistant' ORDER BY time_created ASC`;
 
-// LEFT JOIN keeps orphaned rows readable; `directory` feeds project attribution
-// (injected into msg.path.cwd below so downstream resolution stays unchanged).
-const OPENCODE_DB_V2_MESSAGE_SQL =
-  `SELECT sm.id AS id, sm.session_id AS session_id, sm.time_updated AS time_updated, ` +
-  `s.directory AS directory, sm.data AS data ` +
-  `FROM session_message sm LEFT JOIN session_v2 s ON s.id = sm.session_id ` +
-  `WHERE sm.type = 'assistant' ORDER BY sm.time_created ASC`;
+// Build the v2 query. When a session table exists the LEFT JOIN restores the
+// project directory for downstream attribution; when it does not (type B
+// without session_v2, or an exotic fork) the join and directory column are
+// omitted and tokens are counted as-is.
+function buildV2Sql(sessionTable) {
+  const joinClause = sessionTable
+    ? `LEFT JOIN ${sessionTable} s ON s.id = sm.session_id `
+    : "";
+  const directorySelect = sessionTable
+    ? `s.directory AS directory, `
+    : "";
+  return (
+    `SELECT sm.id AS id, sm.session_id AS session_id, sm.time_updated AS time_updated, ` +
+    `${directorySelect}sm.data AS data ` +
+    `FROM session_message sm ${joinClause}` +
+    `WHERE sm.type = 'assistant' ORDER BY sm.time_created ASC`
+  );
+}
 
-function detectOpencodeDbGeneration(dbPath, sqliteOptions = {}) {
+// One combined probe: hasRows (is there any data in session_message?) plus
+// sessionTable (which session table exists, session_v2 preferred over session
+// via DESC). Returns null when the probe itself fails — callers treat that as
+// v1-only, matching the pre-existing silent-degradation contract.
+function detectOpencodeMessageLayout(dbPath, sqliteOptions = {}) {
   let rows;
   try {
     rows = readSqliteJsonRows(
       dbPath,
-      `SELECT name FROM sqlite_master WHERE type='table' AND name IN ('message','session_message')`,
+      `SELECT (SELECT 1 FROM session_message LIMIT 1) AS hasRows,
+              (SELECT name FROM sqlite_master WHERE name IN ('session','session_v2') ORDER BY name DESC LIMIT 1) AS sessionTable`,
       { label: "OpenCode", timeout: 10_000, maxBuffer: 1024 * 1024, ...sqliteOptions },
     );
   } catch (_e) {
     return null;
   }
-  if (!Array.isArray(rows)) return null;
-  const names = new Set(rows.map((r) => String(r?.name || "").trim()).filter(Boolean));
-  if (names.size === 0) return null;
-  return { hasV1MessageTable: names.has("message"), hasV2SessionMessageTable: names.has("session_message") };
+  if (!Array.isArray(rows) || rows.length === 0) return null;
+  const row = rows[0];
+  return {
+    hasRows: Boolean(row?.hasRows),
+    sessionTable: typeof row?.sessionTable === "string" && row.sessionTable.trim()
+      ? row.sessionTable.trim()
+      : null,
+  };
+}
+
+// Shared provider resolver: v1 rows carry a top-level providerID, v2 rows nest
+// it under model.providerID. Used by the mimo/zcode discriminators so they work
+// against both generations without duplicating the resolution logic.
+function opencodeMessageProvider(data) {
+  return data?.providerID || data?.model?.providerID || "";
 }
 
 function readOpencodeDbMessages(dbPath, sqliteOptions = {}) {
@@ -4386,6 +4416,12 @@ function readOpencodeDbMessages(dbPath, sqliteOptions = {}) {
   // Parse raw SQL rows into the shared { id, sessionID, timeUpdated, data }
   // shape; optionally restore v2's session-level project directory as the
   // per-message `path.cwd` the rest of the pipeline expects.
+  //
+  // D-state (transitional) union: both the legacy `message` table and the new
+  // `session_message` table may carry rows. Cross-table duplicates are caught
+  // by the existing cursor-key + #426 fingerprint dedup in
+  // parseOpencodeDbIncremental, so unioning here is safe — the downstream
+  // parser collapses identical sessionID|messageID pairs before bucketing.
   const collectRows = (rows, isV2) => {
     const out = [];
     for (const row of rows) {
@@ -4417,14 +4453,14 @@ function readOpencodeDbMessages(dbPath, sqliteOptions = {}) {
     return out;
   };
 
-  const readGeneration = (sql, isV2) => {
+  const readGeneration = (sql) => {
     try {
       const rows = readSqliteJsonRows(effectiveDbPath, sql, {
         label: "OpenCode",
         maxBuffer: 50 * 1024 * 1024,
         timeout: 30_000,
-        throwOnReadFailure: true,
         ...sqliteOptions,
+        throwOnReadFailure: true,
       });
       return Array.isArray(rows) ? rows : [];
     } catch (_e) {
@@ -4433,32 +4469,22 @@ function readOpencodeDbMessages(dbPath, sqliteOptions = {}) {
   };
 
   try {
-    // Prefer the detected generation. When detection is inconclusive (legacy
-    // forks with odd sqlite setups, mocked readers in tests), try v1 first and
-    // fall through to v2 only if v1 errored or came up empty — a real database
-    // carries exactly one generation, so the first non-empty read wins.
-    const generation = detectOpencodeDbGeneration(effectiveDbPath, sqliteOptions);
-    if (generation) {
-      let out = [];
-      if (generation.hasV1MessageTable) {
-        out = out.concat(collectRows(readGeneration(OPENCODE_DB_V1_MESSAGE_SQL, false) || [], false));
-      }
-      if (generation.hasV2SessionMessageTable) {
-        out = out.concat(collectRows(readGeneration(OPENCODE_DB_V2_MESSAGE_SQL, true) || [], true));
-      }
-      return out;
+    // Combined probe drives the orchestration: v1 always runs (it is the
+    // baseline every database carries or degrades to), v2 runs only when the
+    // probe confirms session_message has rows — this avoids firing a JOIN
+    // against a non-existent session table on type-A databases.
+    const probe = detectOpencodeMessageLayout(effectiveDbPath, sqliteOptions);
+    const out = [];
+
+    const rows1 = readGeneration(OPENCODE_DB_V1_MESSAGE_SQL);
+    if (rows1) out.push(...collectRows(rows1, false));
+
+    if (probe?.hasRows) {
+      const rows2 = readGeneration(buildV2Sql(probe.sessionTable));
+      if (rows2) out.push(...collectRows(rows2, true));
     }
 
-    for (const [sql, isV2] of [
-      [OPENCODE_DB_V1_MESSAGE_SQL, false],
-      [OPENCODE_DB_V2_MESSAGE_SQL, true],
-    ]) {
-      const rows = readGeneration(sql, isV2);
-      if (!rows) continue;
-      const out = collectRows(rows, isV2);
-      if (out.length > 0) return out;
-    }
-    return [];
+    return out;
   } finally {
     if (snapshot) snapshot.cleanup();
   }
@@ -4482,7 +4508,7 @@ function readOpencodeDbMessages(dbPath, sqliteOptions = {}) {
 // subsumes it.
 function isMimoNativeMessage(data) {
   if (!data) return false;
-  const provider = String(data.providerID || "").toLowerCase();
+  const provider = String(opencodeMessageProvider(data)).toLowerCase();
   return provider === "mimo" || provider === "xiaomi";
 }
 
@@ -4516,7 +4542,7 @@ function readMimoDbMessages(dbPath, sqliteOptions = {}) {
 // re-count it. Mirrors the Mimo discipline.
 function isZcodeNativeMessage(data) {
   if (!data) return false;
-  const provider = String(data.providerID || "").toLowerCase();
+  const provider = String(opencodeMessageProvider(data)).toLowerCase();
   if (!provider) return false;
   return !(
     provider.includes("anthropic") ||
