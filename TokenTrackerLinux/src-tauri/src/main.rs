@@ -9,6 +9,8 @@ use tauri::{AppHandle, Manager, WebviewWindow, WindowEvent};
 
 static SERVER: Lazy<Mutex<Option<TokenTrackerServer>>> = Lazy::new(|| Mutex::new(None));
 
+const WEBKIT_DMABUF_ENV: &str = "WEBKIT_DISABLE_DMABUF_RENDERER";
+
 const NATIVE_OAUTH_BRIDGE: &str = r#"
 (() => {
   if (window.location.hostname !== '127.0.0.1') return;
@@ -21,6 +23,23 @@ const NATIVE_OAUTH_BRIDGE: &str = r#"
   };
 })();
 "#;
+
+/// WebKitGTK renders through DMA-BUF by default. On a number of otherwise
+/// supported Wayland setups — most reliably NVIDIA's proprietary driver — that
+/// path yields a permanently blank webview, or aborts the Wayland connection
+/// outright, while the process keeps running and the tray icon stays healthy.
+/// The failure is silent: nothing is logged, so the app just looks broken.
+///
+/// Defaults to the compatibility renderer while treating an explicit user value
+/// as authoritative, so `WEBKIT_DISABLE_DMABUF_RENDERER=0` can still opt back
+/// into the accelerated path. Called as the first statement in `main` because
+/// the variable is only read when GTK/WebKit initializes, and `set_var` is
+/// sound only while the process is still single-threaded.
+fn configure_webkit_runtime() {
+    if std::env::var_os(WEBKIT_DMABUF_ENV).is_none() {
+        std::env::set_var(WEBKIT_DMABUF_ENV, "1");
+    }
+}
 
 fn stop_server() {
     if let Ok(mut guard) = SERVER.lock() {
@@ -220,6 +239,8 @@ fn start_health_monitor() {
 }
 
 fn main() {
+    configure_webkit_runtime();
+
     let initial_args: Vec<String> = std::env::args().collect();
 
     tauri::Builder::default()

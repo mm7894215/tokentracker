@@ -91,6 +91,21 @@ Until the extension is installed, closing the window hides the app with no way t
 get it back from the tray — quit it from the launcher or with `pkill
 tokentracker-linux`.
 
+### The window is blank
+
+WebKitGTK renders through DMA-BUF by default, and on some Wayland setups — most
+reliably NVIDIA's proprietary driver — that path paints a permanently blank
+webview or aborts the Wayland connection, while the process keeps running and
+the tray icon looks healthy. Nothing is logged, so the app just looks broken.
+
+The client therefore sets `WEBKIT_DISABLE_DMABUF_RENDERER=1` before starting
+GTK. To retry the accelerated renderer, set it explicitly — an explicit value is
+never overridden:
+
+```bash
+WEBKIT_DISABLE_DMABUF_RENDERER=0 tokentracker-linux
+```
+
 ## Sign-in
 
 The app prefers a **fixed loopback port, 17680**, because OAuth redirect URLs
