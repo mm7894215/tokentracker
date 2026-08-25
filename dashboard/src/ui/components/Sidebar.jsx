@@ -140,6 +140,7 @@ function NavItem({ item, collapsed, active, onClick }) {
       to={item.to}
       onClick={onClick}
       title={collapsed ? item.label : undefined}
+      aria-label={collapsed ? item.label : undefined}
       aria-current={active ? "page" : undefined}
       className={cn(
         "flex items-center gap-2 rounded-md px-2 py-1.5 text-[13px] no-underline transition-colors",
@@ -160,7 +161,7 @@ function NavItem({ item, collapsed, active, onClick }) {
 /**
  * Tertiary icon button — uniform 40×40 (meets WCAG 2.5.5 close enough; AAA prefers 44).
  */
-function IconButton({ as = "button", title, onClick, href, children, className: extraClassName, ...rest }) {
+function IconButton({ as = "button", buttonRef, title, onClick, href, children, className: extraClassName, ...rest }) {
   const className = cn(
     "flex h-10 w-10 items-center justify-center rounded-lg text-oai-gray-600 dark:text-oai-gray-400 hover:bg-oai-gray-200/60 dark:hover:bg-oai-gray-800 hover:text-oai-black dark:hover:text-white transition-colors no-underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-oai-brand-500",
     extraClassName,
@@ -173,7 +174,7 @@ function IconButton({ as = "button", title, onClick, href, children, className: 
     );
   }
   return (
-    <button type="button" title={title} aria-label={title} onClick={onClick} className={className} {...rest}>
+    <button ref={buttonRef} type="button" title={title} aria-label={title} onClick={onClick} className={className} {...rest}>
       {children}
     </button>
   );
@@ -311,8 +312,17 @@ function ThemePill({ theme, resolvedTheme, onSetTheme, glassChrome = false }) {
  * @param {() => void} onItemClick - called after a nav item is clicked (used by drawer to close)
  * @param {boolean} showCloseButton - show X close button instead of collapse toggle (mobile)
  * @param {() => void} onClose - close handler for mobile drawer
+ * @param {React.RefObject<HTMLButtonElement>} closeButtonRef - mobile close button focus target
  */
-function SidebarBody({ collapsed, onToggleCollapsed, onItemClick, showCloseButton = false, onClose, glassChrome = false }) {
+function SidebarBody({
+  collapsed,
+  onToggleCollapsed,
+  onItemClick,
+  showCloseButton = false,
+  onClose,
+  closeButtonRef,
+  glassChrome = false,
+}) {
   const location = useLocation();
   const pathname = location?.pathname || "/";
   const { theme, resolvedTheme, setTheme } = useTheme();
@@ -335,6 +345,7 @@ function SidebarBody({ collapsed, onToggleCollapsed, onItemClick, showCloseButto
               />
             </div>
             <button
+              ref={closeButtonRef}
               type="button"
               onClick={onClose}
               aria-label={copy("nav.close_menu")}
@@ -390,13 +401,14 @@ function SidebarBody({ collapsed, onToggleCollapsed, onItemClick, showCloseButto
         <ThemePill theme={theme} resolvedTheme={resolvedTheme} onSetTheme={setTheme} glassChrome={glassChrome} />
         <div className="flex items-center gap-1.5">
           {!collapsed && <StarPill glassChrome={glassChrome} />}
-          {/* TEMP: collapse button hidden — restore when ready
           {!showCloseButton && (
             <button
               type="button"
               onClick={onToggleCollapsed}
               aria-label={collapsed ? copy("nav.expand") : copy("nav.collapse")}
               title={collapsed ? copy("nav.expand") : copy("nav.collapse")}
+              aria-expanded={!collapsed}
+              aria-controls="app-sidebar"
               className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-oai-gray-500 dark:text-oai-gray-500 hover:bg-oai-gray-200/60 dark:hover:bg-oai-gray-800 hover:text-oai-gray-900 dark:hover:text-oai-gray-200 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-oai-brand-500"
             >
               {collapsed ? (
@@ -406,7 +418,6 @@ function SidebarBody({ collapsed, onToggleCollapsed, onItemClick, showCloseButto
               )}
             </button>
           )}
-          */}
         </div>
       </div>
     </>
@@ -425,6 +436,8 @@ function Sidebar({ collapsed, onToggleCollapsed }) {
 
   return (
     <aside
+      id="app-sidebar"
+      data-sidebar-state={collapsed ? "collapsed" : "expanded"}
       data-native-sidebar
       aria-label={copy("nav.aside_label")}
       className={cn(
@@ -441,14 +454,61 @@ function Sidebar({ collapsed, onToggleCollapsed }) {
  * Mobile drawer — slides in from the left, full-height overlay.
  */
 function MobileDrawer({ open, onClose }) {
+  const drawerRef = useRef(null);
+  const closeButtonRef = useRef(null);
+
+  // Put focus on the close action when the drawer opens and keep keyboard focus
+  // inside the modal drawer until it closes.
+  useEffect(() => {
+    if (!open) return;
+    closeButtonRef.current?.focus();
+  }, [open]);
+
   // Close on Escape
   useEffect(() => {
     if (!open) return;
     const onKey = (e) => {
       if (e.key === "Escape") onClose();
+      if (e.key !== "Tab") return;
+
+      const drawer = drawerRef.current;
+      if (!drawer) return;
+      const focusable = drawer.querySelectorAll(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      );
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
+  // An open mobile drawer must be reset when the viewport crosses the desktop
+  // breakpoint, otherwise it can reappear on the next narrow-window visit.
+  useEffect(() => {
+    if (!open || typeof window === "undefined" || typeof window.matchMedia !== "function") return;
+    const desktopQuery = window.matchMedia("(min-width: 1024px)");
+    const onBreakpointChange = (event) => {
+      if (event.matches) onClose();
+    };
+    if (desktopQuery.matches) {
+      onClose();
+      return;
+    }
+    if (desktopQuery.addEventListener) {
+      desktopQuery.addEventListener("change", onBreakpointChange);
+      return () => desktopQuery.removeEventListener("change", onBreakpointChange);
+    }
+    desktopQuery.addListener?.(onBreakpointChange);
+    return () => desktopQuery.removeListener?.(onBreakpointChange);
   }, [open, onClose]);
 
   // Lock body scroll when open
@@ -470,6 +530,10 @@ function MobileDrawer({ open, onClose }) {
         aria-hidden
       />
       <aside
+        ref={drawerRef}
+        id="mobile-navigation-drawer"
+        role="dialog"
+        aria-modal="true"
         aria-label={copy("nav.aside_label")}
         className="relative w-[260px] max-w-[80vw] flex flex-col bg-oai-white dark:bg-oai-gray-900 border-r border-oai-gray-200 dark:border-oai-gray-800 shadow-2xl"
       >
@@ -477,6 +541,7 @@ function MobileDrawer({ open, onClose }) {
           collapsed={false}
           showCloseButton
           onClose={onClose}
+          closeButtonRef={closeButtonRef}
           onItemClick={onClose}
         />
       </aside>
@@ -487,10 +552,16 @@ function MobileDrawer({ open, onClose }) {
 /**
  * Mobile top bar — shows hamburger + brand on screens < lg.
  */
-function MobileTopBar({ onOpenDrawer }) {
+function MobileTopBar({ open, onOpenDrawer, menuButtonRef }) {
   return (
     <div className="lg:hidden flex items-center justify-between gap-2 px-3 h-14 border-b border-oai-gray-200 dark:border-oai-gray-800">
-      <IconButton title={copy("nav.menu")} onClick={onOpenDrawer}>
+      <IconButton
+        buttonRef={menuButtonRef}
+        title={copy("nav.menu")}
+        onClick={onOpenDrawer}
+        aria-expanded={open}
+        aria-controls="mobile-navigation-drawer"
+      >
         <Menu className="h-5 w-5" aria-hidden />
       </IconButton>
       <Link
@@ -518,8 +589,14 @@ function MobileTopBar({ onOpenDrawer }) {
 export function AppLayout({ children }) {
   const { collapsed, toggle } = useSidebarCollapsed();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const menuButtonRef = useRef(null);
   const openDrawer = useCallback(() => setDrawerOpen(true), []);
-  const closeDrawer = useCallback(() => setDrawerOpen(false), []);
+  const closeDrawer = useCallback(() => {
+    setDrawerOpen(false);
+    // Restore focus to the control that opened the drawer for keyboard and
+    // assistive-technology users.
+    menuButtonRef.current?.focus();
+  }, []);
 
   /** macOS WKWebView：底层由 NSVisualEffectView 提供模糊，Web 根布局透明，侧栏浮在背景上；浏览器仍用灰色底。 */
   const nativeEmbed = useMemo(() => {
@@ -555,7 +632,7 @@ export function AppLayout({ children }) {
               !nativeEmbed && "shadow-sm",
             )}
           >
-            <MobileTopBar onOpenDrawer={openDrawer} />
+            <MobileTopBar open={drawerOpen} onOpenDrawer={openDrawer} menuButtonRef={menuButtonRef} />
             <div className="flex-1 min-h-0 overflow-y-auto">
               {children}
             </div>
