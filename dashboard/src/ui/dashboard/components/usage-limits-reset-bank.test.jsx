@@ -29,7 +29,7 @@ function usageLimitsPanelElement(resetCredits) {
 
 function renderCodex(resetCredits) {
   render(usageLimitsPanelElement(resetCredits));
-  const group = screen.getByText("Codex").closest("[data-limit-group]");
+  const group = screen.getByText("Codex").closest("[role='button']");
   expect(group).not.toBeNull();
   return within(group);
 }
@@ -189,7 +189,7 @@ describe("UsageLimitsPanel Codex Reset Bank", () => {
 
     setCopyLocale(JA_LOCALE);
     const { unmount } = render(usageLimitsPanelElement(resetCredits));
-    let codexGroup = within(screen.getByText("Codex").closest("[data-limit-group]"));
+    let codexGroup = within(screen.getByText("Codex").closest("[role='button']"));
     expect(codexGroup.getByText(copy("limits.codex_reset_bank.title"))).toBeInTheDocument();
     expect(codexGroup.getByText(copy("limits.codex_reset_bank.row_label", { index: 1 }))).toBeInTheDocument();
     expect(codexGroup.queryByText("Resets")).not.toBeInTheDocument();
@@ -198,7 +198,7 @@ describe("UsageLimitsPanel Codex Reset Bank", () => {
 
     setCopyLocale(KO_LOCALE);
     render(usageLimitsPanelElement(resetCredits));
-    codexGroup = within(screen.getByText("Codex").closest("[data-limit-group]"));
+    codexGroup = within(screen.getByText("Codex").closest("[role='button']"));
     expect(codexGroup.getByText(copy("limits.codex_reset_bank.title"))).toBeInTheDocument();
     expect(codexGroup.getByText(copy("limits.codex_reset_bank.row_label", { index: 1 }))).toBeInTheDocument();
     expect(codexGroup.getByText(formatExpiry(resetCredits.credits[0].expires_at, KO_LOCALE))).toBeInTheDocument();
@@ -216,14 +216,14 @@ describe("UsageLimitsPanel Codex Reset Bank", () => {
 
     setCopyLocale(JA_LOCALE);
     const { unmount } = render(usageLimitsPanelElement(resetCredits));
-    let codexGroup = within(screen.getByText("Codex").closest("[data-limit-group]"));
+    let codexGroup = within(screen.getByText("Codex").closest("[role='button']"));
     expect(codexGroup.getByText(copy("limits.codex_reset_bank.count_only", { count: 2 }))).toBeInTheDocument();
     expect(codexGroup.queryByText(/Reset Bank/)).not.toBeInTheDocument();
     unmount();
 
     setCopyLocale(KO_LOCALE);
     render(usageLimitsPanelElement(resetCredits));
-    codexGroup = within(screen.getByText("Codex").closest("[data-limit-group]"));
+    codexGroup = within(screen.getByText("Codex").closest("[role='button']"));
     expect(codexGroup.getByText(copy("limits.codex_reset_bank.count_only", { count: 2 }))).toBeInTheDocument();
     expect(codexGroup.queryByText(/Reset Bank/)).not.toBeInTheDocument();
   });
@@ -322,9 +322,7 @@ describe("UsageLimitsPanel Codex Reset Bank", () => {
       credits: [credit("2030-01-01T10:45:00.000Z", "2030-01-11T10:45:00.000Z")],
     });
 
-    const resetBankSection = document.querySelector("[data-reset-bank-section]");
-    expect(resetBankSection).not.toBeNull();
-    expect(resetBankSection.querySelectorAll("button")).toHaveLength(0);
+    expect(document.querySelectorAll("button")).toHaveLength(0);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.queryByRole("toolbar")).not.toBeInTheDocument();
     expect(screen.queryByText(/redeem|claim|action/i)).not.toBeInTheDocument();
