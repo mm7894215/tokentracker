@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CalendarClock, Plus } from "lucide-react";
 import { copy, getCopyLocale } from "../../../lib/copy";
 import { Button, ConfirmModal, Input, Select } from "../../components";
@@ -49,6 +49,7 @@ export function SubscriptionSettingsCard({ subscriptions, onChanged }) {
   const [deleteError, setDeleteError] = useState(false);
   const [expandedId, setExpandedId] = useState(null);
   const [now, setNow] = useState(() => Date.now());
+  const formRef = useRef(null);
 
   const copyLocale = getCopyLocale();
   const dateFormat = useMemo(
@@ -68,6 +69,19 @@ export function SubscriptionSettingsCard({ subscriptions, onChanged }) {
     const timer = setInterval(() => setNow(Date.now()), 60000);
     return () => clearInterval(timer);
   }, []);
+
+  // Bring the in-place form into view when it opens: the add form sits at
+  // the end of the list and the edit form expands below its row, so either
+  // can land outside the visible part of the scrollable popover. Smooth
+  // scrolled unless the system asks for reduced motion.
+  useEffect(() => {
+    if (!formOpen) return;
+    const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    formRef.current?.scrollIntoView?.({
+      behavior: reduceMotion ? "auto" : "smooth",
+      block: "nearest",
+    });
+  }, [formOpen, editingId]);
 
   const providerOptions = useMemo(
     () => [
@@ -168,27 +182,16 @@ export function SubscriptionSettingsCard({ subscriptions, onChanged }) {
 
   const list = subscriptions || [];
 
-  return (
-    <div className="flex max-h-[min(80vh,42rem)] w-[min(92vw,32rem)] flex-col gap-3 overflow-y-auto rounded-xl border border-oai-gray-200 bg-white p-4 shadow-lg dark:border-oai-gray-700 dark:bg-oai-gray-900">
-      <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <span className="block truncate text-sm font-semibold text-oai-black dark:text-white">
-            {copy("limits.page.openSubscriptions")}
-          </span>
-        </div>
-        <Button type="button" size="sm" onClick={openAdd} className="shrink-0 gap-1.5">
-          <Plus size={14} strokeWidth={2} aria-hidden />
-          <span>{copy("subscriptions.add")}</span>
-        </Button>
+  // The form is rendered in place: below the row being edited, or as the
+  // last list entry when adding. Kept as one node so both spots share the
+  // exact same fields and behavior.
+  const formNode = (
+    <form ref={formRef} onSubmit={handleSubmit} className="grid grid-cols-1 gap-3 px-3 py-3 text-left sm:grid-cols-2">
+      <div className="flex items-center justify-between sm:col-span-2">
+        <span className="text-xs font-semibold uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-400">
+          {editingId ? copy("subscriptions.edit") : copy("subscriptions.add")}
+        </span>
       </div>
-
-      {formOpen ? (
-        <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-3 border-y border-oai-gray-100 py-3 dark:border-oai-gray-800 sm:grid-cols-2">
-          <div className="flex items-center justify-between sm:col-span-2">
-            <span className="text-xs font-semibold uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-400">
-              {editingId ? copy("subscriptions.edit") : copy("subscriptions.add")}
-            </span>
-          </div>
           <div className="flex flex-col sm:col-span-1">
             <label
               htmlFor="subscription-provider"
@@ -279,9 +282,23 @@ export function SubscriptionSettingsCard({ subscriptions, onChanged }) {
             </Button>
           </div>
         </form>
-      ) : null}
+      );
 
-      {list.length === 0 ? (
+  return (
+    <div className="flex max-h-[min(80vh,42rem)] w-[min(92vw,32rem)] flex-col gap-3 overflow-y-auto rounded-xl border border-oai-gray-200 bg-white p-4 shadow-lg dark:border-oai-gray-700 dark:bg-oai-gray-900">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <span className="block truncate text-sm font-semibold text-oai-black dark:text-white">
+            {copy("limits.page.openSubscriptions")}
+          </span>
+        </div>
+        <Button type="button" size="sm" onClick={openAdd} className="shrink-0 gap-1.5">
+          <Plus size={14} strokeWidth={2} aria-hidden />
+          <span>{copy("subscriptions.add")}</span>
+        </Button>
+      </div>
+
+      {list.length === 0 && !(formOpen && !editingId) ? (
         <div className="flex flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-oai-gray-200 px-4 py-10 text-center dark:border-oai-gray-700">
           <CalendarClock className="h-6 w-6 text-oai-gray-300 dark:text-oai-gray-600 mb-2" aria-hidden />
           <p className="text-sm font-medium text-oai-black dark:text-white">
@@ -292,7 +309,10 @@ export function SubscriptionSettingsCard({ subscriptions, onChanged }) {
           </p>
         </div>
       ) : (
-        <ul className="flex max-h-72 flex-col gap-1.5 overflow-y-auto">
+        <ul className="flex flex-col gap-1.5">
+          {/* No height cap here: the in-place form expands inside a list item,
+              and the popover card above already caps at min(80vh, 42rem) with
+              its own overflow scrolling. */}
           {list.map((subscription) => {
             const view = cycleView(subscription, now);
             if (!view) return null;
@@ -340,7 +360,11 @@ export function SubscriptionSettingsCard({ subscriptions, onChanged }) {
                     </span>
                   </span>
                 </button>
-                {expanded ? (
+                {editingId === subscription.id ? (
+                  <div className="border-t border-oai-gray-100 dark:border-oai-gray-800">
+                    {formNode}
+                  </div>
+                ) : expanded ? (
                   <div className="px-3 pb-3 flex flex-col gap-2 border-t border-oai-gray-100 dark:border-oai-gray-800">
                     <p className="pt-2 text-xs text-oai-gray-600 dark:text-oai-gray-300">
                       <span className="text-oai-gray-400 dark:text-oai-gray-500">
@@ -386,6 +410,11 @@ export function SubscriptionSettingsCard({ subscriptions, onChanged }) {
               </li>
             );
           })}
+          {formOpen && !editingId ? (
+            <li className="rounded-lg border border-oai-gray-100 dark:border-oai-gray-800">
+              {formNode}
+            </li>
+          ) : null}
         </ul>
       )}
 

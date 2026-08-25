@@ -130,6 +130,53 @@ describe("SubscriptionSettingsCard", () => {
     expect(onChanged).toHaveBeenCalledTimes(1);
   });
 
+  it("opens the edit form in place below the edited row, keeping the row visible", () => {
+    render(
+      <SubscriptionSettingsCard
+        subscriptions={[
+          makeSubscription(),
+          makeSubscription({
+            id: "sub-2",
+            service: "Claude",
+            plan: null,
+            autoRenew: false,
+            nextBillingAt: new Date(Date.now() - 60 * 60000).toISOString(),
+          }),
+        ]}
+        onChanged={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByText("GPT"));
+    fireEvent.click(screen.getByText("Edit"));
+
+    // The form is pre-filled and sits between the edited row and the next
+    // list entry — not in a separate section above the list.
+    expect(screen.getByLabelText("Service")).toHaveValue("GPT");
+    const gptRow = screen.getByText("GPT");
+    const serviceField = screen.getByLabelText("Service");
+    const claudeRow = screen.getByText("Claude");
+    expect(
+      gptRow.compareDocumentPosition(serviceField) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      serviceField.compareDocumentPosition(claudeRow) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("renders the add form as the last entry of the list", () => {
+    render(<SubscriptionSettingsCard subscriptions={[makeSubscription()]} onChanged={vi.fn()} />);
+
+    fireEvent.click(screen.getByText("Add subscription"));
+
+    expect(
+      screen
+        .getByText("GPT")
+        .compareDocumentPosition(screen.getByLabelText("Service")) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
   it("deletes a subscription after confirmation and notifies the parent", async () => {
     const onChanged = vi.fn();
     render(
