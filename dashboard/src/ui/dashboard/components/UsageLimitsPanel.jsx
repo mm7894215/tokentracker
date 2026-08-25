@@ -1,4 +1,5 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Clock as ClockIcon, Infinity as InfinityIcon } from "lucide-react";
 import { Card } from "../../components";
 import { FadeIn } from "../../foundation/FadeIn.jsx";
 import { copy, getCopyLocale } from "../../../lib/copy";
@@ -352,18 +353,27 @@ function ToolGroup({ name, providerId, children, expandable = false, expanded = 
 // Top-right auto-renew / stops-at-expiry badge. Distinct from the left-aligned
 // data-status badge so antigravity/qoder cache state and subscription state can
 // both show on the same row.
+// Icon-only state badge: shape and color carry the state (infinity = keeps
+// renewing, clock = ends at expiry), so the pill's text is no longer needed.
+// The original wording stays available through the hover tooltip and
+// aria-label, and the two shapes remain distinguishable without color.
 function SubscriptionRightBadge({ subscription }) {
+  const label = subscription.autoRenew
+    ? copy("subscriptions.badge.auto_renew")
+    : copy("subscriptions.badge.stops");
+  const Icon = subscription.autoRenew ? InfinityIcon : ClockIcon;
   return (
     <span
-      className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-semibold border leading-normal ${
+      role="img"
+      aria-label={label}
+      title={label}
+      className={`inline-flex translate-y-px ${
         subscription.autoRenew
-          ? "bg-oai-brand-50 text-oai-brand-700 border-oai-brand-200 dark:bg-oai-brand-950 dark:text-oai-brand-300 dark:border-oai-brand-800"
-          : "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800"
+          ? "text-oai-brand-600 dark:text-oai-brand-400"
+          : "text-blue-600 dark:text-blue-400"
       }`}
     >
-      {subscription.autoRenew
-        ? copy("subscriptions.badge.auto_renew")
-        : copy("subscriptions.badge.stops")}
+      <Icon size={14} strokeWidth={2} aria-hidden />
     </span>
   );
 }

@@ -658,8 +658,8 @@ describe("UsageLimitsPanel", () => {
     );
 
     expect(screen.getByText("Cursor")).toBeInTheDocument();
-    // Collapsed: top-right auto-renew badge and the "Subscription" bar label.
-    expect(screen.getByText("Auto-renew")).toBeInTheDocument();
+    // Collapsed: top-right auto-renew icon badge and the "Subscription" bar label.
+    expect(screen.getByRole("img", { name: "Auto-renew" })).toBeInTheDocument();
     expect(screen.getByText("Subscription")).toBeInTheDocument();
 
     // Expanding reveals the subscription detail line.
