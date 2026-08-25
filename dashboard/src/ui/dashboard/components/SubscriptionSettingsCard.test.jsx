@@ -95,20 +95,20 @@ describe("SubscriptionSettingsCard", () => {
     expect(screen.getByText("in 2d 3h 4m")).toBeInTheDocument();
   });
 
-  it("creates a subscription with the selected linked tool and notifies the parent", async () => {
+  it("creates a subscription named after the linked tool and notifies the parent", async () => {
     const onChanged = vi.fn();
     render(<SubscriptionSettingsCard subscriptions={[]} onChanged={onChanged} />);
 
     fireEvent.click(screen.getByText("Add subscription"));
-    fireEvent.change(screen.getByLabelText("Service"), { target: { value: "GPT" } });
     fireEvent.change(screen.getByLabelText("Plan"), { target: { value: "Plus" } });
-    fireEvent.change(screen.getByLabelText("Next renewal / expiry"), {
+    fireEvent.change(screen.getByLabelText("Subscription date"), {
       target: { value: "2026-08-16T14:00" },
     });
     // The linked-tool picker is the shared Base UI Select, so open the popup
     // and pick the option instead of firing a native change event. Base UI
     // ignores synthetic clicks on unhovered items, so press first like a real
-    // pointer would.
+    // pointer would. The tool choice also names the subscription — there is
+    // no separate service field anymore.
     fireEvent.click(screen.getByLabelText("Linked tool"));
     const codexOption = await screen.findByRole("option", { name: "Codex" });
     fireEvent.pointerDown(codexOption, { pointerType: "mouse" });
@@ -120,12 +120,101 @@ describe("SubscriptionSettingsCard", () => {
       expect(createSubscription).toHaveBeenCalledTimes(1);
     });
     expect(createSubscription).toHaveBeenCalledWith({
-      service: "GPT",
+      service: "Codex",
       plan: "Plus",
       provider: "codex",
       cycle: "monthly",
       autoRenew: true,
-      nextBillingAt: new Date("2026-08-16T14:00").getTime(),
+      // The stored anchor is derived: subscription date + one cycle.
+      nextBillingAt: new Date("2026-09-16T14:00").getTime(),
+    });
+    expect(onChanged).toHaveBeenCalledTimes(1);
+  });
+
+  it("clamps the derived anchor to the end of short months", () => {
+    const onChanged = vi.fn();
+    render(<SubscriptionSettingsCard subscriptions={[]} onChanged={onChanged} />);
+
+    fireEvent.click(screen.getByText("Add subscription"));
+    fireEvent.click(screen.getByLabelText("Linked tool"));
+    const codexOption = screen.getByRole("option", { name: "Codex" });
+    fireEvent.pointerDown(codexOption, { pointerType: "mouse" });
+    fireEvent.click(codexOption);
+    fireEvent.change(screen.getByLabelText("Subscription date"), {
+      target: { value: "2026-01-31T10:00" },
+    });
+    fireEvent.click(screen.getByText("Save"));
+
+    expect(createSubscription).toHaveBeenCalledWith(
+      expect.objectContaining({
+        nextBillingAt: new Date("2026-02-28T10:00").getTime(),
+      }),
+    );
+  });
+
+  it("refuses to save without a linked tool and explains why", () => {
+    render(<SubscriptionSettingsCard subscriptions={[]} onChanged={vi.fn()} />);
+
+    fireEvent.click(screen.getByText("Add subscription"));
+    fireEvent.change(screen.getByLabelText("Subscription date"), {
+      target: { value: "2026-08-16T14:00" },
+    });
+    fireEvent.click(screen.getByText("Save"));
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Select a linked tool.");
+    expect(createSubscription).not.toHaveBeenCalled();
+  });
+
+  it("refuses a second subscription for a tool that already has one", () => {
+    render(
+      <SubscriptionSettingsCard
+        subscriptions={[makeSubscription({ provider: "codex" })]}
+        onChanged={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByText("Add subscription"));
+    fireEvent.change(screen.getByLabelText("Subscription date"), {
+      target: { value: "2026-08-16T14:00" },
+    });
+    fireEvent.click(screen.getByLabelText("Linked tool"));
+    const codexOption = screen.getByRole("option", { name: "Codex" });
+    fireEvent.pointerDown(codexOption, { pointerType: "mouse" });
+    fireEvent.click(codexOption);
+    fireEvent.click(screen.getByText("Save"));
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "This tool already has a subscription.",
+    );
+    expect(createSubscription).not.toHaveBeenCalled();
+  });
+
+  it("keeps allowing a record to keep its own tool when edited", async () => {
+    const onChanged = vi.fn();
+    render(
+      <SubscriptionSettingsCard
+        subscriptions={[makeSubscription({ provider: "codex" })]}
+        onChanged={onChanged}
+      />,
+    );
+
+    fireEvent.click(screen.getByText("GPT"));
+    fireEvent.click(screen.getByText("Edit"));
+    fireEvent.change(screen.getByLabelText("Subscription date"), {
+      target: { value: "2026-08-16T14:00" },
+    });
+    fireEvent.click(screen.getByText("Save"));
+
+    await waitFor(() => {
+      expect(updateSubscription).toHaveBeenCalledTimes(1);
+    });
+    expect(updateSubscription).toHaveBeenCalledWith("sub-1", {
+      service: "Codex",
+      plan: "Plus",
+      provider: "codex",
+      cycle: "monthly",
+      autoRenew: true,
+      nextBillingAt: new Date("2026-09-16T14:00").getTime(),
     });
     expect(onChanged).toHaveBeenCalledTimes(1);
   });
@@ -150,17 +239,17 @@ describe("SubscriptionSettingsCard", () => {
     fireEvent.click(screen.getByText("GPT"));
     fireEvent.click(screen.getByText("Edit"));
 
-    // The form is pre-filled and sits between the edited row and the next
+    // The form opens pre-filled and sits between the edited row and the next
     // list entry — not in a separate section above the list.
-    expect(screen.getByLabelText("Service")).toHaveValue("GPT");
+    expect(screen.getByLabelText("Plan")).toHaveValue("Plus");
     const gptRow = screen.getByText("GPT");
-    const serviceField = screen.getByLabelText("Service");
+    const planField = screen.getByLabelText("Plan");
     const claudeRow = screen.getByText("Claude");
     expect(
-      gptRow.compareDocumentPosition(serviceField) & Node.DOCUMENT_POSITION_FOLLOWING,
+      gptRow.compareDocumentPosition(planField) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(
-      serviceField.compareDocumentPosition(claudeRow) & Node.DOCUMENT_POSITION_FOLLOWING,
+      planField.compareDocumentPosition(claudeRow) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
   });
 
@@ -172,7 +261,7 @@ describe("SubscriptionSettingsCard", () => {
     expect(
       screen
         .getByText("GPT")
-        .compareDocumentPosition(screen.getByLabelText("Service")) &
+        .compareDocumentPosition(screen.getByLabelText("Plan")) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
   });

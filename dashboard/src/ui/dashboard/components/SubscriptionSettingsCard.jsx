@@ -3,7 +3,13 @@ import { CalendarClock, Plus } from "lucide-react";
 import { copy, getCopyLocale } from "../../../lib/copy";
 import { Button, ConfirmModal, Input, Select } from "../../components";
 import { ProviderIcon } from "./ProviderIcon.jsx";
-import { countdownText, cycleView, remainingLabel } from "../../../lib/subscription-display";
+import {
+  countdownText,
+  cycleEndFromStart,
+  cycleStartOf,
+  cycleView,
+  remainingLabel,
+} from "../../../lib/subscription-display";
 import {
   LIMIT_PROVIDER_IDS,
   limitProviderIconKey,
@@ -16,12 +22,11 @@ import {
 } from "../../../lib/subscription-manager-api";
 
 const EMPTY_FORM = {
-  service: "",
   plan: "",
   provider: "",
   cycle: "monthly",
   autoRenew: true,
-  nextBillingAt: "",
+  startedAt: "",
 };
 
 // datetime-local values are local-time; the stored record is UTC. This is the
@@ -44,6 +49,8 @@ export function SubscriptionSettingsCard({ subscriptions, onChanged }) {
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState(false);
+  const [providerError, setProviderError] = useState(false);
+  const [providerTaken, setProviderTaken] = useState(false);
   const [pendingDelete, setPendingDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState(false);
@@ -84,10 +91,7 @@ export function SubscriptionSettingsCard({ subscriptions, onChanged }) {
   }, [formOpen, editingId]);
 
   const providerOptions = useMemo(
-    () => [
-      { value: "", label: copy("subscriptions.form.provider_none") },
-      ...LIMIT_PROVIDER_IDS.map((id) => ({ value: id, label: limitProviderName(id) })),
-    ],
+    () => LIMIT_PROVIDER_IDS.map((id) => ({ value: id, label: limitProviderName(id) })),
     [copyLocale],
   );
 
@@ -100,24 +104,39 @@ export function SubscriptionSettingsCard({ subscriptions, onChanged }) {
     [copyLocale],
   );
 
+  const autoRenewOptions = useMemo(
+    () => [
+      { value: "true", label: copy("subscriptions.form.auto_renew_on") },
+      { value: "false", label: copy("subscriptions.form.auto_renew_off") },
+    ],
+    [copyLocale],
+  );
+
   const openAdd = useCallback(() => {
     setForm(EMPTY_FORM);
     setEditingId(null);
     setFormError(false);
+    setProviderError(false);
+    setProviderTaken(false);
     setFormOpen(true);
   }, []);
 
   const openEdit = useCallback((subscription) => {
     setForm({
-      service: subscription.service,
       plan: subscription.plan || "",
       provider: subscription.provider || "",
       cycle: subscription.cycle || "monthly",
       autoRenew: subscription.autoRenew,
-      nextBillingAt: toDatetimeLocalValue(subscription.nextBillingAt),
+      // The form collects the subscription date; derive it from the stored
+      // billing anchor so editing starts from the day the plan began.
+      startedAt: toDatetimeLocalValue(
+        new Date(cycleStartOf(subscription)).toISOString(),
+      ),
     });
     setEditingId(subscription.id);
     setFormError(false);
+    setProviderError(false);
+    setProviderTaken(false);
     setFormOpen(true);
   }, []);
 
@@ -126,24 +145,41 @@ export function SubscriptionSettingsCard({ subscriptions, onChanged }) {
     setEditingId(null);
     setForm(EMPTY_FORM);
     setFormError(false);
+    setProviderError(false);
+    setProviderTaken(false);
   }, []);
 
   const handleSubmit = useCallback(
     async (event) => {
       event.preventDefault();
       setFormError(false);
-      const timestamp = new Date(form.nextBillingAt).getTime();
-      if (!Number.isFinite(timestamp)) {
+      // The linked tool doubles as the subscription name, so it is mandatory.
+      if (!form.provider) {
+        setProviderError(true);
+        return;
+      }
+      // One subscription per tool: an account can only hold one active plan,
+      // so the record represents the tool's current subscription. Editing a
+      // record keeps its own provider exempt from this check.
+      const duplicate = (subscriptions || []).some(
+        (subscription) => subscription.provider === form.provider && subscription.id !== editingId,
+      );
+      if (duplicate) {
+        setProviderTaken(true);
+        return;
+      }
+      const startMs = new Date(form.startedAt).getTime();
+      if (!Number.isFinite(startMs)) {
         setFormError(true);
         return;
       }
       const payload = {
-        service: form.service,
+        service: limitProviderName(form.provider),
         plan: form.plan,
         provider: form.provider || null,
         autoRenew: form.autoRenew,
         cycle: form.cycle,
-        nextBillingAt: timestamp,
+        nextBillingAt: cycleEndFromStart(startMs, form.cycle),
       };
       setSaving(true);
       try {
@@ -160,7 +196,7 @@ export function SubscriptionSettingsCard({ subscriptions, onChanged }) {
         setSaving(false);
       }
     },
-    [closeForm, editingId, form, onChanged],
+    [closeForm, editingId, form, onChanged, subscriptions],
   );
 
   const confirmDelete = useCallback(async () => {
@@ -208,6 +244,15 @@ export function SubscriptionSettingsCard({ subscriptions, onChanged }) {
               className="h-10 w-full px-3 text-sm"
             />
           </div>
+          <div className="sm:col-span-1">
+            <Input
+              label={copy("subscriptions.form.plan")}
+              value={form.plan}
+              maxLength={120}
+              placeholder={copy("subscriptions.form.plan_placeholder")}
+              onChange={(event) => setForm({ ...form, plan: event.target.value })}
+            />
+          </div>
           <div className="flex flex-col sm:col-span-1">
             <label
               htmlFor="subscription-cycle"
@@ -224,51 +269,42 @@ export function SubscriptionSettingsCard({ subscriptions, onChanged }) {
               className="h-10 w-full px-3 text-sm"
             />
           </div>
-          <div className="sm:col-span-1">
-            <Input
-              label={copy("subscriptions.form.service")}
-              value={form.service}
-              maxLength={120}
-              required
-              placeholder={copy("subscriptions.form.service_placeholder")}
-              onChange={(event) => setForm({ ...form, service: event.target.value })}
-            />
-          </div>
-          <div className="sm:col-span-1">
-            <Input
-              label={copy("subscriptions.form.plan")}
-              value={form.plan}
-              maxLength={120}
-              placeholder={copy("subscriptions.form.plan_placeholder")}
-              onChange={(event) => setForm({ ...form, plan: event.target.value })}
+          <div className="flex flex-col sm:col-span-1">
+            <label
+              htmlFor="subscription-auto-renew"
+              className="block text-sm font-medium text-oai-gray-700 dark:text-oai-gray-300 mb-1.5"
+            >
+              {copy("subscriptions.form.auto_renew")}
+            </label>
+            <Select
+              id="subscription-auto-renew"
+              value={String(form.autoRenew)}
+              onValueChange={(value) => setForm({ ...form, autoRenew: value === "true" })}
+              options={autoRenewOptions}
+              matchTriggerWidth
+              className="h-10 w-full px-3 text-sm"
             />
           </div>
           <div className="sm:col-span-2">
             <Input
-              label={copy("subscriptions.form.next_billing")}
+              label={copy("subscriptions.form.started_at")}
               type="datetime-local"
-              value={form.nextBillingAt}
+              value={form.startedAt}
               required
-              onChange={(event) => setForm({ ...form, nextBillingAt: event.target.value })}
+              onChange={(event) => setForm({ ...form, startedAt: event.target.value })}
             />
           </div>
-          <div className="flex flex-col rounded-lg border border-oai-gray-200/70 bg-oai-gray-50/50 px-3 py-2.5 dark:border-oai-gray-700/60 dark:bg-oai-gray-800/20 sm:col-span-2">
-            <span className="block text-sm font-medium text-oai-gray-700 dark:text-oai-gray-300 mb-1.5">
-              {copy("subscriptions.form.auto_renew")}
-            </span>
-            <label className="mt-0.5 flex min-h-10 items-center gap-2.5">
-              <input
-                type="checkbox"
-                checked={form.autoRenew}
-                onChange={(event) => setForm({ ...form, autoRenew: event.target.checked })}
-                className="h-4 w-4 accent-oai-brand"
-              />
-              <span className="text-sm text-oai-gray-500 dark:text-oai-gray-400">
-                {copy("subscriptions.form.auto_renew_hint")}
-              </span>
-            </label>
-          </div>
           <div className="flex items-center justify-end gap-2 sm:col-span-2">
+            {providerError ? (
+              <p className="mr-auto text-sm text-oai-error" role="alert">
+                {copy("subscriptions.form.provider_required")}
+              </p>
+            ) : null}
+            {providerTaken ? (
+              <p className="mr-auto text-sm text-oai-error" role="alert">
+                {copy("subscriptions.form.provider_taken")}
+              </p>
+            ) : null}
             {formError ? (
               <p className="mr-auto text-sm text-oai-error" role="alert">
                 {copy("subscriptions.form.error")}

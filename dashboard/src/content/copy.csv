@@ -1483,8 +1483,11 @@ subscriptions.form.service_placeholder,ui,LimitsPage,SubscriptionSettingsCard,fo
 subscriptions.form.plan,ui,LimitsPage,SubscriptionSettingsCard,form_plan,"Plan",,active
 subscriptions.form.plan_placeholder,ui,LimitsPage,SubscriptionSettingsCard,form_plan_placeholder,"e.g. Plus, Pro",,active
 subscriptions.form.auto_renew,ui,LimitsPage,SubscriptionSettingsCard,form_auto_renew,"Auto-renew",,active
+subscriptions.form.auto_renew_on,ui,LimitsPage,SubscriptionSettingsCard,form_auto_renew_on,"On",,active
+subscriptions.form.auto_renew_off,ui,LimitsPage,SubscriptionSettingsCard,form_auto_renew_off,"Off",,active
 subscriptions.form.auto_renew_hint,ui,LimitsPage,SubscriptionSettingsCard,form_auto_renew_hint,"When off, the date is treated as the final expiry.",,active
 subscriptions.form.next_billing,ui,LimitsPage,SubscriptionSettingsCard,form_next_billing,"Next renewal / expiry",,active
+subscriptions.form.started_at,ui,LimitsPage,SubscriptionSettingsCard,form_started_at,"Subscription date",,active
 subscriptions.form.cycle,ui,LimitsPage,SubscriptionSettingsCard,form_cycle,"Billing cycle",,active
 subscriptions.form.cycle_weekly,ui,LimitsPage,SubscriptionSettingsCard,form_cycle_weekly,"Weekly",,active
 subscriptions.form.cycle_monthly,ui,LimitsPage,SubscriptionSettingsCard,form_cycle_monthly,"Monthly",,active
@@ -1503,5 +1506,7 @@ subscriptions.inline.label,ui,LimitsPage,UsageLimitsPanel,inline_label,"Subscrip
 subscriptions.badge.auto_renew,ui,LimitsPage,UsageLimitsPanel,badge_auto_renew,"Auto-renew",,active
 subscriptions.badge.stops,ui,LimitsPage,UsageLimitsPanel,badge_stops,"Stops at expiry",,active
 subscriptions.form.provider,ui,LimitsPage,SubscriptionSettingsCard,form_provider,"Linked tool",,active
+subscriptions.form.provider_required,ui,LimitsPage,SubscriptionSettingsCard,form_provider_required,"Select a linked tool.",,active
+subscriptions.form.provider_taken,ui,LimitsPage,SubscriptionSettingsCard,form_provider_taken,"This tool already has a subscription. Edit the existing record instead.",,active
 subscriptions.form.provider_none,ui,LimitsPage,SubscriptionSettingsCard,form_provider_none,"Not linked",,active
 limits.page.openSubscriptions,ui,LimitsPage,LimitsPage,open_subscriptions,"Subscriptions",,active

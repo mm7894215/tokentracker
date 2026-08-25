@@ -48,6 +48,19 @@ function cycleStartMs(endMs, cycle) {
   return start.getTime();
 }
 
+// Inverse of cycleStartMs: the first cycle boundary after the subscription
+// date. The settings form collects the subscription date and stores the
+// derived boundary as the record's nextBillingAt anchor.
+export function cycleEndFromStart(startMs, cycle) {
+  if (cycle === "weekly") return startMs + 7 * DAY_MS;
+  if (cycle === "yearly") return addMonthsUtc(startMs, 12);
+  return addMonthsUtc(startMs, 1);
+}
+
+export function cycleStartOf(subscription) {
+  return cycleStartMs(new Date(subscription.nextBillingAt).getTime(), subscription.cycle);
+}
+
 // The cycle a subscription is currently in. Auto-renew records roll forward
 // past recorded renewals (the plan keeps renewing until cancelled), so an
 // expired date shows the current cycle instead of a permanently red 100% bar
