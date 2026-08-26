@@ -235,8 +235,9 @@ export function SubscriptionSettingsCard({ subscriptions, onChanged }) {
   // The form is rendered in place: below the row being edited, or as the
   // last list entry when adding. Kept as one node so both spots share the
   // exact same fields and behavior.
-  const formNode = (
-    <form ref={formRef} onSubmit={handleSubmit} className="grid grid-cols-1 gap-3 px-3 py-3 text-left sm:grid-cols-2">
+  const renderForm = () => {
+    return (
+      <form ref={formRef} onSubmit={handleSubmit} className="grid grid-cols-1 gap-3 px-3 py-3 text-left sm:grid-cols-2">
       <div className="flex items-center justify-between sm:col-span-2">
         <span className="text-xs font-semibold uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-400">
           {editingId ? copy("subscriptions.edit") : copy("subscriptions.add")}
@@ -331,8 +332,9 @@ export function SubscriptionSettingsCard({ subscriptions, onChanged }) {
               {copy("subscriptions.save")}
             </Button>
           </div>
-        </form>
-      );
+      </form>
+    );
+  };
 
   return (
     <div className="flex max-h-[min(80vh,42rem)] w-[min(92vw,32rem)] flex-col gap-3 overflow-y-auto rounded-xl border border-oai-gray-200 bg-white p-4 shadow-lg dark:border-oai-gray-700 dark:bg-oai-gray-900">
@@ -412,9 +414,10 @@ export function SubscriptionSettingsCard({ subscriptions, onChanged }) {
                 </button>
                 {editingId === subscription.id ? (
                   <div className="border-t border-oai-gray-100 dark:border-oai-gray-800">
-                    {formNode}
+                    {renderForm()}
                   </div>
-                ) : expanded ? (
+                ) : null}
+                {editingId !== subscription.id && expanded ? (
                   <div className="px-3 pb-3 flex flex-col gap-2 border-t border-oai-gray-100 dark:border-oai-gray-800">
                     <p className="pt-2 text-xs text-oai-gray-600 dark:text-oai-gray-300">
                       <span className="text-oai-gray-400 dark:text-oai-gray-500">
@@ -462,7 +465,7 @@ export function SubscriptionSettingsCard({ subscriptions, onChanged }) {
           })}
           {formOpen && !editingId ? (
             <li className="rounded-lg border border-oai-gray-100 dark:border-oai-gray-800">
-              {formNode}
+              {renderForm()}
             </li>
           ) : null}
         </ul>
