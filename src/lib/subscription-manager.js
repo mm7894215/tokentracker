@@ -37,18 +37,25 @@ function normalizeText(value, { required, field, maxLength = MAX_TEXT_LENGTH } =
 // Accepts epoch milliseconds or any Date-parseable string. Stored values are
 // UTC ISO strings truncated to whole minutes so comparisons stay clean and a
 // second-level drift between input formats never changes the billed minute.
-function normalizeBillingTime(value) {
+function normalizeBillingTime(value, { field = "nextBillingAt", required = true } = {}) {
   let ms;
+  if (value === null || value === undefined) {
+    if (required) throw new Error(`${field} is required`);
+    return null;
+  }
   if (typeof value === "number") {
     ms = value;
   } else if (typeof value === "string") {
     const trimmed = value.trim();
-    if (!trimmed) throw new Error("nextBillingAt is required");
+    if (!trimmed) {
+      if (required) throw new Error(`${field} is required`);
+      return null;
+    }
     ms = new Date(trimmed).getTime();
   } else {
-    throw new Error("nextBillingAt is required");
+    throw new Error(`${field} is required`);
   }
-  if (!Number.isFinite(ms)) throw new Error("nextBillingAt must be a valid date");
+  if (!Number.isFinite(ms)) throw new Error(`${field} must be a valid date`);
   return new Date(Math.floor(ms / 60000) * 60000).toISOString();
 }
 
@@ -84,6 +91,14 @@ function normalizeSubscriptionFields(fields) {
     autoRenew: fields.autoRenew,
     cycle: normalizeCycle(fields.cycle),
     nextBillingAt: normalizeBillingTime(fields.nextBillingAt),
+    // Billing anchor: the day the subscription started. The dashboard derives
+    // every cycle boundary from this date, so month-end anchors (Jan 31) stay
+    // stable instead of drifting after the first clamped month. Optional:
+    // records created before the field existed fall back to a derived anchor.
+    startedAt:
+      fields.startedAt === undefined
+        ? null
+        : normalizeBillingTime(fields.startedAt, { field: "startedAt", required: false }),
   };
 }
 
@@ -175,6 +190,24 @@ function sortByNextBillingAt(items) {
   );
 }
 
+// One subscription per tool: the dashboard derives the subscription's name
+// and inline progress row from the linked provider, so two records sharing a
+// provider cannot be displayed. Enforced inside the store lock's
+// read-modify-write transaction — the frontend picker cannot cover concurrent
+// requests, stale pages, or direct API calls. `excludeId` lets an update
+// re-save its own provider.
+function assertProviderAvailable(items, provider, excludeId = null) {
+  if (!provider) return;
+  const conflict = items.find(
+    (item) => item.provider === provider && item.id !== excludeId,
+  );
+  if (conflict) {
+    throw new Error(
+      `Provider "${provider}" already has a subscription (${conflict.id})`,
+    );
+  }
+}
+
 // In-process FIFO queue per store file. Every mutation is a full
 // read-modify-write transaction; without serialization two concurrent writes
 // read the same snapshot and the later one silently drops the earlier change
@@ -209,6 +242,7 @@ async function createSubscription({ trackerDir, fields }) {
       updatedAt: now,
     };
     const store = await loadStoreForWrite(filePath);
+    assertProviderAvailable(store.items, normalized.provider);
     store.items.push(record);
     await writeStore(filePath, store);
     return record;
@@ -225,6 +259,7 @@ async function updateSubscription({ trackerDir, id, fields }) {
     const existing = store.items[index];
     // Merge over the existing record so callers may send only changed fields.
     const merged = normalizeSubscriptionFields({ ...existing, ...(fields || {}) });
+    assertProviderAvailable(store.items, merged.provider, id);
     const record = {
       ...existing,
       ...merged,

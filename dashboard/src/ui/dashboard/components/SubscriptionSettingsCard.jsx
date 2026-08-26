@@ -193,6 +193,9 @@ export function SubscriptionSettingsCard({ subscriptions, onChanged }) {
         provider: form.provider || null,
         autoRenew: form.autoRenew,
         cycle: form.cycle,
+        // Persist the user-entered anchor alongside the derived boundary so
+        // month-end anchors survive clamped cycles (Jan 31 → Feb 28 → Mar 31).
+        startedAt: startMs,
         nextBillingAt: cycleEndFromStart(startMs, form.cycle),
       };
       setSaving(true);

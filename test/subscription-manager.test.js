@@ -487,3 +487,203 @@ test("a queued update cannot resurrect a record deleted before it", async () => 
     await fs.rm(trackerDir, { recursive: true, force: true });
   }
 });
+
+test("createSubscription rejects a provider that already has a subscription", async () => {
+  const trackerDir = await makeTrackerDir("tt-subscription-manager-provider-dup-");
+  try {
+    await createSubscription({ trackerDir, fields: { ...VALID_FIELDS, provider: "codex" } });
+    await assert.rejects(
+      createSubscription({
+        trackerDir,
+        fields: { ...VALID_FIELDS, service: "Other", provider: "codex" },
+      }),
+      /already has a subscription/,
+    );
+
+    const listed = await listSubscriptions({ trackerDir });
+    assert.equal(listed.length, 1);
+    assert.equal(listed[0].provider, "codex");
+  } finally {
+    await fs.rm(trackerDir, { recursive: true, force: true });
+  }
+});
+
+test("records without a provider never conflict with each other", async () => {
+  const trackerDir = await makeTrackerDir("tt-subscription-manager-provider-null-");
+  try {
+    await createSubscription({ trackerDir, fields: { ...VALID_FIELDS, service: "A" } });
+    await createSubscription({ trackerDir, fields: { ...VALID_FIELDS, service: "B" } });
+    const listed = await listSubscriptions({ trackerDir });
+    assert.equal(listed.length, 2);
+  } finally {
+    await fs.rm(trackerDir, { recursive: true, force: true });
+  }
+});
+
+test("updateSubscription rejects rebinding to a provider taken by another record", async () => {
+  const trackerDir = await makeTrackerDir("tt-subscription-manager-provider-rebind-");
+  try {
+    const codex = await createSubscription({
+      trackerDir,
+      fields: { ...VALID_FIELDS, provider: "codex" },
+    });
+    const cursor = await createSubscription({
+      trackerDir,
+      fields: { ...VALID_FIELDS, service: "Cursor", provider: "cursor" },
+    });
+
+    await assert.rejects(
+      updateSubscription({ trackerDir, id: cursor.id, fields: { provider: "codex" } }),
+      /already has a subscription/,
+    );
+
+    const listed = await listSubscriptions({ trackerDir });
+    const unchanged = listed.find((s) => s.id === cursor.id);
+    assert.equal(unchanged.provider, "cursor");
+    assert.equal(unchanged.service, "Cursor");
+    assert.ok(listed.some((s) => s.id === codex.id && s.provider === "codex"));
+  } finally {
+    await fs.rm(trackerDir, { recursive: true, force: true });
+  }
+});
+
+test("updateSubscription keeps its own provider and may clear it", async () => {
+  const trackerDir = await makeTrackerDir("tt-subscription-manager-provider-self-");
+  try {
+    const record = await createSubscription({
+      trackerDir,
+      fields: { ...VALID_FIELDS, provider: "codex" },
+    });
+
+    // Re-saving its own provider is not a conflict.
+    const kept = await updateSubscription({
+      trackerDir,
+      id: record.id,
+      fields: { provider: "codex", plan: "Pro" },
+    });
+    assert.equal(kept.provider, "codex");
+    assert.equal(kept.plan, "Pro");
+
+    // Clearing the provider is allowed (the backend stays lenient).
+    const cleared = await updateSubscription({
+      trackerDir,
+      id: record.id,
+      fields: { provider: null },
+    });
+    assert.equal(cleared.provider, null);
+  } finally {
+    await fs.rm(trackerDir, { recursive: true, force: true });
+  }
+});
+
+test("concurrent creates for the same provider leave exactly one record", async () => {
+  const trackerDir = await makeTrackerDir("tt-subscription-manager-provider-race-");
+  try {
+    // The frontend picker cannot cover concurrent requests, stale pages, or
+    // direct API calls — the lock-scope check is the real guarantee.
+    const results = await Promise.allSettled(
+      Array.from({ length: 5 }, (_, i) =>
+        createSubscription({
+          trackerDir,
+          fields: { ...VALID_FIELDS, service: `Service ${i}`, provider: "codex" },
+        }),
+      ),
+    );
+    const fulfilled = results.filter((r) => r.status === "fulfilled");
+    const rejected = results.filter((r) => r.status === "rejected");
+    assert.equal(fulfilled.length, 1);
+    assert.equal(rejected.length, 4);
+    for (const r of rejected) assert.match(r.reason.message, /already has a subscription/);
+
+    const listed = await listSubscriptions({ trackerDir });
+    assert.equal(listed.length, 1);
+    assert.equal(listed[0].provider, "codex");
+  } finally {
+    await fs.rm(trackerDir, { recursive: true, force: true });
+  }
+});
+
+test("concurrent rebinds to a free provider leave exactly one winner", async () => {
+  const trackerDir = await makeTrackerDir("tt-subscription-manager-provider-race-rebind-");
+  try {
+    // Two records without a provider race for the same free tool. The lock
+    // serializes the RMW transactions, so the second one must see the first
+    // record's provider and reject instead of duplicating it.
+    const beta = await createSubscription({
+      trackerDir,
+      fields: { ...VALID_FIELDS, service: "Beta" },
+    });
+    const gamma = await createSubscription({
+      trackerDir,
+      fields: { ...VALID_FIELDS, service: "Gamma" },
+    });
+
+    const results = await Promise.allSettled([
+      updateSubscription({ trackerDir, id: beta.id, fields: { provider: "codex" } }),
+      updateSubscription({ trackerDir, id: gamma.id, fields: { provider: "codex" } }),
+    ]);
+    const fulfilled = results.filter((r) => r.status === "fulfilled");
+    assert.equal(fulfilled.length, 1);
+    for (const r of results.filter((r) => r.status === "rejected")) {
+      assert.match(r.reason.message, /already has a subscription/);
+    }
+
+    const listed = await listSubscriptions({ trackerDir });
+    const winners = listed.filter((s) => s.provider === "codex");
+    assert.equal(winners.length, 1);
+    const loser = listed.find((s) => s.provider !== "codex");
+    assert.equal(loser.provider, null);
+    assert.ok(winners[0].id === beta.id || winners[0].id === gamma.id);
+  } finally {
+    await fs.rm(trackerDir, { recursive: true, force: true });
+  }
+});
+
+test("startedAt persists as a minute-truncated anchor", async () => {
+  const trackerDir = await makeTrackerDir("tt-subscription-manager-started-at-");
+  try {
+    const created = await createSubscription({
+      trackerDir,
+      fields: { ...VALID_FIELDS, startedAt: "2026-01-31T10:07:00.000Z" },
+    });
+    assert.equal(created.startedAt, "2026-01-31T10:07:00.000Z");
+
+    // Epoch-ms input is normalized the same way as nextBillingAt.
+    const second = await createSubscription({
+      trackerDir,
+      fields: {
+        ...VALID_FIELDS,
+        service: "Cursor",
+        startedAt: Date.UTC(2026, 1, 28, 9, 31, 21),
+      },
+    });
+    assert.equal(second.startedAt, "2026-02-28T09:31:00.000Z");
+
+    const listed = await listSubscriptions({ trackerDir });
+    assert.equal(listed[0].startedAt, "2026-01-31T10:07:00.000Z");
+  } finally {
+    await fs.rm(trackerDir, { recursive: true, force: true });
+  }
+});
+
+test("records created without startedAt stay valid and keep working", async () => {
+  const trackerDir = await makeTrackerDir("tt-subscription-manager-started-at-legacy-");
+  try {
+    const created = await createSubscription({ trackerDir, fields: VALID_FIELDS });
+    assert.equal(created.startedAt, null);
+
+    // An update that omits startedAt preserves an existing anchor.
+    const withAnchor = await createSubscription({
+      trackerDir,
+      fields: { ...VALID_FIELDS, service: "Cursor", startedAt: "2026-01-31T10:00:00.000Z" },
+    });
+    const updated = await updateSubscription({
+      trackerDir,
+      id: withAnchor.id,
+      fields: { plan: "Pro" },
+    });
+    assert.equal(updated.startedAt, "2026-01-31T10:00:00.000Z");
+  } finally {
+    await fs.rm(trackerDir, { recursive: true, force: true });
+  }
+});

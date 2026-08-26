@@ -126,6 +126,7 @@ describe("SubscriptionSettingsCard", () => {
       cycle: "monthly",
       autoRenew: true,
       // The stored anchor is derived: subscription date + one cycle.
+      startedAt: new Date("2026-08-16T14:00").getTime(),
       nextBillingAt: new Date("2026-09-16T14:00").getTime(),
     });
     expect(onChanged).toHaveBeenCalledTimes(1);
@@ -147,6 +148,7 @@ describe("SubscriptionSettingsCard", () => {
 
     expect(createSubscription).toHaveBeenCalledWith(
       expect.objectContaining({
+        startedAt: new Date("2026-01-31T10:00").getTime(),
         nextBillingAt: new Date("2026-02-28T10:00").getTime(),
       }),
     );
@@ -225,6 +227,7 @@ describe("SubscriptionSettingsCard", () => {
       provider: "codex",
       cycle: "monthly",
       autoRenew: true,
+      startedAt: new Date("2026-08-16T14:00").getTime(),
       nextBillingAt: new Date("2026-09-16T14:00").getTime(),
     });
     expect(onChanged).toHaveBeenCalledTimes(1);
@@ -275,6 +278,40 @@ describe("SubscriptionSettingsCard", () => {
         .compareDocumentPosition(screen.getByLabelText("Plan")) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+  });
+
+  it("prefills the edit form with the persisted startedAt anchor", () => {
+    // Round-trip: opening the edit dialog must surface the original anchor
+    // (Jan 31), not the clamped stored boundary (Feb 28).
+    const record = makeSubscription({
+      provider: "codex",
+      startedAt: "2026-01-31T10:07:00.000Z",
+      nextBillingAt: "2026-02-28T10:07:00.000Z",
+    });
+    render(<SubscriptionSettingsCard subscriptions={[record]} onChanged={vi.fn()} />);
+
+    fireEvent.click(screen.getByText("GPT"));
+    fireEvent.click(screen.getByText("Edit"));
+
+    const value = screen.getByLabelText("Subscription date").value;
+    // datetime-local renders in local time; compare instants, not strings.
+    expect(new Date(value).getTime()).toBe(Date.parse("2026-01-31T10:07:00.000Z"));
+  });
+
+  it("derives the prefill from the stored boundary for legacy records", () => {
+    // Records created before startedAt existed: the implied cycle start
+    // (Feb 28 for a Mar 31 boundary) is the best available anchor.
+    const record = makeSubscription({
+      provider: "codex",
+      nextBillingAt: "2026-03-31T10:07:00.000Z",
+    });
+    render(<SubscriptionSettingsCard subscriptions={[record]} onChanged={vi.fn()} />);
+
+    fireEvent.click(screen.getByText("GPT"));
+    fireEvent.click(screen.getByText("Edit"));
+
+    const value = screen.getByLabelText("Subscription date").value;
+    expect(new Date(value).getTime()).toBe(Date.parse("2026-02-28T10:07:00.000Z"));
   });
 
   it("deletes a subscription after confirmation and notifies the parent", async () => {

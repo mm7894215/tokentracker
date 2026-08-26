@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { addMonthsUtc, countdownText, cycleView, remainingLabel } from "./subscription-display";
+import {
+  addMonthsUtc,
+  countdownText,
+  cycleStartOf,
+  cycleView,
+  remainingLabel,
+} from "./subscription-display";
 
 const UTC = Date.UTC;
 
@@ -70,14 +76,16 @@ describe("cycleView", () => {
   });
 
   it("rolls an auto-renew record forward and clamps short months", () => {
-    // Recorded renewal Jan 31: the next cycle ends Feb 28 (not Mar 2/3), the
-    // one after that Mar 28, so the anchor day never drifts.
+    // Recorded renewal Jan 31 (no explicit anchor): the implied anchor is the
+    // Dec 31 cycle start, so the boundaries stay Jan 31 → Feb 28 (clamped) →
+    // Mar 31 — the day-31 billing anchor survives the short month instead of
+    // drifting to the 28th permanently (review blocker #2).
     const now = UTC(2026, 2, 5, 0, 0);
     const view = cycleView(
       makeSubscription({ nextBillingAt: iso(UTC(2026, 0, 31, 12, 0)) }),
       now,
     );
-    expect(view.endMs).toBe(UTC(2026, 2, 28, 12, 0));
+    expect(view.endMs).toBe(UTC(2026, 2, 31, 12, 0));
     expect(view.startMs).toBe(UTC(2026, 1, 28, 12, 0));
     expect(view.expired).toBe(false);
   });
