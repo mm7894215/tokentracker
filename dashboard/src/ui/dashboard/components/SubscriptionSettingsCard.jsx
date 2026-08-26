@@ -91,8 +91,22 @@ export function SubscriptionSettingsCard({ subscriptions, onChanged }) {
   }, [formOpen, editingId]);
 
   const providerOptions = useMemo(
-    () => LIMIT_PROVIDER_IDS.map((id) => ({ value: id, label: limitProviderName(id) })),
-    [copyLocale],
+    () =>
+      LIMIT_PROVIDER_IDS.map((id) => {
+        // One subscription per tool: tools that already have a record are
+        // disabled in the picker so the clash never happens. The record
+        // being edited keeps its own tool selectable.
+        const taken = (subscriptions || []).some(
+          (subscription) => subscription.provider === id && subscription.id !== editingId,
+        );
+        const name = limitProviderName(id);
+        return {
+          value: id,
+          label: taken ? `${name} ${copy("subscriptions.form.provider_taken_suffix")}` : name,
+          disabled: taken,
+        };
+      }),
+    [copyLocale, subscriptions, editingId],
   );
 
   const cycleOptions = useMemo(

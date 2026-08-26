@@ -634,5 +634,7 @@
   "subscriptions.badge.stops": "到期停止",
   "subscriptions.form.provider": "關聯工具",
   "subscriptions.form.provider_required": "請選擇關聯的工具",
-  "subscriptions.form.provider_taken": "該工具已有訂閱，請編輯現有記錄"
+  "subscriptions.form.provider_taken": "該工具已有訂閱，請編輯現有記錄",
+  "subscriptions.form.provider_taken_suffix": "（已有訂閱）",
+  "subscriptions.form.provider_taken_suffix": "（已有訂閱）"
 }

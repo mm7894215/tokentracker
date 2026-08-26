@@ -165,28 +165,39 @@ describe("SubscriptionSettingsCard", () => {
     expect(createSubscription).not.toHaveBeenCalled();
   });
 
-  it("refuses a second subscription for a tool that already has one", () => {
+  it("disables taken tools in the picker, keeping the edited record's own tool selectable", () => {
     render(
       <SubscriptionSettingsCard
-        subscriptions={[makeSubscription({ provider: "codex" })]}
+        subscriptions={[
+          makeSubscription({ provider: "codex" }),
+          makeSubscription({
+            id: "sub-2",
+            service: "Claude",
+            plan: null,
+            provider: "claude",
+            autoRenew: false,
+            nextBillingAt: new Date(Date.now() - 60 * 60000).toISOString(),
+          }),
+        ]}
         onChanged={vi.fn()}
       />,
     );
 
+    // Adding: tools that already have a record are disabled and labelled.
     fireEvent.click(screen.getByText("Add subscription"));
-    fireEvent.change(screen.getByLabelText("Subscription date"), {
-      target: { value: "2026-08-16T14:00" },
-    });
     fireEvent.click(screen.getByLabelText("Linked tool"));
-    const codexOption = screen.getByRole("option", { name: "Codex" });
-    fireEvent.pointerDown(codexOption, { pointerType: "mouse" });
-    fireEvent.click(codexOption);
-    fireEvent.click(screen.getByText("Save"));
+    expect(screen.getByRole("option", { name: "Codex (already subscribed)" })).toHaveAttribute("aria-disabled", "true");
+    expect(screen.getByRole("option", { name: "Claude (already subscribed)" })).toHaveAttribute("aria-disabled", "true");
+    expect(screen.getByRole("option", { name: "Cursor" })).not.toHaveAttribute("aria-disabled", "true");
+    fireEvent.click(screen.getByText("Cancel"));
 
-    expect(screen.getByRole("alert")).toHaveTextContent(
-      "This tool already has a subscription.",
-    );
-    expect(createSubscription).not.toHaveBeenCalled();
+    // Editing: the record's own tool stays selectable while the other taken
+    // tool remains off-limits.
+    fireEvent.click(screen.getByText("GPT"));
+    fireEvent.click(screen.getByText("Edit"));
+    fireEvent.click(screen.getByLabelText("Linked tool"));
+    expect(screen.getByRole("option", { name: "Codex" })).not.toHaveAttribute("aria-disabled", "true");
+    expect(screen.getByRole("option", { name: "Claude (already subscribed)" })).toHaveAttribute("aria-disabled", "true");
   });
 
   it("keeps allowing a record to keep its own tool when edited", async () => {

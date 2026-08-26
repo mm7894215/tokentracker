@@ -1504,4 +1504,5 @@ subscriptions.badge.stops,ui,LimitsPage,UsageLimitsPanel,badge_stops,"Stops at e
 subscriptions.form.provider,ui,LimitsPage,SubscriptionSettingsCard,form_provider,"Linked tool",,active
 subscriptions.form.provider_required,ui,LimitsPage,SubscriptionSettingsCard,form_provider_required,"Select a linked tool.",,active
 subscriptions.form.provider_taken,ui,LimitsPage,SubscriptionSettingsCard,form_provider_taken,"This tool already has a subscription. Edit the existing record instead.",,active
+subscriptions.form.provider_taken_suffix,ui,LimitsPage,SubscriptionSettingsCard,form_provider_taken_suffix,"(already subscribed)",,active
 limits.page.openSubscriptions,ui,LimitsPage,LimitsPage,open_subscriptions,"Subscriptions",,active
