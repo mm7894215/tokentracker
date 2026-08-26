@@ -609,15 +609,11 @@
   "subscriptions.save": "儲存",
   "subscriptions.confirm_delete_title": "確定刪除這筆訂閱？",
   "subscriptions.delete_error": "刪除失敗，請重試。",
-  "subscriptions.form.service": "服務",
-  "subscriptions.form.service_placeholder": "如 GPT、Claude",
   "subscriptions.form.plan": "套餐",
   "subscriptions.form.plan_placeholder": "如 Plus、Pro",
   "subscriptions.form.auto_renew": "自動續費",
   "subscriptions.form.auto_renew_on": "開啟",
   "subscriptions.form.auto_renew_off": "關閉",
-  "subscriptions.form.auto_renew_hint": "關閉後，該時間將被視為最終到期時間。",
-  "subscriptions.form.next_billing": "下次續費 / 到期時間",
   "subscriptions.form.started_at": "訂閱時間",
   "subscriptions.form.cycle": "計費週期",
   "subscriptions.form.cycle_weekly": "每週",
@@ -637,7 +633,6 @@
   "subscriptions.badge.auto_renew": "自動續費",
   "subscriptions.badge.stops": "到期停止",
   "subscriptions.form.provider": "關聯工具",
-  "subscriptions.form.provider_none": "不關聯",
   "subscriptions.form.provider_required": "請選擇關聯的工具",
   "subscriptions.form.provider_taken": "該工具已有訂閱，請編輯現有記錄"
 }
