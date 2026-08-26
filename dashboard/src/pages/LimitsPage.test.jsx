@@ -162,8 +162,11 @@ describe("LimitsPage", () => {
   async function saveThroughPopover() {
     fireEvent.click(screen.getByRole("button", { name: "Subscriptions" }));
     fireEvent.click(await screen.findByText("Add subscription"));
-    fireEvent.change(screen.getByLabelText("Service"), { target: { value: "GPT" } });
-    fireEvent.change(screen.getByLabelText("Next renewal / expiry"), {
+    fireEvent.click(screen.getByLabelText("Linked tool"));
+    const codexOption = screen.getByRole("option", { name: "Codex" });
+    fireEvent.pointerDown(codexOption, { pointerType: "mouse" });
+    fireEvent.click(codexOption);
+    fireEvent.change(screen.getByLabelText("Subscription date"), {
       target: { value: "2027-08-16T14:00" },
     });
     fireEvent.click(screen.getByText("Save"));
