@@ -15,12 +15,21 @@ async function writeFileAtomic(filePath, content, { mode } = {}) {
   // mode only applies to newly created files; passing it keeps the tmp file
   // private from creation instead of relying on a later chmod that a crash
   // between write and chmod would skip.
-  await fs.writeFile(
-    tmp,
-    content,
-    mode == null ? { encoding: "utf8" } : { encoding: "utf8", mode },
-  );
-  await fs.rename(tmp, filePath);
+  try {
+    await fs.writeFile(
+      tmp,
+      content,
+      mode == null ? { encoding: "utf8" } : { encoding: "utf8", mode },
+    );
+    await fs.rename(tmp, filePath);
+  } catch (err) {
+    try {
+      await fs.unlink(tmp);
+    } catch {
+      /* tmp may not exist if writeFile failed before creating it */
+    }
+    throw err;
+  }
 }
 
 async function readJson(filePath) {
