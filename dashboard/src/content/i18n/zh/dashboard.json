@@ -586,6 +586,5 @@
   "subscriptions.form.provider": "关联工具",
   "subscriptions.form.provider_required": "请选择关联的工具",
   "subscriptions.form.provider_taken": "该工具已有订阅，请编辑现有记录",
-  "subscriptions.form.provider_taken_suffix": "（已有订阅）",
   "subscriptions.form.provider_taken_suffix": "（已有订阅）"
 }
