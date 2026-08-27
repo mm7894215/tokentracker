@@ -8,6 +8,7 @@ const test = require("node:test");
 
 const { parseCodexRolloutFile } = require("../src/lib/codex-rollout-parser");
 const {
+  scanCodexSession,
   listSessionsForBrowser,
   providerRoots,
   summarizeSessions,
@@ -71,6 +72,43 @@ test("Codex session roots honor CODEX_HOME only for the process home", () => {
   );
 });
 
+test("custom CODEX_HOME rollouts load titles from the provider-root index", async () => {
+  const providerRoot = await fs.mkdtemp(path.join(os.tmpdir(), "tt-codex-custom-root-"));
+  const sessionId = "11111111-2222-4333-8444-555555555555";
+  const rolloutDir = path.join(providerRoot, "sessions", "2026", "08", "27");
+  const rolloutPath = path.join(rolloutDir, `rollout-${sessionId}.jsonl`);
+  await fs.mkdir(rolloutDir, { recursive: true });
+  await fs.writeFile(path.join(providerRoot, "session_index.jsonl"), `${JSON.stringify({
+    id: sessionId,
+    thread_name: "Custom home title",
+    updated_at: "2026-08-27T00:00:00.000Z",
+  })}\n`, "utf8");
+  await fs.writeFile(rolloutPath, `${[
+    {
+      timestamp: "2026-08-27T00:00:00.000Z",
+      type: "session_meta",
+      payload: { id: sessionId, cwd: providerRoot },
+    },
+    {
+      timestamp: "2026-08-27T00:00:01.000Z",
+      type: "turn_context",
+      payload: { model: "gpt-5.6-sol" },
+    },
+    {
+      timestamp: "2026-08-27T00:00:02.000Z",
+      type: "event_msg",
+      payload: {
+        type: "token_count",
+        info: { last_token_usage: { input_tokens: 5, output_tokens: 2, total_tokens: 7 } },
+      },
+    },
+  ].map(JSON.stringify).join("\n")}\n`, "utf8");
+
+  const row = await scanCodexSession(rolloutPath);
+  assert.equal(row.session_id, sessionId);
+  assert.equal(row.title, "Custom home title");
+});
+
 test("Codex parser keeps the child lineage from the first session_meta row", async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "tt-codex-lineage-"));
   const filePath = path.join(dir, "rollout-child.jsonl");
@@ -132,7 +170,13 @@ test("session browser exposes exact recursive Codex subagent totals", () => {
 
 test("Codex subagent summaries use observed child rows and keep lineage local", () => {
   const rows = [
-    { ...codexRow({ id: "root", tokens: 100 }), subagent_calls: 9, subagent_types: { spawn_agent: 9 } },
+    {
+      ...codexRow({ id: "root", tokens: 100 }),
+      subagent_calls: 9,
+      subagent_types: { spawn_agent: 9 },
+      parent_link_conflict: false,
+      orphaned_subagent: true,
+    },
     codexRow({ id: "child", parent: "root", role: "luna", nickname: "Bacon", tokens: 25, cost: 0.2 }),
   ];
 
@@ -153,6 +197,8 @@ test("Codex subagent summaries use observed child rows and keep lineage local", 
       "root_session_hash",
       "agent_nickname",
       "agent_role",
+      "parent_link_conflict",
+      "orphaned_subagent",
       "project_ref",
     ]) {
       assert.equal(field in row, false, `${field} must remain local-only`);

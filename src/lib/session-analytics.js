@@ -1050,10 +1050,15 @@ function sessionFileStatKey(filePath) {
 const codexTitleIndexCache = new Map();
 
 function codexTitleIndexPathFor(filePath) {
-  const parts = path.resolve(filePath).split(path.sep);
-  const idx = parts.lastIndexOf(".codex");
-  if (idx === -1) return null;
-  return [...parts.slice(0, idx + 1), "session_index.jsonl"].join(path.sep);
+  let current = path.dirname(path.resolve(filePath));
+  while (true) {
+    if (["sessions", "archived_sessions"].includes(path.basename(current))) {
+      return path.join(path.dirname(current), "session_index.jsonl");
+    }
+    const parent = path.dirname(current);
+    if (parent === current) return null;
+    current = parent;
+  }
 }
 
 function loadCodexTitleIndex(filePath) {
@@ -1354,6 +1359,8 @@ function summarizeSessions(sessions, { from = "", to = "", includeSessions = tru
         agent_nickname: _agentNickname,
         agent_role: _agentRole,
         thread_source: _threadSource,
+        parent_link_conflict: _parentLinkConflict,
+        orphaned_subagent: _orphanedSubagent,
         title: _title,
         _cache_key: _cacheKey,
         ...row

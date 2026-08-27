@@ -213,7 +213,7 @@ const SessionRow = React.memo(function SessionRow({
                 {copy("sessions.badge.first_pass")}
               </span>
             ) : null}
-            {Boolean(childCount) ? (
+            {childCount ? (
               <button
                 type="button"
                 onClick={onToggle}
@@ -255,7 +255,7 @@ const SessionRow = React.memo(function SessionRow({
           <div className="flex w-16 flex-col-reverse">
             <dt className="text-[11px] text-oai-gray-400 dark:text-oai-gray-500">{copy("sessions.col.tokens")}</dt>
             <dd
-              title={Boolean(Number(session.subagent_total_tokens))
+              title={Number(session.subagent_total_tokens)
                 ? copy("sessions.thread.tokens_summary", {
                     own: formatCompactNumber(session.own_total_tokens),
                     subagents: formatCompactNumber(session.subagent_total_tokens),
@@ -265,7 +265,7 @@ const SessionRow = React.memo(function SessionRow({
               className="tabular-nums text-sm font-medium text-oai-black dark:text-white"
             >
               {formatCompactNumber(session.total_tokens)}
-              {Boolean(Number(session.subagent_total_tokens)) ? (
+              {Number(session.subagent_total_tokens) ? (
                 <span className="block text-[9px] font-normal text-oai-gray-400 dark:text-oai-gray-500">
                   Σ {formatCompactNumber(session.combined_total_tokens)}
                 </span>
@@ -695,7 +695,7 @@ export function SessionsPage() {
                         expanded={expanded}
                         onToggle={() => toggleThread(session.session_hash)}
                       />
-                      {expanded && Boolean(children.length) ? (
+                      {expanded && children.length ? (
                         <ThreadModelUsage
                           sessions={children}
                           selectedModel={selectedModel}
