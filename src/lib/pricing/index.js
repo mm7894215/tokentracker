@@ -173,7 +173,11 @@ function computeRowCost(row) {
   // reinterpret the Claude model name as an Anthropic API bill.
   if (PI_SUBSCRIPTION_SOURCES.has(String(row?.source || "").toLowerCase())) return 0;
   const pricing = getRowPricing(row);
-  const reasoningIncludedInOutput = row.source === "codex" || row.source === "every-code";
+  // OmO, like Codex, reports reasoning as a subset of `output` (its own
+  // usage.cost bills no separate reasoning component), so charging it again
+  // here would double-bill every reasoning token.
+  const reasoningIncludedInOutput =
+    row.source === "codex" || row.source === "every-code" || row.source === "omo";
   const reasoningCost = reasoningIncludedInOutput
     ? 0
     : (row.reasoning_output_tokens || 0) * (pricing.output || 0);

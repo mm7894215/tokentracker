@@ -121,6 +121,7 @@ const SUPPORTED_PROVIDERS = [
   "WorkBuddy",
   "Grok Build",
   "oh-my-pi",
+  "OmO",
   "pi",
   "Dots",
   "Prime Agent",
