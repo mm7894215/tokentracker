@@ -46,6 +46,10 @@ function parseCsv(raw) {
     }
   }
 
+  if (inQuotes) {
+    throw new Error("Copy registry contains an unterminated quoted field");
+  }
+
   row.push(field);
   if (!row.every((cell) => cell.trim() === "")) rows.push(row);
   return rows;
