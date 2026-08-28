@@ -68,11 +68,14 @@ describe("SubscriptionSettingsCard", () => {
   });
 
   it("lists subscriptions and expands details on click", () => {
-    // The exact countdown text ("in 2d 3h 4m") only holds while the render
-    // happens inside the same minute window the record was created in —
-    // freeze the clock so the assertion cannot cross a minute boundary.
-    const now = Date.now();
-    const dateNow = vi.spyOn(Date, "now").mockReturnValue(now);
+    // The exact countdown text ("in 2d 3h 4m") depends on the wall-clock
+    // minute the record's nextBillingAt falls in. Freezing the whole clock
+    // via fake timers keeps the record creation, the component's initial
+    // `now` state, and the countdown math on the same instant, so a real-
+    // time minute rollover between those steps cannot flip the assertion to
+    // "in 2d 3h 3m" in the full suite.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(Date.UTC(2026, 7, 16, 12, 0, 0)));
     try {
       render(
         <SubscriptionSettingsCard
@@ -83,7 +86,7 @@ describe("SubscriptionSettingsCard", () => {
               service: "Claude",
               plan: null,
               autoRenew: false,
-              nextBillingAt: new Date(now - 60 * 60000).toISOString(),
+              nextBillingAt: new Date(Date.now() - 60 * 60000).toISOString(),
             }),
           ]}
           onChanged={vi.fn()}
@@ -100,7 +103,7 @@ describe("SubscriptionSettingsCard", () => {
       expect(screen.getByText("Next renewal")).toBeInTheDocument();
       expect(screen.getByText("in 2d 3h 4m")).toBeInTheDocument();
     } finally {
-      dateNow.mockRestore();
+      vi.useRealTimers();
     }
   });
 
