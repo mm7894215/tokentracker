@@ -68,31 +68,40 @@ describe("SubscriptionSettingsCard", () => {
   });
 
   it("lists subscriptions and expands details on click", () => {
-    render(
-      <SubscriptionSettingsCard
-        subscriptions={[
-          makeSubscription(),
-          makeSubscription({
-            id: "sub-2",
-            service: "Claude",
-            plan: null,
-            autoRenew: false,
-            nextBillingAt: new Date(Date.now() - 60 * 60000).toISOString(),
-          }),
-        ]}
-        onChanged={vi.fn()}
-      />,
-    );
+    // The exact countdown text ("in 2d 3h 4m") only holds while the render
+    // happens inside the same minute window the record was created in —
+    // freeze the clock so the assertion cannot cross a minute boundary.
+    const now = Date.now();
+    const dateNow = vi.spyOn(Date, "now").mockReturnValue(now);
+    try {
+      render(
+        <SubscriptionSettingsCard
+          subscriptions={[
+            makeSubscription(),
+            makeSubscription({
+              id: "sub-2",
+              service: "Claude",
+              plan: null,
+              autoRenew: false,
+              nextBillingAt: new Date(now - 60 * 60000).toISOString(),
+            }),
+          ]}
+          onChanged={vi.fn()}
+        />,
+      );
 
-    expect(screen.getByText("GPT")).toBeInTheDocument();
-    expect(screen.getByText("Plus")).toBeInTheDocument();
-    expect(screen.getByText("Claude")).toBeInTheDocument();
-    expect(screen.getByText("Expired")).toBeInTheDocument();
+      expect(screen.getByText("GPT")).toBeInTheDocument();
+      expect(screen.getByText("Plus")).toBeInTheDocument();
+      expect(screen.getByText("Claude")).toBeInTheDocument();
+      expect(screen.getByText("Expired")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByText("GPT"));
-    expect(screen.getByText("Auto-renew on")).toBeInTheDocument();
-    expect(screen.getByText("Next renewal")).toBeInTheDocument();
-    expect(screen.getByText("in 2d 3h 4m")).toBeInTheDocument();
+      fireEvent.click(screen.getByText("GPT"));
+      expect(screen.getByText("Auto-renew on")).toBeInTheDocument();
+      expect(screen.getByText("Next renewal")).toBeInTheDocument();
+      expect(screen.getByText("in 2d 3h 4m")).toBeInTheDocument();
+    } finally {
+      dateNow.mockRestore();
+    }
   });
 
   it("creates a subscription named after the linked tool and notifies the parent", async () => {

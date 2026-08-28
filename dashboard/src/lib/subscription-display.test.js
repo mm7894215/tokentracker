@@ -175,6 +175,17 @@ describe("remainingLabel / countdownText", () => {
     expect(countdownText(now - 1, now)).toBe("Expired");
   });
 
+  it("floors the minutes at exact boundaries", () => {
+    const now = UTC(2026, 7, 16, 0, 0);
+    const day = 86400000;
+    const hour = 3600000;
+    const minute = 60000;
+    // Exactly 2d 3h 4m: the boundary itself still reads as 4 minutes.
+    expect(countdownText(now + 2 * day + 3 * hour + 4 * minute, now)).toBe("in 2d 3h 4m");
+    // 1ms past the boundary floors to the previous minute.
+    expect(countdownText(now + 2 * day + 3 * hour + 4 * minute - 1, now)).toBe("in 2d 3h 3m");
+  });
+
   it("does not mutate the record it renders", () => {
     const record = makeSubscription({ autoRenew: true, nextBillingAt: iso(UTC(2026, 0, 31, 12, 0)) });
     const snapshot = { ...record };
