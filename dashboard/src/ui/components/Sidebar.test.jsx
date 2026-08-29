@@ -167,14 +167,21 @@ describe("AppLayout sidebar controls", () => {
   it("closes an open drawer when the viewport crosses the desktop breakpoint", async () => {
     const user = userEvent.setup();
     renderLayout();
-    await act(async () => user.click(screen.getByRole("button", { name: "Open navigation menu" })));
+    const openButton = screen.getByRole("button", { name: "Open navigation menu" });
+    const mainContent = document.getElementById("app-main-content");
+    await act(async () => user.click(openButton));
     expect(screen.getByRole("dialog", { name: "Main navigation" })).toBeInTheDocument();
+    expect(document.body.style.overflow).toBe("hidden");
 
     await act(async () => {
       desktopMatches = true;
       mediaListeners.forEach((listener) => listener({ matches: true }));
+      await new Promise((resolve) => window.requestAnimationFrame(resolve));
     });
 
     expect(screen.queryByRole("dialog", { name: "Main navigation" })).not.toBeInTheDocument();
+    expect(document.body.style.overflow).toBe("");
+    expect(document.activeElement).toBe(mainContent);
+    expect(document.activeElement).not.toBe(openButton);
   });
 });

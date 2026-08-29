@@ -436,9 +436,9 @@ function Sidebar({ collapsed, onToggleCollapsed }) {
 
   return (
     <aside
+      data-native-sidebar
       id="app-sidebar"
       data-sidebar-state={collapsed ? "collapsed" : "expanded"}
-      data-native-sidebar
       aria-label={copy("nav.aside_label")}
       className={cn(
         "hidden lg:flex flex-col shrink-0 h-full min-h-0 transition-[width] duration-200",
@@ -453,7 +453,7 @@ function Sidebar({ collapsed, onToggleCollapsed }) {
 /**
  * Mobile drawer — slides in from the left, full-height overlay.
  */
-function MobileDrawer({ open, onClose }) {
+function MobileDrawer({ open, onClose, onDesktopBreakpointClose }) {
   const drawerRef = useRef(null);
   const closeButtonRef = useRef(null);
 
@@ -497,10 +497,10 @@ function MobileDrawer({ open, onClose }) {
     if (!open || typeof window === "undefined" || typeof window.matchMedia !== "function") return;
     const desktopQuery = window.matchMedia("(min-width: 1024px)");
     const onBreakpointChange = (event) => {
-      if (event.matches) onClose();
+      if (event.matches) onDesktopBreakpointClose();
     };
     if (desktopQuery.matches) {
-      onClose();
+      onDesktopBreakpointClose();
       return;
     }
     if (desktopQuery.addEventListener) {
@@ -509,7 +509,7 @@ function MobileDrawer({ open, onClose }) {
     }
     desktopQuery.addListener?.(onBreakpointChange);
     return () => desktopQuery.removeListener?.(onBreakpointChange);
-  }, [open, onClose]);
+  }, [open, onDesktopBreakpointClose]);
 
   // Lock body scroll when open
   useEffect(() => {
@@ -590,12 +590,22 @@ export function AppLayout({ children }) {
   const { collapsed, toggle } = useSidebarCollapsed();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const menuButtonRef = useRef(null);
+  const mainContentRef = useRef(null);
   const openDrawer = useCallback(() => setDrawerOpen(true), []);
   const closeDrawer = useCallback(() => {
     setDrawerOpen(false);
     // Restore focus to the control that opened the drawer for keyboard and
     // assistive-technology users.
     menuButtonRef.current?.focus();
+  }, []);
+  const closeDrawerForDesktop = useCallback(() => {
+    setDrawerOpen(false);
+    const focusMainContent = () => mainContentRef.current?.focus();
+    if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
+      window.requestAnimationFrame(focusMainContent);
+    } else {
+      focusMainContent();
+    }
   }, []);
 
   /** macOS WKWebView：底层由 NSVisualEffectView 提供模糊，Web 根布局透明，侧栏浮在背景上；浏览器仍用灰色底。 */
@@ -621,7 +631,11 @@ export function AppLayout({ children }) {
       )}
       <div className="flex-1 min-h-0 flex">
         <Sidebar collapsed={collapsed} onToggleCollapsed={toggle} />
-        <MobileDrawer open={drawerOpen} onClose={closeDrawer} />
+        <MobileDrawer
+          open={drawerOpen}
+          onClose={closeDrawer}
+          onDesktopBreakpointClose={closeDrawerForDesktop}
+        />
         {/* lg：与侧栏内容区对齐 — 侧栏底部按钮区为 px-2 py-3；主卡右侧/底侧用 pr-3 pb-3 与 py-3 视觉一致，避免仅靠 p-2 显得贴边 */}
         {/* Mac App：`lg:pr-3 lg:pb-3` (12pt) 须与 Swift `DashboardChromeMetrics.mainGutterPoints` 一致，主卡圆角由 `--tt-main-card-radius` 注入 */}
         <div className="flex-1 min-w-0 min-h-0 p-2 lg:pl-0 lg:pr-3 lg:pb-3 flex flex-col">
@@ -633,7 +647,12 @@ export function AppLayout({ children }) {
             )}
           >
             <MobileTopBar open={drawerOpen} onOpenDrawer={openDrawer} menuButtonRef={menuButtonRef} />
-            <div className="flex-1 min-h-0 overflow-y-auto">
+            <div
+              ref={mainContentRef}
+              id="app-main-content"
+              tabIndex={-1}
+              className="flex-1 min-h-0 overflow-y-auto"
+            >
               {children}
             </div>
           </div>
