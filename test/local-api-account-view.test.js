@@ -190,6 +190,39 @@ test("usage-summary?account=1 falls back to local data when not signed in", asyn
   assert.equal(body.totals.total_tokens, 120);
 });
 
+test("account-view failures are briefly backed off so refresh fan-out stays responsive", async () => {
+  const queuePath = path.join(tmpHome, "queue.jsonl");
+  writeQueue(queuePath, [SAMPLE_ROW]);
+  const trackerDir = path.join(tmpHome, ".tokentracker", "tracker");
+  fs.mkdirSync(trackerDir, { recursive: true });
+  fs.writeFileSync(path.join(trackerDir, "cloud-sync-pref.json"), JSON.stringify({ enabled: true }));
+  fs.writeFileSync(
+    path.join(trackerDir, "relay-cookies.json"),
+    JSON.stringify({
+      insforge_refresh_token: "insforge_refresh_token=refresh-failing; Path=/; HttpOnly; SameSite=Lax",
+    }),
+  );
+
+  const realFetch = global.fetch;
+  let refreshCalls = 0;
+  global.fetch = async () => {
+    refreshCalls += 1;
+    throw new Error("offline");
+  };
+  try {
+    const handler = freshHandler(queuePath);
+    const endpoint = "/functions/tokentracker-usage-summary?from=2026-04-20&to=2026-04-20&account=1";
+    const first = await call(handler, { endpoint });
+    const second = await call(handler, { endpoint });
+    assert.equal(first._headers["x-tokentracker-account-view"], "0");
+    assert.equal(second._headers["x-tokentracker-account-view"], "0");
+    assert.equal(refreshCalls, 1, "the second refresh should use the failure backoff");
+    assert.equal(second.json().totals.total_tokens, 120);
+  } finally {
+    global.fetch = realFetch;
+  }
+});
+
 test("usage-summary?account=1 serves the cross-device aggregate when signed in + cloud sync on", async () => {
   const queuePath = path.join(tmpHome, "queue.jsonl");
   writeQueue(queuePath, [SAMPLE_ROW]);

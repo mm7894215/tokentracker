@@ -421,6 +421,12 @@ internal sealed class ServerManager : IDisposable
         foreach (var a in args) psi.ArgumentList.Add(a);
         psi.Environment["NODE_ENV"] = "production";
         psi.Environment["TOKENTRACKER_APP_SHELL"] = "windows";
+        // The tray host owns the five-minute background sync timer and receives
+        // completion events for the UI. Disable the embedded server's own
+        // one-minute fallback to avoid sync.lock contention and stale totals.
+        if (!forceNativeOnlyWslMode && args.Length > 0 &&
+            string.Equals(args[0], "serve", StringComparison.OrdinalIgnoreCase))
+            psi.Environment["TOKENTRACKER_NATIVE_SYNC_OWNER"] = "windows-host";
         if (forceNativeOnlyWslMode)
             psi.Environment["TOKENTRACKER_WSL_MODE"] = "native-only";
 

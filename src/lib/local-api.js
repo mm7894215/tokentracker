@@ -14,6 +14,11 @@ const { accountSlugFor, fetchAccountUsage, mintAccessToken } = require("./cloud-
 const { getOrCreateMachineId, computeStableMachineId } = require("./machine-id");
 
 const SYNC_TIMEOUT_MS = 120_000;
+// A failed account-view request should not stall every dashboard refresh
+// while an expired session or unreachable backend keeps timing out. The first
+// request still falls back normally; subsequent fan-out requests reuse that
+// decision for a short cooldown and return local data immediately.
+const ACCOUNT_VIEW_FAILURE_BACKOFF_MS = 2 * 60_000;
 const TRACKER_BIN = path.resolve(__dirname, "../../bin/tracker.js");
 const MAX_DEVICE_NAME_LENGTH = 128;
 
@@ -1135,6 +1140,7 @@ function createLocalApiHandler({ queuePath }) {
   const cookiePath = path.join(trackerDataDir, "relay-cookies.json");
   const localSyncDeviceTokenCache = new Map();
   const localSyncDeviceTokenInflight = new Map();
+  let accountViewFailure = { key: null, until: 0 };
 
   // Load persisted cookies on startup
   try {
@@ -1408,6 +1414,10 @@ function createLocalApiHandler({ queuePath }) {
     const refreshToken = getRefreshTokenForCloud();
     if (!refreshToken) return "fallthrough";
     const runtime = resolveRuntimeConfig();
+    const failureKey = `${runtime.baseUrl}\0${refreshToken}`;
+    if (accountViewFailure.key === failureKey && accountViewFailure.until > Date.now()) {
+      return "fallthrough";
+    }
     const envTimeout = process.env.TOKENTRACKER_HTTP_TIMEOUT_MS
       ? parseInt(process.env.TOKENTRACKER_HTTP_TIMEOUT_MS, 10)
       : 0;
@@ -1421,9 +1431,16 @@ function createLocalApiHandler({ queuePath }) {
         refreshToken,
         timeoutMs,
       });
-      if (!out || out.data == null) return "fallthrough";
+      if (!out || out.data == null) {
+        accountViewFailure = {
+          key: failureKey,
+          until: Date.now() + ACCOUNT_VIEW_FAILURE_BACKOFF_MS,
+        };
+        return "fallthrough";
+      }
       if (out.rotatedRefreshToken) setRelayRefreshToken(out.rotatedRefreshToken);
       if (out.rotatedCsrfToken) setRelayCsrfToken(out.rotatedCsrfToken);
+      accountViewFailure = { key: null, until: 0 };
       res.writeHead(200, {
         "Content-Type": "application/json",
         "Cache-Control": "no-store",
@@ -1437,6 +1454,10 @@ function createLocalApiHandler({ queuePath }) {
       if (resolveRuntimeConfig().debug) {
         console.warn(`[LocalAPI] account view fallback for ${usageSlug}:`, e?.message || e);
       }
+      accountViewFailure = {
+        key: failureKey,
+        until: Date.now() + ACCOUNT_VIEW_FAILURE_BACKOFF_MS,
+      };
       return "fallthrough";
     }
   }

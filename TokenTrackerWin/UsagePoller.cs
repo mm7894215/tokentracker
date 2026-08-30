@@ -45,6 +45,8 @@ internal sealed class UsagePoller : IDisposable
     private const string AccountQuery = "account=1";
     private readonly Func<string> _baseUrl;
     private CancellationTokenSource? _cts;
+    private int _refreshInFlight;
+    private int _refreshRequested;
 
     /// <summary>
     /// When true, each poll also gathers the heatmap + model-breakdown stats the pet's
@@ -85,13 +87,7 @@ internal sealed class UsagePoller : IDisposable
         {
             while (!token.IsCancellationRequested)
             {
-                var stats = await FetchAsync();
-                if (stats is { } s && !token.IsCancellationRequested) StatsUpdated?.Invoke(s);
-                if (IncludeLimits)
-                {
-                    var limits = await FetchLimitsAsync();
-                    if (limits is not null && !token.IsCancellationRequested) LimitsUpdated?.Invoke(limits);
-                }
+                await RefreshAsync(token);
                 try { await Task.Delay(TimeSpan.FromSeconds(60), token); }
                 catch (TaskCanceledException) { break; }
             }
@@ -101,16 +97,44 @@ internal sealed class UsagePoller : IDisposable
     public void RefreshNow()
     {
         var token = _cts?.Token ?? CancellationToken.None;
-        _ = Task.Run(async () =>
+        _ = Task.Run(() => RefreshAsync(token), token);
+    }
+
+    /// <summary>
+    /// Coalesce timer, sync-completion, and manual refresh requests. Without a
+    /// single-flight gate, a slow account-view request can leave several reads
+    /// in flight and allow an older response to overwrite newer totals.
+    /// </summary>
+    private async Task RefreshAsync(CancellationToken token)
+    {
+        Interlocked.Exchange(ref _refreshRequested, 1);
+        if (Interlocked.CompareExchange(ref _refreshInFlight, 1, 0) != 0) return;
+
+        try
         {
-            var stats = await FetchAsync();
-            if (stats is { } s && !token.IsCancellationRequested) StatsUpdated?.Invoke(s);
-            if (IncludeLimits)
+            while (!token.IsCancellationRequested &&
+                   Interlocked.Exchange(ref _refreshRequested, 0) == 1)
             {
-                var limits = await FetchLimitsAsync();
-                if (limits is not null && !token.IsCancellationRequested) LimitsUpdated?.Invoke(limits);
+                var stats = await FetchAsync();
+                if (stats is { } s && !token.IsCancellationRequested) StatsUpdated?.Invoke(s);
+                if (IncludeLimits)
+                {
+                    var limits = await FetchLimitsAsync();
+                    if (limits is not null && !token.IsCancellationRequested) LimitsUpdated?.Invoke(limits);
+                }
             }
-        }, token);
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _refreshInFlight, 0);
+            // Drain a request that arrived between the loop's final check and
+            // releasing the gate without building an unbounded task chain.
+            // Use the current poller's token: Start() can replace a cancelled
+            // poll loop while its final request is still unwinding.
+            var currentToken = _cts?.Token ?? token;
+            if (Volatile.Read(ref _refreshRequested) == 1 && !currentToken.IsCancellationRequested)
+                _ = Task.Run(() => RefreshAsync(currentToken), currentToken);
+        }
     }
 
     private async Task<string?> FetchLimitsAsync()
