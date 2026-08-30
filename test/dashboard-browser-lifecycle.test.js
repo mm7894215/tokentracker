@@ -23,7 +23,7 @@ test("macOS releases the dashboard WKWebView after a normal close", () => {
   assert.match(source, /self\.window = nil/);
 
   const closeHandler = source.match(
-    /func windowWillClose\([\s\S]*?\n    }\n\n    \/\/ MARK: - WKScriptMessageHandler/,
+    /func windowWillClose\([\s\S]*?\r?\n    }\r?\n\r?\n    \/\/ MARK: - WKScriptMessageHandler/,
   )?.[0];
   assert.ok(closeHandler, "Dashboard close handler should exist");
   assert.match(closeHandler, /if oauthInFlight/);
@@ -45,14 +45,12 @@ test("macOS keeps PKCE state only while native OAuth is in flight", () => {
   assert.match(callbackSource, /postNativeMessage\(\{ type: "authCompleted" \}\)/);
 });
 
-test("Windows closes and disposes an idle dashboard WebView2 instead of hiding it", () => {
+test("Windows hides and reuses the dashboard WebView2 on normal close", () => {
   const windowSource = read("TokenTrackerWin/DashboardWindow.cs");
-  const traySource = read("TokenTrackerWin/TrayApplicationContext.cs");
 
-  assert.match(windowSource, /public event Action<DashboardWindow>\? ReleasedForIdle/);
   assert.match(windowSource, /private void CloseOrHideForOAuth\(\)/);
+  assert.match(windowSource, /private WebView2CompositionControl _webView = CreateWebViewControl\(\)/);
   assert.match(windowSource, /_webView\.Dispose\(\)/);
-  assert.match(windowSource, /ReleasedForIdle\?\.Invoke\(this\)/);
   assert.match(windowSource, /private bool _oauthInFlight/);
   assert.match(windowSource, /BeginNativeOAuth\(\)/);
   assert.match(windowSource, /CompleteNativeOAuth\(\)/);
@@ -60,18 +58,14 @@ test("Windows closes and disposes an idle dashboard WebView2 instead of hiding i
   assert.match(windowSource, /t\.GetString\(\) == "authCompleted"/);
 
   const closingHandler = windowSource.match(
-    /protected override void OnClosing\([\s\S]*?\n    }\n\n    protected override void OnClosed/,
+    /protected override void OnClosing\([\s\S]*?\r?\n    }\r?\n\r?\n    protected override void OnClosed/,
   )?.[0];
   assert.ok(closingHandler, "Dashboard closing handler should exist");
-  assert.match(closingHandler, /if \(!_exiting && _oauthInFlight\)/);
+  assert.match(closingHandler, /if \(!_exiting\)/);
   assert.match(closingHandler, /e\.Cancel = true;\s*Hide\(\);/);
   assert.doesNotMatch(
     closingHandler,
-    /if \(!_exiting\)\s*\{\s*e\.Cancel = true;\s*Hide\(\);/,
-    "normal closes must not retain WebView2",
+    /if \(!_exiting && _oauthInFlight\)/,
+    "normal closes should use the same hide path as OAuth",
   );
-
-  assert.match(traySource, /dashboard\.ReleasedForIdle \+= OnDashboardReleasedForIdle/);
-  assert.match(traySource, /ReferenceEquals\(_dashboard, dashboard\)/);
-  assert.match(traySource, /_dashboard = null/);
 });

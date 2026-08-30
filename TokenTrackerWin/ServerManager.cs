@@ -40,8 +40,12 @@ internal sealed class ServerManager : IDisposable
     private Process? _serverProcess;
     private Process? _syncProcess;
     private readonly object _syncLock = new();
+    private readonly SemaphoreSlim _serverGate = new(1, 1);
+    private readonly object _restartLock = new();
     private readonly JobObject _job = new();
     private CancellationTokenSource? _healthCts;
+    private Task? _restartTask;
+    private bool _stopping;
     // The local server is always on 127.0.0.1, so this client must NEVER honour a system /
     // env (HTTP_PROXY) proxy: a VPN/proxy user with no loopback bypass would otherwise have
     // the health check routed through the proxy, which can't reach the local server — the
@@ -58,33 +62,72 @@ internal sealed class ServerManager : IDisposable
     /// <summary>Raised on the thread-pool after a sync process exits. UI must marshal if needed.</summary>
     public event Action? SyncCompleted;
 
-    public async Task EnsureServerRunningAsync()
-    {
-        Log("EnsureServerRunningAsync start");
-        SetStatus(ServerStatus.Starting);
+    public Task EnsureServerRunningAsync() => EnsureServerRunningAsyncCore(allowRecovery: false);
 
+    private async Task EnsureServerRunningAsyncCore(bool allowRecovery)
+    {
+        try
+        {
+            await _serverGate.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                if (_stopping
+                    || (!allowRecovery && _restartTask is { IsCompleted: false })
+                    || (Status == ServerStatus.Running && _serverProcess is { HasExited: false }))
+                    return;
+
+                Log("EnsureServerRunningAsync start");
+                SetStatus(ServerStatus.Starting);
+                await StartServerOnceAsync().ConfigureAwait(false);
+            }
+            finally
+            {
+                _serverGate.Release();
+            }
+        }
+        catch (Exception ex)
+        {
+            // This method is intentionally safe to call fire-and-forget from the
+            // tray constructor and recovery loop. Convert unexpected startup errors
+            // into observable state instead of an unobserved task that can terminate
+            // the process under a strict UnobservedTaskException policy.
+            Log($"EnsureServerRunningAsync failed: {ex}");
+            if (!_stopping)
+            {
+                Fail($"Failed to start local server: {ex.Message}");
+                RequestRestart("startup exception");
+            }
+        }
+    }
+
+    private async Task StartServerOnceAsync()
+    {
         var runtime = FindEmbeddedServer() ?? FindDevServer() ?? FindRepoDevServer();
         if (runtime is null)
         {
             Fail("No embedded server bundle found and no Node CLI available. "
                  + "Run scripts\\bundle-node.ps1, or set TOKENTRACKER_NODE / TOKENTRACKER_ENTRY for dev.");
+            RequestRestart("runtime unavailable");
             return;
         }
-        Log($"runtime node={runtime.Value.NodePath} entry={runtime.Value.EntryPath}");
 
+        Log($"runtime node={runtime.Value.NodePath} entry={runtime.Value.EntryPath}");
+        StopServerProcessOnly();
         Port = PickServerPort();
         Log($"picked port {Port}");
         LaunchServer(runtime.Value.NodePath, runtime.Value.EntryPath);
 
-        if (await WaitForServerAsync(TimeSpan.FromSeconds(Constants.StartupTimeoutSeconds)))
+        if (_serverProcess is not null
+            && await WaitForServerAsync(TimeSpan.FromSeconds(Constants.StartupTimeoutSeconds)).ConfigureAwait(false))
         {
             SetStatus(ServerStatus.Running);
             StartHealthLoop();
+            return;
         }
-        else
-        {
-            Fail($"Server did not respond on {BaseUrl} within {Constants.StartupTimeoutSeconds}s.");
-        }
+
+        StopServerProcessOnly();
+        Fail($"Server did not respond on {BaseUrl} within {Constants.StartupTimeoutSeconds}s.");
+        RequestRestart("startup timeout");
     }
 
     /// <summary>Run a one-shot `tracker sync` against the resolved runtime.</summary>
@@ -135,8 +178,8 @@ internal sealed class ServerManager : IDisposable
 
     public void StopServer()
     {
-        _healthCts?.Cancel();
-        _healthCts = null;
+        _stopping = true;
+        StopServerProcessOnly();
 
         lock (_syncLock)
         {
@@ -147,13 +190,60 @@ internal sealed class ServerManager : IDisposable
             }
             _syncProcess = null;
         }
+    }
 
-        if (_serverProcess is { HasExited: false } p)
-        {
-            try { p.Kill(entireProcessTree: true); }
-            catch { /* already gone */ }
-        }
+    private void StopServerProcessOnly()
+    {
+        _healthCts?.Cancel();
+        _healthCts = null;
+
+        var process = _serverProcess;
         _serverProcess = null;
+        if (process is null) return;
+
+        try { process.EnableRaisingEvents = false; } catch { }
+        try
+        {
+            if (!process.HasExited) process.Kill(entireProcessTree: true);
+        }
+        catch { /* already gone */ }
+        try { process.Dispose(); } catch { }
+    }
+
+    private void RequestRestart(string reason)
+    {
+        if (_stopping) return;
+        lock (_restartLock)
+        {
+            if (_restartTask is { IsCompleted: false }) return;
+            _restartTask = RestartServerAsync(reason);
+        }
+    }
+
+    private async Task RestartServerAsync(string reason)
+    {
+        Log($"automatic server recovery scheduled reason={reason}");
+        try
+        {
+            for (var attempt = 1; attempt <= ServerRecoveryPolicy.MaxAttempts; attempt++)
+            {
+                if (_stopping) return;
+                await Task.Delay(ServerRecoveryPolicy.DelayForAttempt(attempt)).ConfigureAwait(false);
+                if (_stopping) return;
+
+                Log($"automatic server recovery attempt={attempt}/{ServerRecoveryPolicy.MaxAttempts}");
+                await EnsureServerRunningAsyncCore(allowRecovery: true).ConfigureAwait(false);
+                if (Status == ServerStatus.Running) return;
+            }
+
+            if (!_stopping)
+                Fail($"Local server recovery failed after {ServerRecoveryPolicy.MaxAttempts} attempts.");
+        }
+        catch (Exception ex)
+        {
+            Log($"automatic server recovery failed: {ex}");
+            if (!_stopping) Fail($"Local server recovery failed: {ex.Message}");
+        }
     }
 
     // ── Port selection ─────────────────────────────────────────────────
@@ -276,15 +366,12 @@ internal sealed class ServerManager : IDisposable
 
             if (_serverProcess is not null)
             {
-                Log($"server process pid={_serverProcess.Id}");
+                var process = _serverProcess;
+                Log($"server process pid={process.Id}");
                 // Backstop: if the tray app dies abnormally, the job kills the server too.
-                _job.Assign(_serverProcess.Handle);
-                _serverProcess.EnableRaisingEvents = true;
-                _serverProcess.Exited += (_, _) =>
-                {
-                    if (Status == ServerStatus.Running)
-                        Fail("Server process exited unexpectedly.");
-                };
+                _job.Assign(process.Handle);
+                process.EnableRaisingEvents = true;
+                process.Exited += (_, _) => OnServerProcessExited(process);
             }
         }
         catch (Exception ex)
@@ -292,6 +379,27 @@ internal sealed class ServerManager : IDisposable
             Log($"LaunchServer failed: {ex}");
             Fail($"Failed to launch server: {ex.Message}");
         }
+    }
+
+    private void OnServerProcessExited(Process process)
+    {
+        try { Log($"server process exited code={process.ExitCode}"); }
+        catch { /* process may already be disposed */ }
+
+        // A deliberate kill clears the field and disables events before terminating
+        // the process, so only the still-current process can trigger recovery.
+        if (_stopping || !ReferenceEquals(_serverProcess, process))
+        {
+            try { process.Dispose(); } catch { }
+            return;
+        }
+
+        _serverProcess = null;
+        _healthCts?.Cancel();
+        _healthCts = null;
+        SetStatus(ServerStatus.Starting);
+        RequestRestart("server process exited unexpectedly");
+        try { process.Dispose(); } catch { }
     }
 
     private static Process? StartTrackerProcess(
@@ -341,7 +449,9 @@ internal sealed class ServerManager : IDisposable
         var delayMs = 200;
         while (DateTime.UtcNow < deadline)
         {
+            if (_stopping || _serverProcess is null || _serverProcess.HasExited) return false;
             if (await CheckHealthAsync()) return true;
+            if (_stopping || _serverProcess is null || _serverProcess.HasExited) return false;
             await Task.Delay(delayMs);
             delayMs = Math.Min(delayMs * 2, 2000);
         }
@@ -374,19 +484,36 @@ internal sealed class ServerManager : IDisposable
             // balloon. Only declare failure after several consecutive misses.
             const int failureThreshold = 3;
             var consecutiveFailures = 0;
-            while (!token.IsCancellationRequested)
+            try
             {
-                try { await Task.Delay(TimeSpan.FromSeconds(Constants.HealthCheckIntervalSeconds), token); }
-                catch (TaskCanceledException) { break; }
-                if (token.IsCancellationRequested) break;
-                if (await CheckHealthAsync())
+                while (!token.IsCancellationRequested)
                 {
-                    consecutiveFailures = 0;
-                    SetStatus(ServerStatus.Running);
+                    try { await Task.Delay(TimeSpan.FromSeconds(Constants.HealthCheckIntervalSeconds), token); }
+                    catch (TaskCanceledException) { break; }
+                    if (token.IsCancellationRequested) break;
+                    if (await CheckHealthAsync())
+                    {
+                        consecutiveFailures = 0;
+                        SetStatus(ServerStatus.Running);
+                    }
+                    else if (++consecutiveFailures >= failureThreshold)
+                    {
+                        Log($"health check failed {failureThreshold} consecutive times");
+                        _healthCts?.Cancel();
+                        _healthCts = null;
+                        SetStatus(ServerStatus.Starting);
+                        RequestRestart("health checks failed");
+                        break;
+                    }
                 }
-                else if (++consecutiveFailures >= failureThreshold)
+            }
+            catch (Exception ex)
+            {
+                Log($"health loop failed: {ex}");
+                if (!_stopping)
                 {
-                    SetStatus(ServerStatus.Failed);
+                    SetStatus(ServerStatus.Starting);
+                    RequestRestart("health loop exception");
                 }
             }
         }, token);
