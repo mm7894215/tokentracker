@@ -579,7 +579,7 @@ export default async function (req: Request): Promise<Response> {
   const bySource = new Map<string, SourceAgg>();
   for (const row of filtered) {
     const src = row.source || "unknown";
-    const mdl = row.model || "unknown";
+    const mdl = String(row.model || "unknown").trim() || "unknown";
     let sa = bySource.get(src);
     if (!sa) {
       sa = { source: src, totals: newTotals(), models: new Map() };

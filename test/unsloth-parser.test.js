@@ -12,6 +12,13 @@ try {
   ({ DatabaseSync } = require("node:sqlite"));
 } catch (_e) { }
 
+const sqliteCliProbe = typeof DatabaseSync === "function"
+  ? null
+  : cp.spawnSync("sqlite3", ["-version"], { windowsHide: true, encoding: "utf8" });
+const sqliteTest = typeof DatabaseSync === "function" || sqliteCliProbe?.status === 0
+  ? test
+  : test.skip;
+
 const {
   resolveUnslothDbPath,
   readUnslothUsageRows,
@@ -92,7 +99,7 @@ test("Unsloth resolves its official Studio database and overrides", () => {
   );
 });
 
-test("Unsloth SQL reads only scalar usage fields and supports both usage tables", () => {
+sqliteTest("Unsloth SQL reads only scalar usage fields and supports both usage tables", () => {
   const { dir, dbPath } = createUnslothDb();
   try {
     const metadata = JSON.stringify({
@@ -120,6 +127,13 @@ test("Unsloth SQL reads only scalar usage fields and supports both usage tables"
         ${quote(metadata)}, 1783605600
       );
       INSERT INTO chat_messages VALUES (
+        'message-2', 'thread-1', 'assistant', '{}', '[]',
+        ${quote(JSON.stringify({
+          contextUsage: { promptTokens: 2, completionTokens: 1, totalTokens: 3 },
+          responseDetails: { responseModelId: "local-test", providerType: "local" },
+        }))}, 1783605600
+      );
+      INSERT INTO chat_messages VALUES (
         'user-1', 'thread-1', 'user', ${quote('{"text":"PRIVATE PROMPT"}')}, '[]', '{}', 1783605590
       );
       -- Failed terminal requests can still carry provider-billed partial usage.
@@ -129,8 +143,8 @@ test("Unsloth SQL reads only scalar usage fields and supports both usage tables"
       );
     `);
 
-    const rows = readUnslothUsageRows(dbPath);
-    assert.equal(rows.length, 2);
+    const rows = readUnslothUsageRows(dbPath, { pageSize: 1 });
+    assert.equal(rows.length, 3);
     assert.deepEqual(Object.keys(rows[0]).sort(), [
       "cache_write_tokens",
       "cached_tokens",
@@ -154,8 +168,10 @@ test("Unsloth SQL reads only scalar usage fields and supports both usage tables"
     assert.equal(normalized[0].totals.output_tokens, 35);
     assert.equal(normalized[0].totals.reasoning_output_tokens, 5);
     assert.equal(normalized[0].model, "anthropic/claude-sonnet-4-6");
-    assert.equal(normalized[1].totals.total_tokens, 65);
-    assert.equal(normalized[1].model, "local/api-model");
+    assert.equal(normalized[1].totals.total_tokens, 3);
+    assert.equal(normalized[1].model, "local/local-test");
+    assert.equal(normalized[2].totals.total_tokens, 65);
+    assert.equal(normalized[2].model, "local/api-model");
     assert.ok(computeRowCost({
       source: "unsloth",
       model: normalized[0].model,
@@ -163,15 +179,15 @@ test("Unsloth SQL reads only scalar usage fields and supports both usage tables"
     }) > 0);
     assert.equal(computeRowCost({
       source: "unsloth",
-      model: normalized[1].model,
-      ...normalized[1].totals,
+      model: normalized[2].model,
+      ...normalized[2].totals,
     }), 0);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
 
-test("Unsloth incremental parsing is idempotent and reconciles updated counters", async () => {
+sqliteTest("Unsloth incremental parsing is idempotent and reconciles updated counters", async () => {
   const { dir, dbPath } = createUnslothDb();
   try {
     const usage = (promptTokens, completionTokens) => JSON.stringify({
@@ -209,7 +225,7 @@ test("Unsloth incremental parsing is idempotent and reconciles updated counters"
   }
 });
 
-test("Unsloth supports older databases without API usage events", async () => {
+sqliteTest("Unsloth supports older databases without API usage events", async () => {
   const { dir, dbPath } = createUnslothDb({ withApi: false });
   try {
     executeSql(dbPath, `
@@ -227,7 +243,7 @@ test("Unsloth supports older databases without API usage events", async () => {
   }
 });
 
-test("sync and status commands expose the Unsloth Studio integration", () => {
+sqliteTest("sync and status commands expose the Unsloth Studio integration", () => {
   const { dir, dbPath } = createUnslothDb();
   try {
     const metadata = JSON.stringify({
@@ -264,6 +280,24 @@ test("sync and status commands expose the Unsloth Studio integration", () => {
     assert.equal(rows[0].model, "openai/gpt-5.4");
     assert.equal(rows[0].total_tokens, 48);
     assert.ok(computeRowCost(rows[0]) > 0);
+
+    const cursorPath = path.join(dir, ".tokentracker", "tracker", "cursors.json");
+    const cursorAfterFirstSync = JSON.parse(fs.readFileSync(cursorPath, "utf8")).unsloth;
+    delete cursorAfterFirstSync.updatedAt;
+    const secondSync = cp.spawnSync(
+      process.execPath,
+      [TRACKER, "sync", "--auto", "--from-notify", "--source", "unsloth"],
+      { env, encoding: "utf8", timeout: 30_000 },
+    );
+    assert.equal(secondSync.status, 0, `second sync failed: ${secondSync.stderr || secondSync.stdout}`);
+    assert.deepEqual(readQueue(queuePath), rows, "second sync must not append queue rows");
+    const cursorAfterSecondSync = JSON.parse(fs.readFileSync(cursorPath, "utf8")).unsloth;
+    delete cursorAfterSecondSync.updatedAt;
+    assert.deepEqual(
+      cursorAfterSecondSync,
+      cursorAfterFirstSync,
+      "second sync must not change the Unsloth cursor state",
+    );
 
     const status = cp.spawnSync(process.execPath, [TRACKER, "status", "--json"], {
       env,

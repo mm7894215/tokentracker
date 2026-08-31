@@ -433,7 +433,7 @@ function computeRowCost(row: HourlyRow): number {
   // WorkBuddy's auto-router logs model="auto"; price it as its default Hunyuan
   // model (hy3-preview-agent) so it isn't billed as Cursor's composer-1. Mirrors
   // normalizeWorkbuddyModel in src/lib/pricing/matcher.js.
-  const rawModel = row.model || "";
+  const rawModel = String(row.model || "").trim();
   const unslothUnpriced =
     row.source === "unsloth" && /^(local|unpriced)\//i.test(rawModel);
   const modelForPricing = unslothUnpriced

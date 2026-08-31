@@ -11626,6 +11626,7 @@ async function parseLmstudioIncremental({ logFiles, cursors, queuePath, onProgre
 // ─────────────────────────────────────────────────────────────────────────────
 
 const UNSLOTH_SOURCE = "unsloth";
+const UNSLOTH_SQL_PAGE_SIZE = 500;
 const UNSLOTH_METERED_PROVIDER_TYPES = new Set([
   "anthropic",
   "deepseek",
@@ -11656,6 +11657,58 @@ function unslothSqliteFingerprint(dbPath) {
   return fingerprint;
 }
 
+function readUnslothRowsPaged({
+  dbPath,
+  select,
+  from,
+  where,
+  rowAlias,
+  options,
+}) {
+  const requestedPageSize = Number(options?.pageSize);
+  const pageSize = Number.isInteger(requestedPageSize) && requestedPageSize > 0
+    ? Math.min(requestedPageSize, UNSLOTH_SQL_PAGE_SIZE)
+    : UNSLOTH_SQL_PAGE_SIZE;
+  const rows = [];
+  let after = null;
+
+  while (true) {
+    const clauses = [where, `${rowAlias}.created_at IS NOT NULL`, `${rowAlias}.id IS NOT NULL`];
+    if (after) {
+      const createdAt = sqliteStringLiteral(after.createdAt);
+      const id = sqliteStringLiteral(after.id);
+      clauses.push(
+        `(${rowAlias}.created_at > ${createdAt} OR ` +
+        `(${rowAlias}.created_at = ${createdAt} AND ${rowAlias}.id > ${id}))`,
+      );
+    }
+    const page = readSqliteJsonRows(dbPath, `
+      SELECT
+        ${select}
+      FROM ${from}
+      WHERE ${clauses.filter(Boolean).join(" AND ")}
+      ORDER BY ${rowAlias}.created_at, ${rowAlias}.id
+      LIMIT ${pageSize}
+    `.trim(), options);
+    rows.push(...page);
+    if (page.length < pageSize) break;
+
+    const last = page[page.length - 1];
+    const next = {
+      createdAt: last?.created_at == null ? "" : String(last.created_at),
+      id: last?.id == null ? "" : String(last.id),
+    };
+    if (!next.createdAt || !next.id || (
+      after && next.createdAt === after.createdAt && next.id === after.id
+    )) {
+      throw new Error("Unsloth Studio pagination did not advance");
+    }
+    after = next;
+  }
+
+  return rows;
+}
+
 function readUnslothUsageRows(dbPath, sqliteOptions = {}) {
   if (!dbPath || !fssync.existsSync(dbPath)) return [];
   const options = {
@@ -11682,8 +11735,13 @@ function readUnslothUsageRows(dbPath, sqliteOptions = {}) {
     const threadModel = tables.has("chat_threads") ? "t.model_id" : "NULL";
     const field = (jsonPath, alias) =>
       `CASE WHEN json_valid(m.metadata_json) THEN json_extract(m.metadata_json, '${jsonPath}') ELSE NULL END AS ${alias}`;
-    const chatRows = readSqliteJsonRows(dbPath, `
-      SELECT
+    // Usage rows can be updated in place without an updated_at column, so a
+    // persisted timestamp watermark would miss older corrections. Keyset pages
+    // keep every sqlite3 response bounded while preserving exact reconciliation
+    // whenever the database fingerprint changes.
+    const chatRows = readUnslothRowsPaged({
+      dbPath,
+      select: `
         'chat' AS usage_kind,
         m.id,
         m.created_at,
@@ -11697,11 +11755,12 @@ function readUnslothUsageRows(dbPath, sqliteOptions = {}) {
         ${field("$.contextUsage.cachedTokens", "cached_tokens")},
         ${field("$.contextUsage.cacheWriteTokens", "cache_write_tokens")},
         ${field("$.contextUsage.reasoningTokens", "reasoning_tokens")}
-      FROM chat_messages m
-      ${joinThread}
-      WHERE m.role = 'assistant'
-      ORDER BY m.created_at, m.id
-    `.trim(), options);
+      `.trim(),
+      from: `chat_messages m ${joinThread}`,
+      where: "m.role = 'assistant'",
+      rowAlias: "m",
+      options,
+    });
     rows.push(...chatRows);
   }
 
@@ -11713,24 +11772,28 @@ function readUnslothUsageRows(dbPath, sqliteOptions = {}) {
     );
     const required = ["id", "model", "prompt_tokens", "completion_tokens", "total_tokens", "created_at"];
     if (required.every((column) => columns.has(column))) {
-      rows.push(...readSqliteJsonRows(dbPath, `
-        SELECT
+      rows.push(...readUnslothRowsPaged({
+        dbPath,
+        select: `
           'api' AS usage_kind,
-          id,
-          created_at,
-          model AS response_model,
-          model AS requested_model,
+          e.id,
+          e.created_at,
+          e.model AS response_model,
+          e.model AS requested_model,
           'local' AS provider_type,
           NULL AS fallback_model,
-          prompt_tokens,
-          completion_tokens,
-          total_tokens,
+          e.prompt_tokens,
+          e.completion_tokens,
+          e.total_tokens,
           0 AS cached_tokens,
           0 AS cache_write_tokens,
           0 AS reasoning_tokens
-        FROM api_usage_events
-        ORDER BY created_at, id
-      `.trim(), options));
+        `.trim(),
+        from: "api_usage_events e",
+        where: "",
+        rowAlias: "e",
+        options,
+      }));
     }
   }
   return rows;

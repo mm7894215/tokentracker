@@ -138,6 +138,11 @@ test("all cloud cost paths distinguish local usage from metered Unsloth provider
       /\^\(local\|unpriced\)\\\//,
       `${name}: Unsloth guard must cover local and ambiguous provider routes`,
     );
+    assert.match(
+      source,
+      /String\(row\.model \|\| (?:""|"unknown")\)\.trim\(\)/,
+      `${name}: model must be trimmed before the Unsloth pricing guard`,
+    );
   }
 });
 

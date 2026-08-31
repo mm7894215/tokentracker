@@ -190,6 +190,24 @@ test("sync and status commands expose the LM Studio integration", () => {
     assert.equal(rows[0].model, "local-command");
     assert.equal(rows[0].total_tokens, 48);
 
+    const cursorPath = path.join(dir, ".tokentracker", "tracker", "cursors.json");
+    const cursorAfterFirstSync = JSON.parse(fs.readFileSync(cursorPath, "utf8")).lmstudio;
+    delete cursorAfterFirstSync.updatedAt;
+    const secondSync = cp.spawnSync(
+      process.execPath,
+      [TRACKER, "sync", "--auto", "--from-notify", "--source", "lmstudio"],
+      { env, encoding: "utf8", timeout: 30_000 },
+    );
+    assert.equal(secondSync.status, 0, `second sync failed: ${secondSync.stderr || secondSync.stdout}`);
+    assert.deepEqual(readQueue(queuePath), rows, "second sync must not append queue rows");
+    const cursorAfterSecondSync = JSON.parse(fs.readFileSync(cursorPath, "utf8")).lmstudio;
+    delete cursorAfterSecondSync.updatedAt;
+    assert.deepEqual(
+      cursorAfterSecondSync,
+      cursorAfterFirstSync,
+      "second sync must not change the LM Studio cursor state",
+    );
+
     const status = cp.spawnSync(process.execPath, [TRACKER, "status", "--json"], {
       env,
       encoding: "utf8",
