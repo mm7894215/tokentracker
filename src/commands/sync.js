@@ -2888,6 +2888,7 @@ async function cmdSync(argv, context = {}) {
         const drainWithToken = (deviceToken) =>
           drainQueueToCloud({
             baseUrl: runtime.baseUrl,
+            anonKey: runtime.anonKey,
             deviceToken,
             queuePath,
             queueStatePath,
@@ -3613,7 +3614,7 @@ const AUTO_RETRY_MAX_DELAY_MS = 2 * 60 * 60 * 1000;
 const INGEST_SLUG = "tokentracker-ingest";
 const MAX_INGEST_BUCKETS = 500;
 
-async function drainQueueToCloud({ baseUrl, deviceToken, queuePath, queueStatePath, maxBatches = 5, batchSize = 200 }) {
+async function drainQueueToCloud({ baseUrl, anonKey, deviceToken, queuePath, queueStatePath, maxBatches = 5, batchSize = 200 }) {
   const state = (await readJson(queueStatePath)) || { offset: 0 };
   let offset = Number(state.offset || 0);
   let inserted = 0;
@@ -3632,7 +3633,6 @@ async function drainQueueToCloud({ baseUrl, deviceToken, queuePath, queueStatePa
     if (result.buckets.length === 0 && result.sessionStates.length === 0) break;
 
     const root = baseUrl.replace(/\/$/, "");
-    const anonKey = process.env.TOKENTRACKER_INSFORGE_ANON_KEY || "";
     const headers = {
       "Content-Type": "application/json",
       Accept: "application/json",
