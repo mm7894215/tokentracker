@@ -11,6 +11,7 @@ const {
   resolveRuntimeConfig,
   isLegacyInsforgeBaseUrl,
   DEFAULT_BASE_URL,
+  DEFAULT_ANON_KEY,
 } = require("../src/lib/runtime-config");
 
 const LEGACY_BASE_URL = "https://b46ug8xu.us-east.insforge.app";
@@ -28,6 +29,7 @@ async function withTempHome(fn) {
     TOKENTRACKER_DSH_HOME: process.env.TOKENTRACKER_DSH_HOME,
     TOKENTRACKER_DEVICE_TOKEN: process.env.TOKENTRACKER_DEVICE_TOKEN,
     TOKENTRACKER_INSFORGE_BASE_URL: process.env.TOKENTRACKER_INSFORGE_BASE_URL,
+    TOKENTRACKER_INSFORGE_ANON_KEY: process.env.TOKENTRACKER_INSFORGE_ANON_KEY,
     TOKENTRACKER_SKIP_FIRST_SYNC: process.env.TOKENTRACKER_SKIP_FIRST_SYNC,
   };
   try {
@@ -38,6 +40,7 @@ async function withTempHome(fn) {
     process.env.XDG_DATA_HOME = path.join(home, ".local", "share");
     delete process.env.TOKENTRACKER_DEVICE_TOKEN;
     delete process.env.TOKENTRACKER_INSFORGE_BASE_URL;
+    delete process.env.TOKENTRACKER_INSFORGE_ANON_KEY;
     delete process.env.DSH_HOME;
     delete process.env.TOKENTRACKER_DSH_HOME;
     return await fn(home);
@@ -175,6 +178,7 @@ test("sync preserves the legacy device token and replays the queue to the curren
       config: {
         installedAt: "2026-03-23T08:16:55.409Z",
         baseUrl: LEGACY_BASE_URL,
+        anonKey: "legacy-anon-key",
         deviceToken: "legacy-token",
         deviceId: "legacy-device",
         user_id: "legacy-user",
@@ -200,6 +204,7 @@ test("sync preserves the legacy device token and replays the queue to the curren
 
     const config = await readJsonFile(path.join(trackerDir, "config.json"));
     assert.equal(config.baseUrl, undefined);
+    assert.equal(config.anonKey, undefined);
     assert.equal(config.deviceToken, "legacy-token");
     assert.equal(config.deviceId, "legacy-device");
     assert.equal(config.user_id, "legacy-user");
@@ -217,6 +222,7 @@ test("sync preserves the legacy device token and replays the queue to the curren
 
     assert.equal(ingestCalls.length, 1);
     assert.equal(ingestCalls[0].url, `${DEFAULT_BASE_URL}/functions/tokentracker-ingest`);
+    assert.equal(ingestCalls[0].options.headers.apikey, DEFAULT_ANON_KEY);
     assert.equal(ingestCalls[0].options.headers.Authorization, "Bearer legacy-token");
     assert.deepEqual(JSON.parse(ingestCalls[0].options.body).hourly, [JSON.parse(queue)]);
 

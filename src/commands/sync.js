@@ -2835,6 +2835,9 @@ async function cmdSync(argv, context = {}) {
     progress?.stop();
 
     const runtimeConfig = config ? { ...config } : {};
+    if (legacyBaseUrlMigration) {
+      delete runtimeConfig.anonKey;
+    }
     if (legacyBaseUrlMigration?.replacementDeviceToken) {
       runtimeConfig.deviceToken = legacyBaseUrlMigration.replacementDeviceToken;
     }
@@ -2924,6 +2927,7 @@ async function cmdSync(argv, context = {}) {
           if (isLegacyInsforgeBaseUrl(latestConfig.baseUrl)) {
             latestConfig.deviceToken = successfulDeviceToken;
             delete latestConfig.baseUrl;
+            delete latestConfig.anonKey;
             await writeJson(configPath, latestConfig);
             await chmod600IfPossible(configPath);
           }
