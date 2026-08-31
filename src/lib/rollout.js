@@ -3413,7 +3413,8 @@ function isOpencodeForkCopy(fingerprintIndex, fingerprint, messageKey) {
   for (const owner of owners instanceof Set ? owners : [owners]) {
     const ownerSession = opencodeMessageKeySession(owner);
     if (!ownerSession) continue;
-    return owner !== messageKey && ownerSession !== session;
+    if (owner === messageKey) return false;
+    if (ownerSession !== session) return true;
   }
   return false;
 }

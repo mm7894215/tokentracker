@@ -407,6 +407,35 @@ test("parseOpencodeDbIncremental never drops a same-session duplicate (fork alwa
   });
 });
 
+test("fork dedup scans past same-session fingerprint owners", async () => {
+  await withTmp(async (tmp) => {
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const cursors = newCursors();
+    const base = Date.parse(HOUR);
+    const owner = msg({ id: "msg_1", sessionID: "ses_same", created: base + 1000, input: 100 });
+    await parseOpencodeDbIncremental({
+      dbMessages: [owner],
+      cursors,
+      queuePath,
+      source: "opencode",
+    });
+
+    const ownerEntry = cursors.opencode.messages["ses_same|msg_1"];
+    cursors.opencode.messages["ses_other|msg_2"] = { ...ownerEntry };
+    const fork = msg({ id: "msg_3", sessionID: "ses_same", created: base + 1000, input: 100 });
+    const result = await parseOpencodeDbIncremental({
+      dbMessages: [fork],
+      cursors,
+      queuePath,
+      source: "opencode",
+    });
+
+    assert.equal(result.eventsAggregated, 0);
+    assert.equal((await queueTotals(queuePath)).input_tokens, 100);
+    assert.equal(cursors.opencode.messages["ses_same|msg_3"].dedupedForkCopy, true);
+  });
+});
+
 test("fingerprint ownership keeps alternate same-session owners after a correction", async () => {
   await withTmp(async (tmp) => {
     const queuePath = path.join(tmp, "queue.jsonl");
