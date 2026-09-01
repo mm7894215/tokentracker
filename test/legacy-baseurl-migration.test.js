@@ -230,17 +230,32 @@ test("sync preserves the legacy device token and replays the queue to the curren
     assert.equal(uploadThrottle.backoffStep, 0);
     assert.equal(uploadThrottle.lastError, null);
 
-    // Second run must not reset again: the guard no longer matches.
+    // Second run must not reset again, and a newly pending row must upload
+    // with the current runtime key after the legacy config key was removed.
+    const pendingRow = {
+      ...JSON.parse(queue),
+      hour_start: "2026-04-20T00:30:00.000Z",
+      model: "gpt-5.4-follow-up",
+    };
+    const pendingLine = `${JSON.stringify(pendingRow)}\n`;
+    await fs.appendFile(path.join(trackerDir, "queue.jsonl"), pendingLine, "utf8");
     await fs.writeFile(
       path.join(trackerDir, "queue.state.json"),
-      JSON.stringify({ offset: 777, updatedAt: new Date().toISOString(), note: "manual" }),
+      JSON.stringify({
+        offset: Buffer.byteLength(queue),
+        updatedAt: new Date().toISOString(),
+        note: "manual",
+      }),
       "utf8",
     );
     await cmdSync(["--auto"]);
     const after = await readJsonFile(path.join(trackerDir, "queue.state.json"));
-    assert.equal(after.offset, 777);
+    assert.equal(after.offset, Buffer.byteLength(queue) + Buffer.byteLength(pendingLine));
     assert.equal(after.note, "manual");
-    assert.equal(ingestCalls.length, 1);
+    assert.equal(ingestCalls.length, 2);
+    assert.equal(ingestCalls[1].options.headers.apikey, DEFAULT_ANON_KEY);
+    assert.equal(ingestCalls[1].options.headers.Authorization, "Bearer legacy-token");
+    assert.deepEqual(JSON.parse(ingestCalls[1].options.body).hourly, [pendingRow]);
   });
 });
 
