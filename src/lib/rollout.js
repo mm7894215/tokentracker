@@ -11598,10 +11598,10 @@ async function parseLmstudioIncremental({
   const priorState = cursors.lmstudio && typeof cursors.lmstudio === "object"
     ? cursors.lmstudio
     : {};
-  const fileState = priorState.files && typeof priorState.files === "object"
+  let fileState = priorState.files && typeof priorState.files === "object"
     ? { ...priorState.files }
     : {};
-  const messages = priorState.messages && typeof priorState.messages === "object"
+  let messages = priorState.messages && typeof priorState.messages === "object"
     ? priorState.messages
     : {};
   const hourlyState = normalizeHourlyState(cursors?.hourly);
@@ -11614,62 +11614,140 @@ async function parseLmstudioIncremental({
   let recordsProcessed = 0;
   let eventsAggregated = 0;
   let stateChanged = false;
+  const readOptions = readerOptions && typeof readerOptions === "object" ? readerOptions : {};
+  const filePlans = [];
+  let allFilesReadable = true;
 
-  for (let index = 0; index < files.length; index++) {
-    const filePath = files[index];
+  for (const filePath of files) {
     const previousFile = fileState[filePath];
     let stat;
     try {
       stat = await fs.stat(filePath);
     } catch (_e) {
+      allFilesReadable = false;
       continue;
     }
-    const unchanged = previousFile
+    const unchanged = Boolean(previousFile
       && previousFile.dev === stat.dev
       && previousFile.ino === stat.ino
       && previousFile.size === stat.size
       && previousFile.mtimeMs === stat.mtimeMs
-      && Number.isFinite(previousFile.resumeOffset);
-    if (!unchanged) {
-      try {
-        const canResume = previousFile
-          && previousFile.dev === stat.dev
-          && previousFile.ino === stat.ino
-          && (stat.size > previousFile.size || previousFile.mtimeMs === -1)
-          && Number.isFinite(previousFile.resumeOffset)
-          && previousFile.resumeOffset >= 0
-          && previousFile.resumeOffset <= stat.size;
+      && Number.isFinite(previousFile.resumeOffset));
+    const canResume = Boolean(previousFile
+      && previousFile.dev === stat.dev
+      && previousFile.ino === stat.ino
+      && (stat.size > previousFile.size || previousFile.mtimeMs === -1)
+      && Number.isFinite(previousFile.resumeOffset)
+      && previousFile.resumeOffset >= 0
+      && previousFile.resumeOffset <= stat.size);
+    filePlans.push({ filePath, previousFile, unchanged, canResume });
+  }
+
+  const requiresRebuild = filePlans.some(
+    ({ previousFile, unchanged, canResume }) => previousFile && !unchanged && !canResume,
+  );
+  if (requiresRebuild) {
+    // Bounded message retention cannot safely deduplicate a replay from byte
+    // zero. Rebuild every current LM Studio log in isolation, then replace only
+    // this source's buckets while preserving their queue fingerprints.
+    if (!allFilesReadable || filePlans.length !== files.length) {
+      return { recordsProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
+    }
+    const rebuiltHourly = normalizeHourlyState(null);
+    const rebuiltMessages = {};
+    const rebuiltFiles = {};
+    const rebuiltTouched = new Set();
+    let rebuiltRecords = 0;
+    let rebuiltEvents = 0;
+    try {
+      for (let index = 0; index < filePlans.length; index++) {
+        const { filePath } = filePlans[index];
         const parsed = await readLmstudioFileRecords(filePath, {
-          ...(readerOptions && typeof readerOptions === "object" ? readerOptions : {}),
-          startOffset: canResume ? previousFile.resumeOffset : 0,
-          resumeIdentity: canResume ? previousFile.resumeIdentity : undefined,
+          ...readOptions,
+          startOffset: 0,
+          resumeIdentity: undefined,
         });
         for (const event of parsed.records) {
           if (reconcilePassiveUsageEvent({
             event,
             source: LMSTUDIO_SOURCE,
-            messages,
-            hourlyState,
-            touchedBuckets,
-          })) eventsAggregated += 1;
+            messages: rebuiltMessages,
+            hourlyState: rebuiltHourly,
+            touchedBuckets: rebuiltTouched,
+          })) rebuiltEvents += 1;
         }
-        fileState[filePath] = { ...parsed.stat, updatedAt: new Date().toISOString() };
-        recordsProcessed += 1;
-        stateChanged = true;
-      } catch (error) {
-        if (process.env.TOKENTRACKER_DEBUG) {
-          process.stderr.write(`[lmstudio] skipped ${filePath}: ${error?.message || error}\n`);
+        rebuiltFiles[filePath] = { ...parsed.stat, updatedAt: new Date().toISOString() };
+        rebuiltRecords += 1;
+        if (cb) {
+          cb({
+            index: index + 1,
+            total: files.length,
+            recordsProcessed: rebuiltRecords,
+            eventsAggregated: rebuiltEvents,
+            bucketsQueued: rebuiltTouched.size,
+          });
         }
       }
+    } catch (error) {
+      if (process.env.TOKENTRACKER_DEBUG) {
+        process.stderr.write(`[lmstudio] rebuild deferred: ${error?.message || error}\n`);
+      }
+      return { recordsProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
     }
-    if (cb) {
-      cb({
-        index: index + 1,
-        total: files.length,
-        recordsProcessed,
-        eventsAggregated,
-        bucketsQueued: touchedBuckets.size,
-      });
+
+    for (const [key, bucket] of Object.entries(hourlyState.buckets || {})) {
+      if (parseBucketKey(key).source !== LMSTUDIO_SOURCE || !bucket?.totals) continue;
+      bucket.totals = initTotals();
+      touchedBuckets.add(key);
+    }
+    for (const [key, bucket] of Object.entries(rebuiltHourly.buckets || {})) {
+      const current = hourlyState.buckets[key];
+      if (current && typeof current === "object") current.totals = cloneTotals(bucket.totals);
+      else hourlyState.buckets[key] = bucket;
+      touchedBuckets.add(key);
+    }
+    fileState = rebuiltFiles;
+    messages = rebuiltMessages;
+    recordsProcessed = rebuiltRecords;
+    eventsAggregated = rebuiltEvents;
+    stateChanged = true;
+  } else {
+    for (let index = 0; index < filePlans.length; index++) {
+      const { filePath, previousFile, unchanged, canResume } = filePlans[index];
+      if (!unchanged) {
+        try {
+          const parsed = await readLmstudioFileRecords(filePath, {
+            ...readOptions,
+            startOffset: canResume ? previousFile.resumeOffset : 0,
+            resumeIdentity: canResume ? previousFile.resumeIdentity : undefined,
+          });
+          for (const event of parsed.records) {
+            if (reconcilePassiveUsageEvent({
+              event,
+              source: LMSTUDIO_SOURCE,
+              messages,
+              hourlyState,
+              touchedBuckets,
+            })) eventsAggregated += 1;
+          }
+          fileState[filePath] = { ...parsed.stat, updatedAt: new Date().toISOString() };
+          recordsProcessed += 1;
+          stateChanged = true;
+        } catch (error) {
+          if (process.env.TOKENTRACKER_DEBUG) {
+            process.stderr.write(`[lmstudio] skipped ${filePath}: ${error?.message || error}\n`);
+          }
+        }
+      }
+      if (cb) {
+        cb({
+          index: index + 1,
+          total: files.length,
+          recordsProcessed,
+          eventsAggregated,
+          bucketsQueued: touchedBuckets.size,
+        });
+      }
     }
   }
 

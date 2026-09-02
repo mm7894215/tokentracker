@@ -248,6 +248,25 @@ test("LM Studio bounds long-history state and resumes without duplicate rows", a
     assert.equal(Object.keys(cursors.lmstudio.messages).length, 3);
     assert.ok(cursors.lmstudio.files[logPath].resumeOffset > 0);
 
+    const queueAfterFirst = readQueue(queuePath);
+    const firstStat = fs.statSync(logPath);
+    fs.utimesSync(logPath, firstStat.atime, new Date(firstStat.mtimeMs + 2_000));
+    const rescanned = await parseLmstudioIncremental({
+      logFiles: [logPath],
+      cursors,
+      queuePath,
+      messageLimit: 3,
+    });
+    assert.deepEqual(rescanned, {
+      recordsProcessed: 1,
+      eventsAggregated: 12,
+      bucketsQueued: 0,
+    });
+    assert.deepEqual(readQueue(queuePath), queueAfterFirst);
+    assert.equal(readQueue(queuePath).at(-1).total_tokens, 144);
+    assert.equal(readQueue(queuePath).at(-1).conversation_count, 12);
+    assert.equal(Object.keys(cursors.lmstudio.messages).length, 3);
+
     fs.appendFileSync(logPath, `${chatRecord({
       id: "chatcmpl-history-new",
       prompt: 20,
