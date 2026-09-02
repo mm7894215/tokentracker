@@ -249,8 +249,8 @@ test("LM Studio bounds long-history state and resumes without duplicate rows", a
     assert.ok(cursors.lmstudio.files[logPath].resumeOffset > 0);
 
     const queueAfterFirst = readQueue(queuePath);
-    const firstStat = fs.statSync(logPath);
-    fs.utimesSync(logPath, firstStat.atime, new Date(firstStat.mtimeMs + 2_000));
+    const touchedAt = new Date(Date.now() + 2_000);
+    fs.utimesSync(logPath, touchedAt, touchedAt);
     const rescanned = await parseLmstudioIncremental({
       logFiles: [logPath],
       cursors,
