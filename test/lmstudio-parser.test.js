@@ -157,6 +157,69 @@ test("LM Studio incremental parsing deduplicates mirrored responses and appended
   }
 });
 
+test("LM Studio bounds long-history state and resumes without duplicate rows", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "lmstudio-history-"));
+  try {
+    const logPath = path.join(dir, "server.log");
+    const history = Array.from({ length: 12 }, (_, index) => chatRecord({
+      id: `chatcmpl-history-${index}`,
+      prompt: 10,
+      output: 2,
+      second: index,
+    }));
+    fs.writeFileSync(logPath, `${history.join("\n")}\n`);
+    const queuePath = path.join(dir, "queue.jsonl");
+    const cursors = {};
+
+    const first = await parseLmstudioIncremental({
+      logFiles: [logPath],
+      cursors,
+      queuePath,
+      messageLimit: 3,
+    });
+    assert.deepEqual(first, { recordsProcessed: 1, eventsAggregated: 12, bucketsQueued: 1 });
+    assert.equal(readQueue(queuePath).at(-1).total_tokens, 144);
+    assert.equal(Object.keys(cursors.lmstudio.messages).length, 3);
+    assert.ok(cursors.lmstudio.files[logPath].resumeOffset > 0);
+
+    fs.appendFileSync(logPath, `${chatRecord({
+      id: "chatcmpl-history-new",
+      prompt: 20,
+      output: 4,
+      second: 20,
+    })}\n`);
+    const appended = await parseLmstudioIncremental({
+      logFiles: [logPath],
+      cursors,
+      queuePath,
+      messageLimit: 3,
+    });
+    assert.deepEqual(appended, { recordsProcessed: 1, eventsAggregated: 1, bucketsQueued: 1 });
+    assert.equal(readQueue(queuePath).at(-1).total_tokens, 168);
+    assert.equal(Object.keys(cursors.lmstudio.messages).length, 3);
+
+    const stateAfterAppend = JSON.parse(JSON.stringify(cursors.lmstudio));
+    const rowsAfterAppend = readQueue(queuePath);
+    for (let pass = 0; pass < 2; pass++) {
+      const unchanged = await parseLmstudioIncremental({
+        logFiles: [logPath],
+        cursors,
+        queuePath,
+        messageLimit: 3,
+      });
+      assert.deepEqual(unchanged, {
+        recordsProcessed: 0,
+        eventsAggregated: 0,
+        bucketsQueued: 0,
+      });
+      assert.deepEqual(cursors.lmstudio, stateAfterAppend);
+      assert.deepEqual(readQueue(queuePath), rowsAfterAppend);
+    }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("sync and status commands expose the LM Studio integration", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "lmstudio-command-"));
   try {
@@ -192,7 +255,6 @@ test("sync and status commands expose the LM Studio integration", () => {
 
     const cursorPath = path.join(dir, ".tokentracker", "tracker", "cursors.json");
     const cursorAfterFirstSync = JSON.parse(fs.readFileSync(cursorPath, "utf8")).lmstudio;
-    delete cursorAfterFirstSync.updatedAt;
     const secondSync = cp.spawnSync(
       process.execPath,
       [TRACKER, "sync", "--auto", "--from-notify", "--source", "lmstudio"],
@@ -201,11 +263,22 @@ test("sync and status commands expose the LM Studio integration", () => {
     assert.equal(secondSync.status, 0, `second sync failed: ${secondSync.stderr || secondSync.stdout}`);
     assert.deepEqual(readQueue(queuePath), rows, "second sync must not append queue rows");
     const cursorAfterSecondSync = JSON.parse(fs.readFileSync(cursorPath, "utf8")).lmstudio;
-    delete cursorAfterSecondSync.updatedAt;
     assert.deepEqual(
       cursorAfterSecondSync,
       cursorAfterFirstSync,
       "second sync must not change the LM Studio cursor state",
+    );
+    const thirdSync = cp.spawnSync(
+      process.execPath,
+      [TRACKER, "sync", "--auto", "--from-notify", "--source", "lmstudio"],
+      { env, encoding: "utf8", timeout: 30_000 },
+    );
+    assert.equal(thirdSync.status, 0, `third sync failed: ${thirdSync.stderr || thirdSync.stdout}`);
+    assert.deepEqual(readQueue(queuePath), rows, "third sync must not append queue rows");
+    assert.deepEqual(
+      JSON.parse(fs.readFileSync(cursorPath, "utf8")).lmstudio,
+      cursorAfterFirstSync,
+      "third sync must not change the LM Studio cursor state",
     );
 
     const status = cp.spawnSync(process.execPath, [TRACKER, "status", "--json"], {

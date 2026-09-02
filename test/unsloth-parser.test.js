@@ -225,6 +225,87 @@ sqliteTest("Unsloth incremental parsing is idempotent and reconciles updated cou
   }
 });
 
+sqliteTest("Unsloth bounds long-history state and rereads only its mutable tail", async () => {
+  const { dir, dbPath } = createUnslothDb({ withApi: false });
+  try {
+    const usage = (promptTokens, completionTokens) => JSON.stringify({
+      contextUsage: {
+        promptTokens,
+        completionTokens,
+        totalTokens: promptTokens + completionTokens,
+        modelId: "local-history",
+      },
+      responseDetails: { providerType: "local", responseModelId: "local-history" },
+    });
+    const inserts = Array.from({ length: 12 }, (_, index) => `
+      INSERT INTO chat_messages VALUES (
+        'message-${String(index).padStart(2, "0")}', 'thread-1', 'assistant', '{}', '[]',
+        ${quote(usage(10, 2))}, ${1783605600 + index}
+      );
+    `).join("\n");
+    executeSql(dbPath, `
+      INSERT INTO chat_threads VALUES ('thread-1', 'fallback-model');
+      ${inserts}
+    `);
+    const queuePath = path.join(dir, "queue.jsonl");
+    const cursors = {};
+
+    const first = await parseUnslothIncremental({
+      dbPath,
+      cursors,
+      queuePath,
+      overlapRows: 3,
+      sqliteOptions: { pageSize: 2 },
+    });
+    assert.deepEqual(first, { recordsProcessed: 12, eventsAggregated: 12, bucketsQueued: 1 });
+    assert.equal(readQueue(queuePath).at(-1).total_tokens, 144);
+    assert.equal(Object.keys(cursors.unsloth.messages).length, 3);
+    assert.deepEqual(cursors.unsloth.scan.chat, {
+      overlap: { createdAt: "1783605609", id: "message-09" },
+      latest: { createdAt: "1783605611", id: "message-11" },
+    });
+
+    const stateAfterFirst = JSON.parse(JSON.stringify(cursors.unsloth));
+    const rowsAfterFirst = readQueue(queuePath);
+    for (let pass = 0; pass < 2; pass++) {
+      const unchanged = await parseUnslothIncremental({
+        dbPath,
+        cursors,
+        queuePath,
+        overlapRows: 3,
+        sqliteOptions: { pageSize: 2 },
+      });
+      assert.deepEqual(unchanged, {
+        recordsProcessed: 0,
+        eventsAggregated: 0,
+        bucketsQueued: 0,
+      });
+      assert.deepEqual(cursors.unsloth, stateAfterFirst);
+      assert.deepEqual(readQueue(queuePath), rowsAfterFirst);
+    }
+
+    executeSql(dbPath, `
+      UPDATE chat_messages
+      SET metadata_json = ${quote(usage(20, 4))}
+      WHERE id = 'message-11';
+    `);
+    const updated = await parseUnslothIncremental({
+      dbPath,
+      cursors,
+      queuePath,
+      overlapRows: 3,
+      sqliteOptions: { pageSize: 2 },
+    });
+    assert.deepEqual(updated, { recordsProcessed: 3, eventsAggregated: 1, bucketsQueued: 1 });
+    const latest = readQueue(queuePath).at(-1);
+    assert.equal(latest.total_tokens, 156);
+    assert.equal(latest.conversation_count, 12);
+    assert.equal(Object.keys(cursors.unsloth.messages).length, 3);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 sqliteTest("Unsloth supports older databases without API usage events", async () => {
   const { dir, dbPath } = createUnslothDb({ withApi: false });
   try {
@@ -283,7 +364,6 @@ sqliteTest("sync and status commands expose the Unsloth Studio integration", () 
 
     const cursorPath = path.join(dir, ".tokentracker", "tracker", "cursors.json");
     const cursorAfterFirstSync = JSON.parse(fs.readFileSync(cursorPath, "utf8")).unsloth;
-    delete cursorAfterFirstSync.updatedAt;
     const secondSync = cp.spawnSync(
       process.execPath,
       [TRACKER, "sync", "--auto", "--from-notify", "--source", "unsloth"],
@@ -292,11 +372,22 @@ sqliteTest("sync and status commands expose the Unsloth Studio integration", () 
     assert.equal(secondSync.status, 0, `second sync failed: ${secondSync.stderr || secondSync.stdout}`);
     assert.deepEqual(readQueue(queuePath), rows, "second sync must not append queue rows");
     const cursorAfterSecondSync = JSON.parse(fs.readFileSync(cursorPath, "utf8")).unsloth;
-    delete cursorAfterSecondSync.updatedAt;
     assert.deepEqual(
       cursorAfterSecondSync,
       cursorAfterFirstSync,
       "second sync must not change the Unsloth cursor state",
+    );
+    const thirdSync = cp.spawnSync(
+      process.execPath,
+      [TRACKER, "sync", "--auto", "--from-notify", "--source", "unsloth"],
+      { env, encoding: "utf8", timeout: 30_000 },
+    );
+    assert.equal(thirdSync.status, 0, `third sync failed: ${thirdSync.stderr || thirdSync.stdout}`);
+    assert.deepEqual(readQueue(queuePath), rows, "third sync must not append queue rows");
+    assert.deepEqual(
+      JSON.parse(fs.readFileSync(cursorPath, "utf8")).unsloth,
+      cursorAfterFirstSync,
+      "third sync must not change the Unsloth cursor state",
     );
 
     const status = cp.spawnSync(process.execPath, [TRACKER, "status", "--json"], {

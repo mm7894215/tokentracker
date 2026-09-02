@@ -11174,6 +11174,7 @@ const LMSTUDIO_SOURCE = "lmstudio";
 const LMSTUDIO_WINDOW_BYTES = 8 * 1024 * 1024;
 const LMSTUDIO_CHUNK_BYTES = 64 * 1024;
 const LMSTUDIO_IDENTITY_OVERLAP_BYTES = 512;
+const LMSTUDIO_MESSAGE_LIMIT = 10_000;
 const LMSTUDIO_USAGE_MARKER = Buffer.from('"usage"');
 
 function resolveLmstudioHome(env = process.env) {
@@ -11417,23 +11418,32 @@ function lmstudioRecordFromSlices({ usageBuffer, metadataBuffer, carried, filePa
     model,
     bucketStart,
     totals,
+    marker,
   };
 }
 
 async function readLmstudioFileRecords(
   filePath,
-  { windowBytes = LMSTUDIO_WINDOW_BYTES, chunkBytes = LMSTUDIO_CHUNK_BYTES } = {},
+  {
+    windowBytes = LMSTUDIO_WINDOW_BYTES,
+    chunkBytes = LMSTUDIO_CHUNK_BYTES,
+    startOffset = 0,
+  } = {},
 ) {
   const handle = await fs.open(filePath, "r");
   try {
     const initialStat = await handle.stat();
     const fallbackTimestamp = initialStat.mtimeMs;
     const records = [];
+    const initialOffset = Math.min(
+      initialStat.size,
+      Math.max(0, Number.isFinite(startOffset) ? Math.floor(startOffset) : 0),
+    );
     let window = Buffer.alloc(0);
-    let windowStart = 0;
-    let metadataStart = 0;
-    let scannedTo = 0;
-    let position = 0;
+    let windowStart = initialOffset;
+    let metadataStart = initialOffset;
+    let scannedTo = initialOffset;
+    let position = initialOffset;
     let carried = {};
     const chunk = Buffer.alloc(Math.max(1, chunkBytes));
 
@@ -11507,6 +11517,7 @@ async function readLmstudioFileRecords(
             ino: finalStat.ino,
             size: finalStat.size,
             mtimeMs: finalStat.size === position ? finalStat.mtimeMs : -1,
+            resumeOffset: Math.max(metadataStart, position - windowBytes),
           },
         };
       }
@@ -11514,6 +11525,21 @@ async function readLmstudioFileRecords(
   } finally {
     await handle.close().catch(() => {});
   }
+}
+
+function retainNewestPassiveMessages(messages, maxEntries) {
+  const limit = Number.isInteger(maxEntries) && maxEntries > 0
+    ? maxEntries
+    : LMSTUDIO_MESSAGE_LIMIT;
+  const entries = Object.entries(messages);
+  if (entries.length <= limit) return messages;
+  entries.sort((left, right) => {
+    const leftTime = Date.parse(left[1]?.updatedAt || left[1]?.bucketStart || "") || 0;
+    const rightTime = Date.parse(right[1]?.updatedAt || right[1]?.bucketStart || "") || 0;
+    if (leftTime !== rightTime) return rightTime - leftTime;
+    return right[0].localeCompare(left[0]);
+  });
+  return Object.fromEntries(entries.slice(0, limit));
 }
 
 function reconcilePassiveUsageEvent({ event, source, messages, hourlyState, touchedBuckets }) {
@@ -11541,7 +11567,13 @@ function reconcilePassiveUsageEvent({ event, source, messages, hourlyState, touc
   return true;
 }
 
-async function parseLmstudioIncremental({ logFiles, cursors, queuePath, onProgress } = {}) {
+async function parseLmstudioIncremental({
+  logFiles,
+  cursors,
+  queuePath,
+  onProgress,
+  messageLimit = LMSTUDIO_MESSAGE_LIMIT,
+} = {}) {
   await ensureDir(path.dirname(queuePath));
   const files = Array.isArray(logFiles) ? [...logFiles].sort((a, b) => a.localeCompare(b)) : [];
   const priorState = cursors.lmstudio && typeof cursors.lmstudio === "object"
@@ -11557,8 +11589,12 @@ async function parseLmstudioIncremental({ logFiles, cursors, queuePath, onProgre
   const touchedBuckets = new Set();
   const presentFiles = new Set(files);
   const cb = typeof onProgress === "function" ? onProgress : null;
+  const effectiveMessageLimit = Number.isInteger(messageLimit) && messageLimit > 0
+    ? messageLimit
+    : LMSTUDIO_MESSAGE_LIMIT;
   let recordsProcessed = 0;
   let eventsAggregated = 0;
+  let stateChanged = false;
 
   for (let index = 0; index < files.length; index++) {
     const filePath = files[index];
@@ -11573,10 +11609,20 @@ async function parseLmstudioIncremental({ logFiles, cursors, queuePath, onProgre
       && previousFile.dev === stat.dev
       && previousFile.ino === stat.ino
       && previousFile.size === stat.size
-      && previousFile.mtimeMs === stat.mtimeMs;
+      && previousFile.mtimeMs === stat.mtimeMs
+      && Number.isFinite(previousFile.resumeOffset);
     if (!unchanged) {
       try {
-        const parsed = await readLmstudioFileRecords(filePath);
+        const canResume = previousFile
+          && previousFile.dev === stat.dev
+          && previousFile.ino === stat.ino
+          && (stat.size > previousFile.size || previousFile.mtimeMs === -1)
+          && Number.isFinite(previousFile.resumeOffset)
+          && previousFile.resumeOffset >= 0
+          && previousFile.resumeOffset <= stat.size;
+        const parsed = await readLmstudioFileRecords(filePath, {
+          startOffset: canResume ? previousFile.resumeOffset : 0,
+        });
         for (const event of parsed.records) {
           if (reconcilePassiveUsageEvent({
             event,
@@ -11588,6 +11634,7 @@ async function parseLmstudioIncremental({ logFiles, cursors, queuePath, onProgre
         }
         fileState[filePath] = { ...parsed.stat, updatedAt: new Date().toISOString() };
         recordsProcessed += 1;
+        stateChanged = true;
       } catch (error) {
         if (process.env.TOKENTRACKER_DEBUG) {
           process.stderr.write(`[lmstudio] skipped ${filePath}: ${error?.message || error}\n`);
@@ -11606,13 +11653,27 @@ async function parseLmstudioIncremental({ logFiles, cursors, queuePath, onProgre
   }
 
   for (const filePath of Object.keys(fileState)) {
-    if (!presentFiles.has(filePath)) delete fileState[filePath];
+    if (!presentFiles.has(filePath)) {
+      delete fileState[filePath];
+      stateChanged = true;
+    }
+  }
+  if (
+    !stateChanged
+    && touchedBuckets.size === 0
+    && Object.keys(messages).length <= effectiveMessageLimit
+  ) {
+    return { recordsProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
   }
   const bucketsQueued = await enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets });
   const updatedAt = new Date().toISOString();
   hourlyState.updatedAt = updatedAt;
   cursors.hourly = hourlyState;
-  cursors.lmstudio = { files: fileState, messages, updatedAt };
+  cursors.lmstudio = {
+    files: fileState,
+    messages: retainNewestPassiveMessages(messages, effectiveMessageLimit),
+    updatedAt,
+  };
   return { recordsProcessed, eventsAggregated, bucketsQueued };
 }
 
@@ -11627,6 +11688,7 @@ async function parseLmstudioIncremental({ logFiles, cursors, queuePath, onProgre
 
 const UNSLOTH_SOURCE = "unsloth";
 const UNSLOTH_SQL_PAGE_SIZE = 500;
+const UNSLOTH_CURSOR_OVERLAP_ROWS = 256;
 const UNSLOTH_METERED_PROVIDER_TYPES = new Set([
   "anthropic",
   "deepseek",
@@ -11657,12 +11719,28 @@ function unslothSqliteFingerprint(dbPath) {
   return fingerprint;
 }
 
+function unslothRowPosition(row) {
+  const createdAt = row?.created_at == null ? "" : String(row.created_at);
+  const id = row?.id == null ? "" : String(row.id);
+  return createdAt && id ? { createdAt, id } : null;
+}
+
+function unslothPositionClause(rowAlias, position, inclusive) {
+  if (!position?.createdAt || !position?.id) return null;
+  const createdAt = sqliteStringLiteral(position.createdAt);
+  const id = sqliteStringLiteral(position.id);
+  const idOperator = inclusive ? ">=" : ">";
+  return `(${rowAlias}.created_at > ${createdAt} OR ` +
+    `(${rowAlias}.created_at = ${createdAt} AND ${rowAlias}.id ${idOperator} ${id}))`;
+}
+
 function readUnslothRowsPaged({
   dbPath,
   select,
   from,
   where,
   rowAlias,
+  lowerBound,
   options,
 }) {
   const requestedPageSize = Number(options?.pageSize);
@@ -11674,14 +11752,8 @@ function readUnslothRowsPaged({
 
   while (true) {
     const clauses = [where, `${rowAlias}.created_at IS NOT NULL`, `${rowAlias}.id IS NOT NULL`];
-    if (after) {
-      const createdAt = sqliteStringLiteral(after.createdAt);
-      const id = sqliteStringLiteral(after.id);
-      clauses.push(
-        `(${rowAlias}.created_at > ${createdAt} OR ` +
-        `(${rowAlias}.created_at = ${createdAt} AND ${rowAlias}.id > ${id}))`,
-      );
-    }
+    const positionClause = unslothPositionClause(rowAlias, after || lowerBound, !after);
+    if (positionClause) clauses.push(positionClause);
     const page = readSqliteJsonRows(dbPath, `
       SELECT
         ${select}
@@ -11693,12 +11765,8 @@ function readUnslothRowsPaged({
     rows.push(...page);
     if (page.length < pageSize) break;
 
-    const last = page[page.length - 1];
-    const next = {
-      createdAt: last?.created_at == null ? "" : String(last.created_at),
-      id: last?.id == null ? "" : String(last.id),
-    };
-    if (!next.createdAt || !next.id || (
+    const next = unslothRowPosition(page[page.length - 1]);
+    if (!next || (
       after && next.createdAt === after.createdAt && next.id === after.id
     )) {
       throw new Error("Unsloth Studio pagination did not advance");
@@ -11709,7 +11777,7 @@ function readUnslothRowsPaged({
   return rows;
 }
 
-function readUnslothUsageRows(dbPath, sqliteOptions = {}) {
+function readUnslothUsageRows(dbPath, sqliteOptions = {}, scanState = {}) {
   if (!dbPath || !fssync.existsSync(dbPath)) return [];
   const options = {
     label: "Unsloth Studio",
@@ -11735,10 +11803,9 @@ function readUnslothUsageRows(dbPath, sqliteOptions = {}) {
     const threadModel = tables.has("chat_threads") ? "t.model_id" : "NULL";
     const field = (jsonPath, alias) =>
       `CASE WHEN json_valid(m.metadata_json) THEN json_extract(m.metadata_json, '${jsonPath}') ELSE NULL END AS ${alias}`;
-    // Usage rows can be updated in place without an updated_at column, so a
-    // persisted timestamp watermark would miss older corrections. Keyset pages
-    // keep every sqlite3 response bounded while preserving exact reconciliation
-    // whenever the database fingerprint changes.
+    // Re-read a bounded tail because Studio finalizes recent rows in place and
+    // does not expose an updated_at column. Older immutable history stays behind
+    // the persisted timestamp/ID overlap cursor.
     const chatRows = readUnslothRowsPaged({
       dbPath,
       select: `
@@ -11759,6 +11826,7 @@ function readUnslothUsageRows(dbPath, sqliteOptions = {}) {
       from: `chat_messages m ${joinThread}`,
       where: "m.role = 'assistant'",
       rowAlias: "m",
+      lowerBound: scanState?.chat?.overlap,
       options,
     });
     rows.push(...chatRows);
@@ -11792,6 +11860,7 @@ function readUnslothUsageRows(dbPath, sqliteOptions = {}) {
         from: "api_usage_events e",
         where: "",
         rowAlias: "e",
+        lowerBound: scanState?.api?.overlap,
         options,
       }));
     }
@@ -11848,6 +11917,7 @@ async function parseUnslothIncremental({
   onProgress,
   env,
   sqliteOptions,
+  overlapRows = UNSLOTH_CURSOR_OVERLAP_ROWS,
 } = {}) {
   await ensureDir(path.dirname(queuePath));
   const resolvedDb = dbPath || resolveUnslothDbPath(env || process.env);
@@ -11863,11 +11933,14 @@ async function parseUnslothIncremental({
   }
 
   const initialFingerprint = unslothSqliteFingerprint(resolvedDb);
-  if (sameSqliteFingerprint(initialFingerprint, priorState.fingerprint)) {
+  const hasBoundedScan = priorState.scan
+    && typeof priorState.scan === "object"
+    && Object.keys(messages).length <= UNSLOTH_CURSOR_OVERLAP_ROWS * 2;
+  if (hasBoundedScan && sameSqliteFingerprint(initialFingerprint, priorState.fingerprint)) {
     return { recordsProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
   }
 
-  const rows = readUnslothUsageRows(resolvedDb, sqliteOptions);
+  const rows = readUnslothUsageRows(resolvedDb, sqliteOptions, priorState.scan);
   const hourlyState = normalizeHourlyState(cursors?.hourly);
   const touchedBuckets = new Set();
   const cb = typeof onProgress === "function" ? onProgress : null;
@@ -11894,6 +11967,33 @@ async function parseUnslothIncremental({
     }
   }
 
+  const retention = Number.isInteger(overlapRows) && overlapRows > 0
+    ? Math.min(overlapRows, UNSLOTH_CURSOR_OVERLAP_ROWS)
+    : UNSLOTH_CURSOR_OVERLAP_ROWS;
+  const nextScan = {};
+  const retainedMessageKeys = new Set();
+  for (const kind of ["chat", "api"]) {
+    const kindRows = rows.filter((row) => (row?.usage_kind === "api" ? "api" : "chat") === kind);
+    if (kindRows.length === 0) {
+      if (priorState.scan?.[kind]) nextScan[kind] = priorState.scan[kind];
+      for (const key of Object.keys(messages)) {
+        if (key.startsWith(`unsloth:${kind}:`)) retainedMessageKeys.add(key);
+      }
+      continue;
+    }
+    const tail = kindRows.slice(-retention);
+    const overlap = unslothRowPosition(tail[0]);
+    const latest = unslothRowPosition(kindRows[kindRows.length - 1]);
+    if (overlap && latest) nextScan[kind] = { overlap, latest };
+    for (const row of tail) {
+      const event = normalizeUnslothUsageRow(row);
+      if (event) retainedMessageKeys.add(event.key);
+    }
+  }
+  for (const key of Object.keys(messages)) {
+    if (key.startsWith("unsloth:") && !retainedMessageKeys.has(key)) delete messages[key];
+  }
+
   const bucketsQueued = await enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets });
   const finalFingerprint = unslothSqliteFingerprint(resolvedDb);
   const updatedAt = new Date().toISOString();
@@ -11901,6 +12001,7 @@ async function parseUnslothIncremental({
   cursors.hourly = hourlyState;
   cursors.unsloth = {
     messages,
+    scan: nextScan,
     fingerprint: sameSqliteFingerprint(initialFingerprint, finalFingerprint)
       ? finalFingerprint
       : initialFingerprint,
