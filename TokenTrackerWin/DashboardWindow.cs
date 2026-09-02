@@ -233,41 +233,66 @@ internal sealed class DashboardWindow : Window
         // Loaded can be raised more than once and a process-failure recovery can race
         // with a pending initialization. Share the same task so only one WebView2
         // environment is created at a time.
-        return _initializationTask ??= InitializeWebViewWithRetryAsync();
+        if (_initializationTask is { } pending) return pending;
+
+        // Publish the task before starting the retry routine. The WebView2 APIs can
+        // complete synchronously (especially with a warm profile); starting the
+        // routine first would let its cleanup run before the field was assigned,
+        // leaving a completed task cached forever and blocking recovery.
+        var completion = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var task = completion.Task;
+        _initializationTask = task;
+        _ = RunWebViewInitializationAsync(task, completion);
+        return task;
     }
 
     private async Task InitializeWebViewWithRetryAsync()
     {
         Exception? lastError = null;
+        for (var attempt = 1; attempt <= 3; attempt++)
+        {
+            try
+            {
+                await InitializeWebViewCoreAsync();
+                return;
+            }
+            catch (Exception ex) when (attempt < 3)
+            {
+                lastError = ex;
+                Log($"webview initialization attempt {attempt} failed: {ex.Message}");
+                ReplaceWebViewControl();
+                await Task.Delay(TimeSpan.FromMilliseconds(300 * attempt));
+            }
+            catch (Exception ex)
+            {
+                lastError = ex;
+                Log($"webview initialization attempt {attempt} failed: {ex.Message}");
+            }
+        }
+
+        throw new InvalidOperationException(
+            "WebView2 could not be initialized after three attempts.", lastError);
+    }
+
+    private async Task RunWebViewInitializationAsync(
+        Task identity, TaskCompletionSource<bool> completion)
+    {
         try
         {
-            for (var attempt = 1; attempt <= 3; attempt++)
-            {
-                try
-                {
-                    await InitializeWebViewCoreAsync();
-                    return;
-                }
-                catch (Exception ex) when (attempt < 3)
-                {
-                    lastError = ex;
-                    Log($"webview initialization attempt {attempt} failed: {ex.Message}");
-                    ReplaceWebViewControl();
-                    await Task.Delay(TimeSpan.FromMilliseconds(300 * attempt));
-                }
-                catch (Exception ex)
-                {
-                    lastError = ex;
-                    Log($"webview initialization attempt {attempt} failed: {ex.Message}");
-                }
-            }
-
-            throw new InvalidOperationException(
-                "WebView2 could not be initialized after three attempts.", lastError);
+            await InitializeWebViewWithRetryAsync();
+            completion.TrySetResult(true);
+        }
+        catch (Exception ex)
+        {
+            completion.TrySetException(ex);
         }
         finally
         {
-            _initializationTask = null;
+            // A recovery can replace this task while the previous one unwinds;
+            // never clear the replacement task by identity accident.
+            if (ReferenceEquals(_initializationTask, identity))
+                _initializationTask = null;
         }
     }
 
