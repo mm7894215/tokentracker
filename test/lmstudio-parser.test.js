@@ -157,6 +157,72 @@ test("LM Studio incremental parsing deduplicates mirrored responses and appended
   }
 });
 
+test("LM Studio preserves response identity beyond the resume window", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "lmstudio-resume-identity-"));
+  try {
+    const logPath = path.join(dir, "server.log");
+    const prefix = [
+      "[2026-07-09 10:00:00][INFO][carried-model]",
+      "Final response: {",
+      '  "id": "chatcmpl-carried",',
+      '  "model": "carried-model",',
+      `  "pending": "${"x".repeat(1_024)}",`,
+    ].join("\n");
+    fs.writeFileSync(logPath, prefix);
+    const queuePath = path.join(dir, "queue.jsonl");
+    const cursors = {};
+    const readerOptions = { windowBytes: 192, chunkBytes: 41 };
+
+    const beforeUsage = await parseLmstudioIncremental({
+      logFiles: [logPath],
+      cursors,
+      queuePath,
+      readerOptions,
+    });
+    assert.deepEqual(beforeUsage, {
+      recordsProcessed: 1,
+      eventsAggregated: 0,
+      bucketsQueued: 0,
+    });
+    const resumeIdentity = cursors.lmstudio.files[logPath].resumeIdentity;
+    assert.deepEqual({
+      responseId: resumeIdentity.responseId,
+      model: resumeIdentity.model,
+    }, {
+      responseId: "chatcmpl-carried",
+      model: "carried-model",
+    });
+    assert.ok(Number.isFinite(resumeIdentity.timestamp));
+
+    fs.appendFileSync(logPath, [
+      "\n  \"usage\": {",
+      '    "prompt_tokens": 10,',
+      '    "completion_tokens": 4,',
+      '    "total_tokens": 14',
+      "  }",
+      "}",
+      "",
+    ].join("\n"));
+    const afterUsage = await parseLmstudioIncremental({
+      logFiles: [logPath],
+      cursors,
+      queuePath,
+      readerOptions,
+    });
+    assert.deepEqual(afterUsage, {
+      recordsProcessed: 1,
+      eventsAggregated: 1,
+      bucketsQueued: 1,
+    });
+    assert.ok(cursors.lmstudio.messages["lmstudio:chatcmpl-carried"]);
+    assert.equal(readQueue(queuePath).at(-1).model, "carried-model");
+    assert.equal(readQueue(queuePath).at(-1).total_tokens, 14);
+    assert.doesNotMatch(JSON.stringify(cursors), /x{32}/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("LM Studio bounds long-history state and resumes without duplicate rows", async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "lmstudio-history-"));
   try {

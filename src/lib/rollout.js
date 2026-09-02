@@ -11386,6 +11386,19 @@ function absorbLmstudioIdentity(identity, buffer) {
   if (timestamp) identity.timestamp = timestamp;
 }
 
+function normalizeLmstudioResumeIdentity(value) {
+  const identity = {};
+  const responseId = typeof value?.responseId === "string" ? value.responseId : "";
+  if (["chatcmpl-", "cmpl-", "resp_"].some((prefix) => responseId.startsWith(prefix))) {
+    identity.responseId = responseId;
+  }
+  const model = typeof value?.model === "string" ? value.model.trim() : "";
+  if (model) identity.model = model;
+  const timestamp = Number(value?.timestamp);
+  if (Number.isFinite(timestamp) && timestamp > 0) identity.timestamp = timestamp;
+  return identity;
+}
+
 function lmstudioRecordFromSlices({ usageBuffer, metadataBuffer, carried, filePath, marker, fallbackTimestamp }) {
   let usage;
   try {
@@ -11428,6 +11441,7 @@ async function readLmstudioFileRecords(
     windowBytes = LMSTUDIO_WINDOW_BYTES,
     chunkBytes = LMSTUDIO_CHUNK_BYTES,
     startOffset = 0,
+    resumeIdentity,
   } = {},
 ) {
   const handle = await fs.open(filePath, "r");
@@ -11444,7 +11458,7 @@ async function readLmstudioFileRecords(
     let metadataStart = initialOffset;
     let scannedTo = initialOffset;
     let position = initialOffset;
-    let carried = {};
+    let carried = normalizeLmstudioResumeIdentity(resumeIdentity);
     const chunk = Buffer.alloc(Math.max(1, chunkBytes));
 
     while (true) {
@@ -11510,6 +11524,7 @@ async function readLmstudioFileRecords(
 
       if (atEof) {
         const finalStat = await handle.stat().catch(() => initialStat);
+        const nextIdentity = normalizeLmstudioResumeIdentity(carried);
         return {
           records,
           stat: {
@@ -11518,6 +11533,9 @@ async function readLmstudioFileRecords(
             size: finalStat.size,
             mtimeMs: finalStat.size === position ? finalStat.mtimeMs : -1,
             resumeOffset: Math.max(metadataStart, position - windowBytes),
+            ...(Object.keys(nextIdentity).length > 0
+              ? { resumeIdentity: nextIdentity }
+              : {}),
           },
         };
       }
@@ -11573,6 +11591,7 @@ async function parseLmstudioIncremental({
   queuePath,
   onProgress,
   messageLimit = LMSTUDIO_MESSAGE_LIMIT,
+  readerOptions,
 } = {}) {
   await ensureDir(path.dirname(queuePath));
   const files = Array.isArray(logFiles) ? [...logFiles].sort((a, b) => a.localeCompare(b)) : [];
@@ -11621,7 +11640,9 @@ async function parseLmstudioIncremental({
           && previousFile.resumeOffset >= 0
           && previousFile.resumeOffset <= stat.size;
         const parsed = await readLmstudioFileRecords(filePath, {
+          ...(readerOptions && typeof readerOptions === "object" ? readerOptions : {}),
           startOffset: canResume ? previousFile.resumeOffset : 0,
+          resumeIdentity: canResume ? previousFile.resumeIdentity : undefined,
         });
         for (const event of parsed.records) {
           if (reconcilePassiveUsageEvent({
