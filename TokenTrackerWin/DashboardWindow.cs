@@ -585,6 +585,25 @@ internal sealed class DashboardWindow : Window
         }
     }
 
+    /// <summary>
+    /// Recover a WebView2 disposal race reported by the shared WPF dispatcher.
+    /// Returns false when this window is already closing or hidden, allowing the
+    /// central exception policy to leave an unrelated exception unhandled.
+    /// </summary>
+    internal bool RecoverFromDispatcherException(Exception exception)
+    {
+        if (_exiting || !IsVisible) return false;
+        try
+        {
+            Dispatcher.BeginInvoke(new Action(() => _ = RecoverWebViewAsync()));
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     private void NavigateWhenServerReady(string pathAndQuery)
     {
         _pendingPathAndQuery = pathAndQuery;

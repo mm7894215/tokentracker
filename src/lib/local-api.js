@@ -1140,7 +1140,30 @@ function createLocalApiHandler({ queuePath }) {
   const cookiePath = path.join(trackerDataDir, "relay-cookies.json");
   const localSyncDeviceTokenCache = new Map();
   const localSyncDeviceTokenInflight = new Map();
-  let accountViewFailure = { key: null, until: 0 };
+  // A dashboard refresh fans out to several account-view endpoints. Keep the
+  // circuit-breaker state per session instead of one global slot (a successful
+  // request for one account must not clear another account's failure), and
+  // suppress the duplicate fan-out while the first cloud probe is pending.
+  const accountViewFailures = new Map();
+  const accountViewInFlight = new Set();
+
+  function accountViewFailureUntil(failureKey) {
+    const until = accountViewFailures.get(failureKey) || 0;
+    if (until > Date.now()) return until;
+    if (until) accountViewFailures.delete(failureKey);
+    return 0;
+  }
+
+  function rememberAccountViewFailure(failureKey) {
+    accountViewFailures.set(failureKey, Date.now() + ACCOUNT_VIEW_FAILURE_BACKOFF_MS);
+    // Refresh-token rotation or account switching can produce many keys over a
+    // long-lived tray session. Bound the map without affecting the active key.
+    while (accountViewFailures.size > 16) {
+      const oldest = accountViewFailures.keys().next().value;
+      if (!oldest || oldest === failureKey) break;
+      accountViewFailures.delete(oldest);
+    }
+  }
 
   // Load persisted cookies on startup
   try {
@@ -1415,9 +1438,16 @@ function createLocalApiHandler({ queuePath }) {
     if (!refreshToken) return "fallthrough";
     const runtime = resolveRuntimeConfig();
     const failureKey = `${runtime.baseUrl}\0${refreshToken}`;
-    if (accountViewFailure.key === failureKey && accountViewFailure.until > Date.now()) {
+    if (accountViewFailureUntil(failureKey) > Date.now()) {
       return "fallthrough";
     }
+    // Six native dashboard requests normally arrive together. If the cloud is
+    // already being probed for this session, let the remaining requests use
+    // their local fallback instead of opening more timeout-bound sockets.
+    if (accountViewInFlight.has(failureKey)) {
+      return "fallthrough";
+    }
+    accountViewInFlight.add(failureKey);
     const envTimeout = process.env.TOKENTRACKER_HTTP_TIMEOUT_MS
       ? parseInt(process.env.TOKENTRACKER_HTTP_TIMEOUT_MS, 10)
       : 0;
@@ -1432,15 +1462,12 @@ function createLocalApiHandler({ queuePath }) {
         timeoutMs,
       });
       if (!out || out.data == null) {
-        accountViewFailure = {
-          key: failureKey,
-          until: Date.now() + ACCOUNT_VIEW_FAILURE_BACKOFF_MS,
-        };
+        rememberAccountViewFailure(failureKey);
         return "fallthrough";
       }
       if (out.rotatedRefreshToken) setRelayRefreshToken(out.rotatedRefreshToken);
       if (out.rotatedCsrfToken) setRelayCsrfToken(out.rotatedCsrfToken);
-      accountViewFailure = { key: null, until: 0 };
+      accountViewFailures.delete(failureKey);
       res.writeHead(200, {
         "Content-Type": "application/json",
         "Cache-Control": "no-store",
@@ -1454,11 +1481,10 @@ function createLocalApiHandler({ queuePath }) {
       if (resolveRuntimeConfig().debug) {
         console.warn(`[LocalAPI] account view fallback for ${usageSlug}:`, e?.message || e);
       }
-      accountViewFailure = {
-        key: failureKey,
-        until: Date.now() + ACCOUNT_VIEW_FAILURE_BACKOFF_MS,
-      };
+      rememberAccountViewFailure(failureKey);
       return "fallthrough";
+    } finally {
+      accountViewInFlight.delete(failureKey);
     }
   }
 
