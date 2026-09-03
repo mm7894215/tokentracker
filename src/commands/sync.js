@@ -15,6 +15,7 @@ const {
   chmod600IfPossible,
   openLock,
   inspectLock,
+  updateJsonLocked,
 } = require("../lib/fs");
 const { physicalJsonlRecords } = require("../lib/jsonl-lines");
 const {
@@ -2927,12 +2928,12 @@ async function cmdSync(argv, context = {}) {
           // migration observed. A concurrent login may replace the backend URL
           // while preserving the old key, or another writer may replace the key
           // while the legacy URL is still present.
-          const latestConfig = (await readJson(configPath)) || config;
-          const hasLegacyBaseUrl = isLegacyInsforgeBaseUrl(latestConfig.baseUrl);
-          const hasUnchangedLegacyAnonKey =
-            legacyBaseUrlMigration.hadPersistedAnonKey &&
-            latestConfig.anonKey === legacyBaseUrlMigration.persistedAnonKey;
-          if (hasLegacyBaseUrl || hasUnchangedLegacyAnonKey) {
+          await updateJsonLocked(configPath, async (latestConfig) => {
+            const hasLegacyBaseUrl = isLegacyInsforgeBaseUrl(latestConfig.baseUrl);
+            const hasUnchangedLegacyAnonKey =
+              legacyBaseUrlMigration.hadPersistedAnonKey &&
+              latestConfig.anonKey === legacyBaseUrlMigration.persistedAnonKey;
+            if (!hasLegacyBaseUrl && !hasUnchangedLegacyAnonKey) return null;
             if (hasLegacyBaseUrl) {
               latestConfig.deviceToken = successfulDeviceToken;
               delete latestConfig.baseUrl;
@@ -2940,9 +2941,8 @@ async function cmdSync(argv, context = {}) {
             if (hasUnchangedLegacyAnonKey) {
               delete latestConfig.anonKey;
             }
-            await writeJson(configPath, latestConfig);
-            await chmod600IfPossible(configPath);
-          }
+            return latestConfig;
+          });
         }
         // Record success so the exponential backoff step resets — otherwise
         // a single past failure keeps us pessimistically throttled forever.
