@@ -197,6 +197,7 @@ describe("ZCode team-plan quotas", () => {
         const result = await fetchZcodeLimits({
           home,
           env: {},
+          /** Emulate a server that exposes the fixture only with the full team scope. */
           fetchImpl: async (url, options) => {
             requests.push({ url, headers: options.headers });
             // The server accepts the same key, but needs the team scope to find its plan.
@@ -236,6 +237,7 @@ describe("ZCode team-plan quotas", () => {
       const result = await fetchZcodeLimits({
         home,
         env: { TOKENTRACKER_ZCODE_MONITOR_QUOTA_URL: "https://quota.example.test/limit?locale=en&type=1" },
+        /** Check decoded routing headers and preserved query parameters before responding. */
         fetchImpl: async (url, options) => {
           assert.equal(url, "https://quota.example.test/limit?locale=en&type=2");
           assert.equal(options.headers["bigmodel-organization"], "org:example");
@@ -259,6 +261,7 @@ describe("ZCode team-plan quotas", () => {
       const result = await fetchZcodeLimits({
         home,
         env: {},
+        /** Capture the personal request so its complete URL and headers can be compared. */
         fetchImpl: async (url, options) => {
           requests.push({ url, headers: options.headers });
           return { ok: true, status: 200, async json() { return realLiteCodingPlanQuotaBody(); } };
@@ -280,6 +283,7 @@ describe("ZCode team-plan quotas", () => {
       },
     }, async (home, v2) => {
       const requests = [];
+      /** Capture both reads across the settings change while keeping the quota response stable. */
       const fetchImpl = async (url, options) => {
         requests.push({ url, headers: options.headers });
         return { ok: true, status: 200, async json() { return realLiteCodingPlanQuotaBody(); } };
@@ -313,6 +317,7 @@ describe("ZCode team-plan quotas", () => {
         const result = await fetchZcodeLimits({
           home,
           env: {},
+          /** Reject invented team scope when a stored selection cannot identify both IDs. */
           fetchImpl: async (url, options) => {
             assert.equal(new URL(url).searchParams.has("type"), false);
             assert.equal(options.headers["bigmodel-organization"], undefined);
