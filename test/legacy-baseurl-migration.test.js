@@ -259,6 +259,134 @@ test("sync preserves the legacy device token and replays the queue to the curren
   });
 });
 
+test("sync preserves an anon key replaced while legacy migration is uploading", async () => {
+  await withTempHome(async (home) => {
+    const trackerDir = await writeTrackerState(home, {});
+    await cmdSync(["--auto"]);
+
+    const queue = sampleQueueLine();
+    const configPath = path.join(trackerDir, "config.json");
+    await writeTrackerState(home, {
+      config: {
+        baseUrl: LEGACY_BASE_URL,
+        anonKey: "legacy-anon-key",
+        deviceToken: "legacy-token",
+        machineId: "machine-1",
+      },
+      queue,
+      queueState: { offset: Buffer.byteLength(queue) },
+    });
+
+    global.fetch = async (url) => {
+      if (String(url).endsWith("/functions/tokentracker-ingest")) {
+        await fs.writeFile(
+          configPath,
+          JSON.stringify({
+            baseUrl: LEGACY_BASE_URL,
+            anonKey: "current-anon-key",
+            deviceToken: "legacy-token",
+            machineId: "machine-1",
+          }),
+          "utf8",
+        );
+        return {
+          ok: true,
+          status: 200,
+          headers: { get: () => null },
+          text: async () => JSON.stringify({ inserted: 1, skipped: 0 }),
+        };
+      }
+      return {
+        ok: true,
+        status: 200,
+        headers: { get: () => null },
+        text: async () => "{}",
+        json: async () => ({}),
+      };
+    };
+
+    await cmdSync(["--auto"]);
+
+    const config = await readJsonFile(configPath);
+    assert.equal(config.baseUrl, undefined);
+    assert.equal(config.anonKey, "current-anon-key");
+    assert.equal(config.deviceToken, "legacy-token");
+  });
+});
+
+test("sync removes an unchanged legacy anon key after a concurrent login updates the base URL", async () => {
+  await withTempHome(async (home) => {
+    const trackerDir = await writeTrackerState(home, {});
+    await cmdSync(["--auto"]);
+
+    const queue = sampleQueueLine();
+    const configPath = path.join(trackerDir, "config.json");
+    await writeTrackerState(home, {
+      config: {
+        baseUrl: LEGACY_BASE_URL,
+        anonKey: "legacy-anon-key",
+        deviceToken: "legacy-token",
+        machineId: "machine-1",
+      },
+      queue,
+      queueState: { offset: Buffer.byteLength(queue) },
+    });
+
+    const ingestCalls = [];
+    global.fetch = async (url, options = {}) => {
+      if (String(url).endsWith("/functions/tokentracker-ingest")) {
+        ingestCalls.push(options);
+        if (ingestCalls.length === 1) {
+          await fs.writeFile(
+            configPath,
+            JSON.stringify({
+              baseUrl: DEFAULT_BASE_URL,
+              anonKey: "legacy-anon-key",
+              deviceToken: "current-login-token",
+              user_id: "current-user",
+              machineId: "machine-1",
+            }),
+            "utf8",
+          );
+        }
+        return {
+          ok: true,
+          status: 200,
+          headers: { get: () => null },
+          text: async () => JSON.stringify({ inserted: 1, skipped: 0 }),
+        };
+      }
+      return {
+        ok: true,
+        status: 200,
+        headers: { get: () => null },
+        text: async () => "{}",
+        json: async () => ({}),
+      };
+    };
+
+    await cmdSync(["--auto"]);
+    const config = await readJsonFile(configPath);
+    assert.equal(config.baseUrl, DEFAULT_BASE_URL);
+    assert.equal(config.anonKey, undefined);
+    assert.equal(config.deviceToken, "current-login-token");
+    assert.equal(config.user_id, "current-user");
+
+    const pendingRow = {
+      ...JSON.parse(queue),
+      hour_start: "2026-04-20T00:30:00.000Z",
+      model: "gpt-5.4-after-login",
+    };
+    const pendingLine = `${JSON.stringify(pendingRow)}\n`;
+    await fs.appendFile(path.join(trackerDir, "queue.jsonl"), pendingLine, "utf8");
+    await cmdSync(["--auto"]);
+
+    assert.equal(ingestCalls.length, 2);
+    assert.equal(ingestCalls[1].headers.apikey, DEFAULT_ANON_KEY);
+    assert.equal(ingestCalls[1].headers.Authorization, "Bearer current-login-token");
+  });
+});
+
 test("sync adopts a current-backend device token supplied by the signed-in local API", async () => {
   await withTempHome(async (home) => {
     const trackerDir = await writeTrackerState(home, {});

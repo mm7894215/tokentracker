@@ -561,6 +561,8 @@ async function cmdSync(argv, context = {}) {
       legacyBaseUrlMigration = {
         previousDeviceToken,
         replacementDeviceToken,
+        hadPersistedAnonKey: Object.prototype.hasOwnProperty.call(config, "anonKey"),
+        persistedAnonKey: config.anonKey,
       };
     }
     const codexCursorRoots = [process.env.CODEX_HOME || path.join(home, ".codex")];
@@ -2921,13 +2923,23 @@ async function cmdSync(argv, context = {}) {
         if (legacyBaseUrlMigration && uploadResult.batches > 0) {
           // device-login does not share the sync lock and may have written a
           // fresh current-backend config while the scan/upload was running.
-          // Re-read before committing, merge only while the legacy marker still
-          // exists, and never clobber a concurrently completed login.
+          // Re-read before committing and only remove the anonymous key this
+          // migration observed. A concurrent login may replace the backend URL
+          // while preserving the old key, or another writer may replace the key
+          // while the legacy URL is still present.
           const latestConfig = (await readJson(configPath)) || config;
-          if (isLegacyInsforgeBaseUrl(latestConfig.baseUrl)) {
-            latestConfig.deviceToken = successfulDeviceToken;
-            delete latestConfig.baseUrl;
-            delete latestConfig.anonKey;
+          const hasLegacyBaseUrl = isLegacyInsforgeBaseUrl(latestConfig.baseUrl);
+          const hasUnchangedLegacyAnonKey =
+            legacyBaseUrlMigration.hadPersistedAnonKey &&
+            latestConfig.anonKey === legacyBaseUrlMigration.persistedAnonKey;
+          if (hasLegacyBaseUrl || hasUnchangedLegacyAnonKey) {
+            if (hasLegacyBaseUrl) {
+              latestConfig.deviceToken = successfulDeviceToken;
+              delete latestConfig.baseUrl;
+            }
+            if (hasUnchangedLegacyAnonKey) {
+              delete latestConfig.anonKey;
+            }
             await writeJson(configPath, latestConfig);
             await chmod600IfPossible(configPath);
           }
