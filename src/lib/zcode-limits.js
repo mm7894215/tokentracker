@@ -95,6 +95,11 @@ function loadZcodeProviderAvailability({ home, env } = {}) {
   }
 }
 
+/**
+ * Decode routing identifiers from a complete team selection for the given family.
+ * Returns null for personal, malformed, or legacy project-only selections.
+ * @returns {{ organizationId: string, projectId: string } | null}
+ */
 function parseZcodeTeamContext(selection, family) {
   if (family !== "bigmodel" && family !== "zai") return null;
   const prefix = `team-plan:builtin:${family}-coding-plan:`;
@@ -112,6 +117,10 @@ function parseZcodeTeamContext(selection, family) {
   }
 }
 
+/**
+ * Read selected plans in active-family order, retaining each plan's team scope.
+ * Only the provider key and decoded organization/project identifiers are retained.
+ */
 function loadZcodeSelectedPlans({ home, env } = {}) {
   const zcodeHome = resolveZcodeHome({ home, env });
   const settingPath = path.join(zcodeHome, "v2", "setting.json");
@@ -135,6 +144,7 @@ function loadZcodeSelectedPlans({ home, env } = {}) {
   }
 }
 
+/** Return the ordered provider keys without exposing the internal team context. */
 function loadZcodeSelectedPlanProviderKeys(options = {}) {
   return loadZcodeSelectedPlans(options).map((plan) => plan.providerKey);
 }
@@ -268,6 +278,10 @@ function resolveZcodeProviderQuotaUrl(providerKey, provider, env = process.env) 
   return `${origin.replace(/\/$/, "")}${ZCODE_MONITOR_QUOTA_PATH}`;
 }
 
+/**
+ * Build quota/billing candidates from enabled providers and their existing keys.
+ * Selected plans take precedence; team scope stays attached to its own provider.
+ */
 function loadZcodeAuthCandidates({ home, env } = {}) {
   const zcodeHome = resolveZcodeHome({ home, env });
   const configPath = path.join(zcodeHome, "v2", "config.json");
@@ -490,6 +504,11 @@ async function fetchZcodeBilling(apiKey, { fetchImpl = fetch, baseUrl, env, home
   return res.json();
 }
 
+/**
+ * Fetch quota using the existing provider key and optional team routing metadata.
+ * Organization/project IDs select the subscription at the resolved provider URL;
+ * they do not choose the destination or include the contents of the settings file.
+ */
 async function fetchZcodeCodingPlanQuota(apiKey, { fetchImpl = fetch, quotaUrl, teamContext } = {}) {
   const headers = {
     authorization: apiKey,
@@ -730,6 +749,10 @@ function zcodeLogFallbackResult(logRecord, errors = []) {
   };
 }
 
+/**
+ * Return normalized quota windows, trying eligible providers and recent billing logs.
+ * Credentials and internal team routing identifiers are omitted from the result.
+ */
 async function fetchZcodeLimits({ home, env, fetchImpl = fetch, nowMs = Date.now() } = {}) {
   if (!isZcodeInstalled({ home, env })) {
     return { configured: false };

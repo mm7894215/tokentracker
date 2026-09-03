@@ -167,6 +167,7 @@ function writeZcodeBalanceLog(v2, timestamp, { providerId = "builtin:zai-start-p
   );
 }
 
+/** Run a quota scenario with synthetic provider keys in a temporary ZCode home. */
 function withZcodePlanSettings(settings, run) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tt-zcode-team-plan-"));
   const v2 = path.join(tmp, ".zcode", "v2");
