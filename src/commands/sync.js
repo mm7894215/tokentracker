@@ -4283,16 +4283,22 @@ async function resetUploadOffsetForZcodeRepair(queueStatePath, note) {
   return true;
 }
 
-async function dropZcodeQueueRows(filePath, { retainRetractions = false } = {}) {
+// Drops zcode rows ahead of a from-scratch re-parse. The re-parse can only
+// cover rows still present in the source DB, and ZCode prunes old sessions —
+// so keys the fresh parse cannot re-replicate must keep their last uploaded
+// value. Write those rows back verbatim instead of zero retractions: a
+// replay of zero rows permanently erases real history on the cloud (latest
+// per bucket key wins) for every key the fresh parse does not cover.
+async function dropZcodeQueueRows(filePath, { preserveLatestRows = false } = {}) {
   let raw;
   try {
     raw = await fs.readFile(filePath, "utf8");
   } catch (error) {
-    if (error?.code === "ENOENT") return { removed: 0, retractions: 0 };
+    if (error?.code === "ENOENT") return { removed: 0, preserved: 0 };
     throw error;
   }
   const kept = [];
-  const retractions = new Map();
+  const preservedRows = new Map();
   let removed = 0;
   for (const line of raw.split("\n")) {
     if (!line.trim()) continue;
@@ -4309,34 +4315,28 @@ async function dropZcodeQueueRows(filePath, { retainRetractions = false } = {}) 
         ? row.model.trim()
         : "unknown";
       const hourStart = typeof row.hour_start === "string" ? row.hour_start : "";
-      if (retainRetractions && hourStart) {
-        retractions.set(`${model}|${hourStart}`, {
-          source: "zcode",
+      if (preserveLatestRows && hourStart) {
+        const bucketKey = [
+          typeof row.project_key === "string" ? row.project_key.trim() : "",
           model,
-          hour_start: hourStart,
-          input_tokens: 0,
-          cached_input_tokens: 0,
-          cache_creation_input_tokens: 0,
-          output_tokens: 0,
-          reasoning_output_tokens: 0,
-          total_tokens: 0,
-          conversation_count: 0,
-        });
+          hourStart,
+        ].filter(Boolean).join("|");
+        preservedRows.set(bucketKey, line);
       }
       continue;
     }
     kept.push(line);
   }
-  if (removed === 0) return { removed: 0, retractions: 0 };
+  if (removed === 0) return { removed: 0, preserved: 0 };
   await backupExistingFile(filePath);
   const tmp = `${filePath}.zcoderepair.${process.pid}.${Date.now()}`;
   const rewritten = [
     ...kept,
-    ...[...retractions.values()].map((row) => JSON.stringify(row)),
+    ...preservedRows.values(),
   ];
   await fs.writeFile(tmp, rewritten.length ? rewritten.join("\n") + "\n" : "", "utf8");
   await fs.rename(tmp, filePath);
-  return { removed, retractions: retractions.size };
+  return { removed, preserved: preservedRows.size };
 }
 
 async function repairZcodeUsageMigration({
@@ -4352,10 +4352,10 @@ async function repairZcodeUsageMigration({
   const migrations = (cursors.migrations ||= {});
   if (migrations[migrationKey]) return false;
 
-  const mainRepair = await dropZcodeQueueRows(queuePath, { retainRetractions: true });
+  const mainRepair = await dropZcodeQueueRows(queuePath, { preserveLatestRows: true });
   const projectRepair = projectQueuePath
-    ? await dropZcodeQueueRows(projectQueuePath)
-    : { removed: 0, retractions: 0 };
+    ? await dropZcodeQueueRows(projectQueuePath, { preserveLatestRows: true })
+    : { removed: 0, preserved: 0 };
 
   const hourly = cursors.hourly && typeof cursors.hourly === "object" ? cursors.hourly : null;
   if (hourly?.buckets) {
@@ -4388,7 +4388,7 @@ async function repairZcodeUsageMigration({
     appliedAt: new Date().toISOString(),
     removedMain: mainRepair.removed,
     removedProject: projectRepair.removed,
-    retractions: mainRepair.retractions,
+    preservedRows: mainRepair.preserved,
   };
   return true;
 }
