@@ -226,6 +226,67 @@ describe("UsageLimitsPanel", () => {
     expect(screen.getByRole("button", { name: "Copied" })).toBeInTheDocument();
   });
 
+  it("renders Command Code 5h / Weekly windows with the plan tier", () => {
+    render(
+      <UsageLimitsPanel
+        commandCode={{
+          configured: true,
+          error: null,
+          plan_label: "GOAT",
+          primary_window: {
+            used_percent: 32,
+            reset_at: "2026-09-06T20:00:00.000Z",
+          },
+          secondary_window: {
+            used_percent: 41,
+            reset_at: "2026-09-13T00:00:00.000Z",
+          },
+        }}
+        order={["commandCode"]}
+      />,
+    );
+
+    expect(screen.getByText("Command Code GOAT")).toBeInTheDocument();
+    expect(screen.getByText("5h")).toBeInTheDocument();
+    expect(screen.getByText("Weekly")).toBeInTheDocument();
+    expect(screen.getByText("32%")).toBeInTheDocument();
+    expect(screen.getByText("41%")).toBeInTheDocument();
+  });
+
+  it("shows the two-option Command Code setup hint when not connected", () => {
+    render(
+      <UsageLimitsPanel commandCode={{ configured: false }} order={["commandCode"]} />,
+    );
+
+    expect(screen.getByText("Command Code")).toBeInTheDocument();
+    expect(screen.getByText("Not connected")).toBeInTheDocument();
+    expect(screen.getByText("Connect Command Code")).toBeInTheDocument();
+    expect(screen.getByText("cmd login")).toBeInTheDocument();
+    expect(screen.getByText(/COMMAND_CODE_API_KEY/)).toBeInTheDocument();
+  });
+
+  it("copies the Command Code API-key snippet without sending the key anywhere", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
+
+    render(<UsageLimitsPanel commandCode={{ configured: false }} order={["commandCode"]} />);
+
+    await fireEvent.click(screen.getByRole("button", { name: "Copy" }));
+
+    await vi.waitFor(() => {
+      expect(writeText).toHaveBeenCalledTimes(1);
+    });
+    const snippet = writeText.mock.calls[0][0];
+    // The snippet reads the key interactively (`read -r -s`) so it never lands
+    // in shell history, then exports it for both the shell profile path and
+    // the macOS app (launchctl) path. It is a template only: no real key.
+    expect(snippet).toContain("read -r -s COMMAND_CODE_API_KEY");
+    expect(snippet).toContain("export COMMAND_CODE_API_KEY");
+    expect(snippet).toContain('launchctl setenv COMMAND_CODE_API_KEY "$COMMAND_CODE_API_KEY"');
+    expect(snippet).not.toMatch(/sk-/);
+    expect(screen.getByRole("button", { name: "Copied" })).toBeInTheDocument();
+  });
+
   it("does not describe a pace marker when the provider cannot render one (issue 445)", () => {
     render(
       <UsageLimitsPanel
@@ -574,12 +635,6 @@ describe("UsageLimitsPanel", () => {
   });
 
   it("renders Codex credit usage from spend controls", () => {
-    function expectLimitRow(label, value) {
-      const row = screen.getByText(label).closest("div");
-      expect(row).not.toBeNull();
-      expect(within(row).getByText(value)).toBeInTheDocument();
-    }
-
     render(
       <UsageLimitsPanel
         codex={{
