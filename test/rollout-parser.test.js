@@ -12415,6 +12415,63 @@ function buildAntigravityTestProto({ model, contextTokens, lastStepIndex }) {
   return encodeAntigravityTestLd(1, Buffer.concat(parts));
 }
 
+async function setupAntigravitySqliteSession(tmp, { convId = "conv-123", protos, lines } = {}) {
+  const brainDir = path.join(
+    tmp,
+    "antigravity",
+    "brain",
+    convId,
+    ".system_generated",
+    "logs",
+  );
+  const convDir = path.join(tmp, "antigravity", "conversations");
+  await fs.mkdir(brainDir, { recursive: true });
+  await fs.mkdir(convDir, { recursive: true });
+  const transcriptPath = path.join(brainDir, "transcript.jsonl");
+  const dbPath = path.join(convDir, `${convId}.db`);
+  sqliteCli.execFileSync("sqlite3", [
+    dbPath,
+    "CREATE TABLE gen_metadata (idx INTEGER PRIMARY KEY, data BLOB);",
+  ]);
+  if (Array.isArray(protos) && protos.length > 0) {
+    const values = protos
+      .map((proto, idx) => `(${idx}, X'${proto.toString("hex")}')`)
+      .join(", ");
+    sqliteCli.execFileSync("sqlite3", [
+      dbPath,
+      `INSERT INTO gen_metadata (idx, data) VALUES ${values};`,
+    ]);
+  }
+  if (Array.isArray(lines)) {
+    await fs.writeFile(transcriptPath, lines.map((line) => JSON.stringify(line)).join("\n"));
+  }
+  return {
+    transcriptPath,
+    dbPath,
+    queuePath: path.join(tmp, "queue.jsonl"),
+  };
+}
+
+function antigravityPlannerLines(turns) {
+  const lines = [];
+  for (const turn of turns) {
+    lines.push({
+      type: "USER_INPUT",
+      step_index: turn.userStep,
+      created_at: turn.userAt,
+      content: turn.userContent,
+    });
+    lines.push({
+      type: "PLANNER_RESPONSE",
+      step_index: turn.plannerStep,
+      created_at: turn.plannerAt,
+      content: turn.plannerContent,
+      thinking: turn.thinking,
+    });
+  }
+  return lines;
+}
+
 test("resolveAntigravityDbPath maps brain transcript logs to conversations database", () => {
   const transcriptPath =
     "/Users/test/.gemini/antigravity/brain/session-abc-123/.system_generated/logs/transcript.jsonl";
@@ -12441,29 +12498,311 @@ test("extractAntigravityGenInfo extracts model, context tokens, and step index f
   });
 });
 
-test("parseAntigravityIncremental reads accurate usage and cache from SQLite gen_metadata", async () => {
+test("parseAntigravityIncremental uses SQLite context size without inferring cache hits", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-antigravity-sqlite-"));
   try {
-    const brainDir = path.join(
-      tmp,
-      "antigravity",
-      "brain",
-      "conv-123",
-      ".system_generated",
-      "logs",
-    );
-    const convDir = path.join(tmp, "antigravity", "conversations");
-    await fs.mkdir(brainDir, { recursive: true });
-    await fs.mkdir(convDir, { recursive: true });
-    const transcriptPath = path.join(brainDir, "transcript.jsonl");
-    const dbPath = path.join(convDir, "conv-123.db");
-    const queuePath = path.join(tmp, "queue.jsonl");
+    const { transcriptPath, queuePath } = await setupAntigravitySqliteSession(tmp, {
+      protos: [
+        buildAntigravityTestProto({
+          model: "gemini-3.8-flash",
+          contextTokens: 25000,
+          lastStepIndex: 0,
+        }),
+        buildAntigravityTestProto({
+          model: "gemini-3.8-flash",
+          contextTokens: 30000,
+          lastStepIndex: 2,
+        }),
+      ],
+      lines: antigravityPlannerLines([
+        {
+          userStep: 0,
+          userAt: "2026-04-05T14:00:00.000Z",
+          userContent: "hello",
+          plannerStep: 1,
+          plannerAt: "2026-04-05T14:01:00.000Z",
+          plannerContent: "hi",
+          thinking: "think1",
+        },
+        {
+          userStep: 2,
+          userAt: "2026-04-05T14:02:00.000Z",
+          userContent: "next prompt",
+          plannerStep: 3,
+          plannerAt: "2026-04-05T14:03:00.000Z",
+          plannerContent: "done",
+          thinking: "think2",
+        },
+      ]),
+    });
     const cursors = { version: 1, files: {}, updatedAt: null };
 
-    sqliteCli.execFileSync("sqlite3", [
-      dbPath,
-      "CREATE TABLE gen_metadata (idx INTEGER PRIMARY KEY, data BLOB);",
+    const result = await parseAntigravityIncremental({
+      sessionFiles: [transcriptPath],
+      cursors,
+      queuePath,
+    });
+    assert.equal(result.eventsAggregated, 2);
+
+    const queued = await readJsonLines(queuePath);
+    assert.equal(queued.length, 1);
+    assert.equal(queued[0].source, "antigravity");
+    assert.equal(queued[0].model, "gemini-3.8-flash");
+    assert.equal(queued[0].input_tokens, 30000);
+    assert.equal(queued[0].cached_input_tokens, 0);
+    assert.equal(queued[0].conversation_count, 2);
+    assert.equal(
+      queued[0].total_tokens,
+      queued[0].input_tokens + queued[0].output_tokens + queued[0].reasoning_output_tokens,
+    );
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseAntigravityIncremental does not invent cache hits on a repeated context", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-antigravity-cold-cache-"));
+  try {
+    const { transcriptPath, queuePath } = await setupAntigravitySqliteSession(tmp, {
+      protos: [
+        buildAntigravityTestProto({
+          model: "gemini-3.8-flash",
+          contextTokens: 25000,
+          lastStepIndex: 0,
+        }),
+        buildAntigravityTestProto({
+          model: "gemini-3.8-flash",
+          contextTokens: 25000,
+          lastStepIndex: 2,
+        }),
+      ],
+      lines: antigravityPlannerLines([
+        {
+          userStep: 0,
+          userAt: "2026-04-05T14:00:00.000Z",
+          userContent: "hello",
+          plannerStep: 1,
+          plannerAt: "2026-04-05T14:01:00.000Z",
+          plannerContent: "hi",
+          thinking: "think1",
+        },
+        {
+          userStep: 2,
+          userAt: "2026-04-05T14:02:00.000Z",
+          userContent: "again",
+          plannerStep: 3,
+          plannerAt: "2026-04-05T14:03:00.000Z",
+          plannerContent: "still hi",
+          thinking: "think2",
+        },
+      ]),
+    });
+
+    await parseAntigravityIncremental({
+      sessionFiles: [transcriptPath],
+      cursors: { version: 1, files: {}, updatedAt: null },
+      queuePath,
+    });
+    const queued = await readJsonLines(queuePath);
+    assert.equal(queued[0].input_tokens, 25000);
+    assert.equal(queued[0].cached_input_tokens, 0);
+    assert.equal(queued[0].conversation_count, 2);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseAntigravityIncremental bills full context after a model switch", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-antigravity-model-switch-"));
+  try {
+    const { transcriptPath, queuePath } = await setupAntigravitySqliteSession(tmp, {
+      protos: [
+        buildAntigravityTestProto({
+          model: "gemini-3.8-flash",
+          contextTokens: 25000,
+          lastStepIndex: 0,
+        }),
+        buildAntigravityTestProto({
+          model: "claude-sonnet-4-6",
+          contextTokens: 40000,
+          lastStepIndex: 2,
+        }),
+      ],
+      lines: antigravityPlannerLines([
+        {
+          userStep: 0,
+          userAt: "2026-04-05T14:00:00.000Z",
+          userContent: "hello",
+          plannerStep: 1,
+          plannerAt: "2026-04-05T14:01:00.000Z",
+          plannerContent: "hi",
+          thinking: "think1",
+        },
+        {
+          userStep: 2,
+          userAt: "2026-04-05T14:02:00.000Z",
+          userContent: "switch",
+          plannerStep: 3,
+          plannerAt: "2026-04-05T14:03:00.000Z",
+          plannerContent: "ok",
+          thinking: "think2",
+        },
+      ]),
+    });
+
+    await parseAntigravityIncremental({
+      sessionFiles: [transcriptPath],
+      cursors: { version: 1, files: {}, updatedAt: null },
+      queuePath,
+    });
+    const queued = await readJsonLines(queuePath);
+    const byModel = Object.fromEntries(queued.map((row) => [row.model, row]));
+    assert.equal(byModel["gemini-3.8-flash"].input_tokens, 25000);
+    assert.equal(byModel["gemini-3.8-flash"].cached_input_tokens, 0);
+    assert.equal(byModel["claude-sonnet-4-6"].input_tokens, 40000);
+    assert.equal(byModel["claude-sonnet-4-6"].cached_input_tokens, 0);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseAntigravityIncremental SQLite full scan matches incremental append", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-antigravity-full-vs-inc-"));
+  try {
+    const firstLines = antigravityPlannerLines([
+      {
+        userStep: 0,
+        userAt: "2026-04-05T14:00:00.000Z",
+        userContent: "hello",
+        plannerStep: 1,
+        plannerAt: "2026-04-05T14:01:00.000Z",
+        plannerContent: "hi",
+        thinking: "think1",
+      },
     ]);
+    const allLines = antigravityPlannerLines([
+      {
+        userStep: 0,
+        userAt: "2026-04-05T14:00:00.000Z",
+        userContent: "hello",
+        plannerStep: 1,
+        plannerAt: "2026-04-05T14:01:00.000Z",
+        plannerContent: "hi",
+        thinking: "think1",
+      },
+      {
+        userStep: 2,
+        userAt: "2026-04-05T14:02:00.000Z",
+        userContent: "next prompt",
+        plannerStep: 3,
+        plannerAt: "2026-04-05T14:03:00.000Z",
+        plannerContent: "done",
+        thinking: "think2",
+      },
+    ]);
+    const protos = [
+      buildAntigravityTestProto({
+        model: "gemini-3.8-flash",
+        contextTokens: 25000,
+        lastStepIndex: 0,
+      }),
+      buildAntigravityTestProto({
+        model: "gemini-3.8-flash",
+        contextTokens: 30000,
+        lastStepIndex: 2,
+      }),
+    ];
+
+    const fullDir = path.join(tmp, "full");
+    const incDir = path.join(tmp, "inc");
+    await fs.mkdir(fullDir, { recursive: true });
+    await fs.mkdir(incDir, { recursive: true });
+
+    const full = await setupAntigravitySqliteSession(fullDir, { protos, lines: allLines });
+    await parseAntigravityIncremental({
+      sessionFiles: [full.transcriptPath],
+      cursors: { version: 1, files: {}, updatedAt: null },
+      queuePath: full.queuePath,
+    });
+    const fullQueued = await readJsonLines(full.queuePath);
+
+    const inc = await setupAntigravitySqliteSession(incDir, { protos, lines: firstLines });
+    const incCursors = { version: 1, files: {}, updatedAt: null };
+    await parseAntigravityIncremental({
+      sessionFiles: [inc.transcriptPath],
+      cursors: incCursors,
+      queuePath: inc.queuePath,
+    });
+    await fs.writeFile(inc.transcriptPath, allLines.map((line) => JSON.stringify(line)).join("\n"));
+    await parseAntigravityIncremental({
+      sessionFiles: [inc.transcriptPath],
+      cursors: incCursors,
+      queuePath: inc.queuePath,
+    });
+    const incQueued = await readJsonLines(inc.queuePath);
+    const incLatest = incQueued.at(-1);
+    const fullLatest = fullQueued.at(-1);
+
+    assert.equal(incLatest.input_tokens, fullLatest.input_tokens);
+    assert.equal(incLatest.cached_input_tokens, 0);
+    assert.equal(fullLatest.cached_input_tokens, 0);
+    assert.equal(incLatest.output_tokens, fullLatest.output_tokens);
+    assert.equal(incLatest.conversation_count, fullLatest.conversation_count);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseAntigravityIncremental reconciles a legacy estimated cursor with SQLite context", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-antigravity-legacy-cursor-"));
+  try {
+    const firstLines = antigravityPlannerLines([
+      {
+        userStep: 0,
+        userAt: "2026-04-05T14:00:00.000Z",
+        userContent: "hello",
+        plannerStep: 1,
+        plannerAt: "2026-04-05T14:01:00.000Z",
+        plannerContent: "hi",
+        thinking: "think1",
+      },
+    ]);
+    const allLines = antigravityPlannerLines([
+      {
+        userStep: 0,
+        userAt: "2026-04-05T14:00:00.000Z",
+        userContent: "hello",
+        plannerStep: 1,
+        plannerAt: "2026-04-05T14:01:00.000Z",
+        plannerContent: "hi",
+        thinking: "think1",
+      },
+      {
+        userStep: 2,
+        userAt: "2026-04-05T14:02:00.000Z",
+        userContent: "next prompt",
+        plannerStep: 3,
+        plannerAt: "2026-04-05T14:03:00.000Z",
+        plannerContent: "done",
+        thinking: "think2",
+      },
+    ]);
+    const { transcriptPath, dbPath, queuePath } = await setupAntigravitySqliteSession(tmp, {
+      protos: [],
+      lines: firstLines,
+    });
+    const cursors = { version: 1, files: {}, updatedAt: null };
+    await parseAntigravityIncremental({
+      sessionFiles: [transcriptPath],
+      cursors,
+      queuePath,
+    });
+    const afterEstimate = await readJsonLines(queuePath);
+    const estimatedInput = afterEstimate[0].input_tokens;
+    assert.ok(estimatedInput > 0);
+    assert.ok(estimatedInput < 1000);
+    assert.equal(afterEstimate[0].cached_input_tokens, 0);
+
     const turn1Proto = buildAntigravityTestProto({
       model: "gemini-3.8-flash",
       contextTokens: 25000,
@@ -12478,55 +12817,22 @@ test("parseAntigravityIncremental reads accurate usage and cache from SQLite gen
       dbPath,
       `INSERT INTO gen_metadata (idx, data) VALUES (0, X'${turn1Proto.toString("hex")}'), (1, X'${turn2Proto.toString("hex")}');`,
     ]);
-
-    const lines = [
-      {
-        type: "USER_INPUT",
-        step_index: 0,
-        created_at: "2026-04-05T14:00:00.000Z",
-        content: "hello",
-      },
-      {
-        type: "PLANNER_RESPONSE",
-        step_index: 1,
-        created_at: "2026-04-05T14:01:00.000Z",
-        content: "hi",
-        thinking: "think1",
-      },
-      {
-        type: "USER_INPUT",
-        step_index: 2,
-        created_at: "2026-04-05T14:02:00.000Z",
-        content: "next prompt",
-      },
-      {
-        type: "PLANNER_RESPONSE",
-        step_index: 3,
-        created_at: "2026-04-05T14:03:00.000Z",
-        content: "done",
-        thinking: "think2",
-      },
-    ];
-    await fs.writeFile(transcriptPath, lines.map((l) => JSON.stringify(l)).join("\n"));
-
-    const result = await parseAntigravityIncremental({
+    await fs.writeFile(transcriptPath, allLines.map((line) => JSON.stringify(line)).join("\n"));
+    const second = await parseAntigravityIncremental({
       sessionFiles: [transcriptPath],
       cursors,
       queuePath,
     });
-    assert.equal(result.eventsAggregated, 2);
+    assert.equal(second.eventsAggregated, 1);
 
     const queued = await readJsonLines(queuePath);
-    assert.equal(queued.length, 1);
-    assert.equal(queued[0].source, "antigravity");
-    assert.equal(queued[0].model, "gemini-3.8-flash");
-    assert.equal(queued[0].input_tokens, 30000);
-    assert.equal(queued[0].cached_input_tokens, 25000);
-    assert.equal(queued[0].conversation_count, 2);
-    assert.equal(
-      queued[0].total_tokens,
-      30000 + 25000 + queued[0].output_tokens + queued[0].reasoning_output_tokens,
-    );
+    const estimatedRow = queued.find((row) => row.model === afterEstimate[0].model);
+    const sqliteRow = queued.filter((row) => row.model === "gemini-3.8-flash").at(-1);
+    assert.equal(estimatedRow.input_tokens, estimatedInput);
+    assert.equal(estimatedRow.cached_input_tokens, 0);
+    assert.equal(sqliteRow.input_tokens, 5000);
+    assert.equal(sqliteRow.cached_input_tokens, 0);
+    assert.equal(sqliteRow.conversation_count, 1);
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }

@@ -18859,15 +18859,18 @@ async function parseAntigravityFile({
     .map((line) => line.trim())
     .filter(Boolean);
   let eventsAggregated = 0;
+  const dbPath = resolveAntigravityDbPath(filePath);
+  const stepMap = dbPath ? readAntigravityConversationDb(dbPath) : null;
   // Resume cached context-token total + model so historical lines (i < lastLine)
   // don't need to be re-tokenized on every sync. Falls back to a full re-walk
-  // when the cached state is missing (legacy cursor) or the file rotated.
+  // when the cached state is missing (legacy cursor), the file rotated, or
+  // SQLite metadata is present so estimated cursors can be reconciled.
   const canResume =
     Number.isFinite(lastLine) && lastLine > 0 && lastLine <= lines.length;
   const cachedTokens = Number.isFinite(initialContextTokens) ? initialContextTokens : 0;
   const cachedPrev = Number.isFinite(initialPrevContext) ? initialPrevContext : 0;
   const cachedModel = typeof initialModel === "string" ? initialModel : null;
-  const resumed = canResume && (cachedTokens > 0 || cachedModel !== null);
+  const resumed = canResume && (cachedTokens > 0 || cachedModel !== null) && !stepMap;
   const scanStart = resumed ? lastLine : 0;
   let currentModel = resumed ? cachedModel : null;
   if (!currentModel) {
@@ -18878,10 +18881,8 @@ async function parseAntigravityFile({
   // tokens accumulated AFTER that point count as new input on the next planner
   // call — prevents O(N²) double-counting of the full history every turn.
   let previousContextTokens = resumed ? cachedPrev : 0;
+  let lastPlannerModel = resumed ? cachedModel : null;
   let lastCompletedLine = Math.min(Number.isFinite(lastLine) ? lastLine : 0, lines.length);
-
-  const dbPath = resolveAntigravityDbPath(filePath);
-  const stepMap = dbPath ? readAntigravityConversationDb(dbPath) : null;
 
   for (let i = scanStart; i < lines.length; i++) {
     const line = lines[i];
@@ -18903,11 +18904,25 @@ async function parseAntigravityFile({
     }
 
     const eventContextTokens = antigravityContextTokens(parsed);
+    const dbTurn =
+      parsed.type === "PLANNER_RESPONSE" && stepMap && Number.isFinite(parsed.step_index)
+        ? stepMap.get(parsed.step_index)
+        : null;
+    const dbContextTokens = dbTurn && dbTurn.contextTokens > 0 ? dbTurn.contextTokens : 0;
+    if (dbTurn && dbTurn.model) {
+      const norm = normalizeAntigravityTranscriptModel(dbTurn.model);
+      if (norm) currentModel = norm;
+    }
 
     if (!isNewEvent) {
-      const dbTurn = stepMap && Number.isFinite(parsed.step_index) ? stepMap.get(parsed.step_index) : null;
-      if (dbTurn && dbTurn.contextTokens > 0) {
-        contextTokens = dbTurn.contextTokens;
+      if (parsed.type === "PLANNER_RESPONSE") {
+        if (dbContextTokens > 0) {
+          contextTokens = dbContextTokens;
+        } else {
+          contextTokens += eventContextTokens;
+        }
+        previousContextTokens = contextTokens;
+        lastPlannerModel = currentModel;
       } else {
         contextTokens += eventContextTokens;
       }
@@ -18937,36 +18952,22 @@ async function parseAntigravityFile({
       const content = typeof parsed.content === "string" ? parsed.content : "";
       const thinking = typeof parsed.thinking === "string" ? parsed.thinking : "";
 
-      const dbTurn = stepMap && Number.isFinite(parsed.step_index) ? stepMap.get(parsed.step_index) : null;
-      let inputDelta = 0;
-      let cachedInputTokens = 0;
-
-      if (dbTurn && dbTurn.contextTokens > 0) {
-        if (dbTurn.model) {
-          const norm = normalizeAntigravityTranscriptModel(dbTurn.model);
-          if (norm) model = norm;
-        }
-        const curTokens = dbTurn.contextTokens;
-        if (previousContextTokens === 0) {
-          inputDelta = curTokens;
-        } else {
-          cachedInputTokens = Math.min(curTokens, previousContextTokens);
-          inputDelta = Math.max(0, curTokens - previousContextTokens);
-        }
-        contextTokens = curTokens;
-      } else {
-        inputDelta = Math.max(0, contextTokens - previousContextTokens);
+      if (dbContextTokens > 0) {
+        contextTokens = dbContextTokens;
       }
+      if (lastPlannerModel && model !== lastPlannerModel) {
+        previousContextTokens = 0;
+      }
+      const inputDelta = Math.max(0, contextTokens - previousContextTokens);
 
       const outputTokens =
         antigravityValueTokens(content) + antigravityValueTokens(parsed.tool_calls);
       const reasoningTokens = antigravityValueTokens(thinking);
 
       delta.input_tokens = inputDelta;
-      delta.cached_input_tokens = cachedInputTokens;
       delta.output_tokens = outputTokens;
       delta.reasoning_output_tokens = reasoningTokens;
-      delta.total_tokens = inputDelta + cachedInputTokens + outputTokens + reasoningTokens;
+      delta.total_tokens = inputDelta + outputTokens + reasoningTokens;
       delta.billable_total_tokens = delta.total_tokens;
       delta.conversation_count = 1;
       billedPlanner = delta.total_tokens > 0;
@@ -18999,6 +19000,7 @@ async function parseAntigravityFile({
     // so they MUST be billed as input on the next planner — don't fold them into
     // previousContextTokens or that history vanishes from the totals.
     previousContextTokens = contextTokens;
+    lastPlannerModel = model;
     contextTokens += eventContextTokens;
     lastCompletedLine = i + 1;
   }
