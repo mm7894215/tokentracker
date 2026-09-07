@@ -4458,6 +4458,9 @@ function claudeMessageDedupKey(obj) {
 function normalizeClaudeUsage(u) {
   const inputTokens = toNonNegativeInt(u?.input_tokens);
   const outputTokens = toNonNegativeInt(u?.output_tokens);
+  const reasoningTokens = Math.min(outputTokens, toNonNegativeInt(
+    u?.output_tokens_details?.thinking_tokens ?? u?.output_tokens_details?.reasoning_tokens,
+  ));
   const cacheCreation = toNonNegativeInt(u?.cache_creation_input_tokens);
   const cacheRead = toNonNegativeInt(u?.cache_read_input_tokens);
   const totalTokens = inputTokens + outputTokens + cacheCreation + cacheRead;
@@ -4465,8 +4468,9 @@ function normalizeClaudeUsage(u) {
     input_tokens: inputTokens,
     cached_input_tokens: cacheRead,
     cache_creation_input_tokens: cacheCreation,
-    output_tokens: outputTokens,
-    reasoning_output_tokens: 0,
+    // Claude rows price reasoning separately; it is already included in usage.output_tokens.
+    output_tokens: outputTokens - reasoningTokens,
+    reasoning_output_tokens: reasoningTokens,
     total_tokens: totalTokens,
   };
 }
