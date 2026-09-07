@@ -18934,11 +18934,10 @@ async function parseAntigravityFile({
       if (parsed.type === "PLANNER_RESPONSE") {
         if (dbContextTokens > 0) {
           contextTokens = dbContextTokens;
-        } else {
-          contextTokens += eventContextTokens;
         }
         previousContextTokens = contextTokens;
         lastPlannerModel = currentModel;
+        contextTokens += eventContextTokens;
       } else {
         contextTokens += eventContextTokens;
       }
