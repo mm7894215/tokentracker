@@ -18654,6 +18654,9 @@ async function parseAntigravityIncremental({
     const initialContextTokens = sameFile ? Number(prev.contextTokens || 0) : 0;
     const initialPrevContext = sameFile ? Number(prev.previousContextTokens || 0) : 0;
     const initialModel = sameFile && typeof prev.currentModel === "string" ? prev.currentModel : null;
+    const initialLastPlannerModel =
+      sameFile && typeof prev.lastPlannerModel === "string" ? prev.lastPlannerModel : null;
+    const initialUsageSource = sameFile && typeof prev.usageSource === "string" ? prev.usageSource : null;
 
     const projectContext = projectEnabled
       ? await resolveProjectContextForFile({
@@ -18673,6 +18676,8 @@ async function parseAntigravityIncremental({
       initialContextTokens,
       initialPrevContext,
       initialModel,
+      initialLastPlannerModel,
+      initialUsageSource,
       hourlyState,
       touchedBuckets,
       source: fileSource,
@@ -18690,6 +18695,8 @@ async function parseAntigravityIncremental({
       contextTokens: result.contextTokens,
       previousContextTokens: result.previousContextTokens,
       currentModel: result.currentModel,
+      lastPlannerModel: result.lastPlannerModel,
+      usageSource: result.usageSource,
       updatedAt: new Date().toISOString(),
     };
 
@@ -18835,6 +18842,8 @@ async function parseAntigravityFile({
   initialContextTokens,
   initialPrevContext,
   initialModel,
+  initialLastPlannerModel,
+  initialUsageSource,
   hourlyState,
   touchedBuckets,
   source,
@@ -18851,6 +18860,8 @@ async function parseAntigravityFile({
       contextTokens: 0,
       previousContextTokens: 0,
       currentModel: null,
+      lastPlannerModel: null,
+      usageSource: "estimated",
     };
   }
 
@@ -18863,14 +18874,15 @@ async function parseAntigravityFile({
   const stepMap = dbPath ? readAntigravityConversationDb(dbPath) : null;
   // Resume cached context-token total + model so historical lines (i < lastLine)
   // don't need to be re-tokenized on every sync. Falls back to a full re-walk
-  // when the cached state is missing (legacy cursor), the file rotated, or
-  // SQLite metadata is present so estimated cursors can be reconciled.
+  // when the cached state is missing (legacy cursor) or the file rotated.
   const canResume =
     Number.isFinite(lastLine) && lastLine > 0 && lastLine <= lines.length;
   const cachedTokens = Number.isFinite(initialContextTokens) ? initialContextTokens : 0;
   const cachedPrev = Number.isFinite(initialPrevContext) ? initialPrevContext : 0;
   const cachedModel = typeof initialModel === "string" ? initialModel : null;
-  const resumed = canResume && (cachedTokens > 0 || cachedModel !== null) && !stepMap;
+  const sqliteCursor = initialUsageSource === "sqlite";
+  const resumed =
+    canResume && (cachedTokens > 0 || cachedModel !== null) && (!stepMap || sqliteCursor);
   const scanStart = resumed ? lastLine : 0;
   let currentModel = resumed ? cachedModel : null;
   if (!currentModel) {
@@ -18881,7 +18893,11 @@ async function parseAntigravityFile({
   // tokens accumulated AFTER that point count as new input on the next planner
   // call — prevents O(N²) double-counting of the full history every turn.
   let previousContextTokens = resumed ? cachedPrev : 0;
-  let lastPlannerModel = resumed ? cachedModel : null;
+  let lastPlannerModel = null;
+  if (resumed) {
+    lastPlannerModel =
+      typeof initialLastPlannerModel === "string" ? initialLastPlannerModel : cachedModel;
+  }
   let lastCompletedLine = Math.min(Number.isFinite(lastLine) ? lastLine : 0, lines.length);
 
   for (let i = scanStart; i < lines.length; i++) {
@@ -19011,6 +19027,8 @@ async function parseAntigravityFile({
     contextTokens,
     previousContextTokens,
     currentModel,
+    lastPlannerModel,
+    usageSource: stepMap ? "sqlite" : "estimated",
   };
 }
 
