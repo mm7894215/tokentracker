@@ -532,6 +532,10 @@ final class StatusBarController: NSObject {
                 return genericLimitValue(id: id, metric: metric, configured: viewModel.usageLimits?.opencodeGo?.configured, error: viewModel.usageLimits?.opencodeGo?.error, window: viewModel.usageLimits?.opencodeGo?.secondaryWindow)
             case .opencodeGoMonthly:
                 return genericLimitValue(id: id, metric: metric, configured: viewModel.usageLimits?.opencodeGo?.configured, error: viewModel.usageLimits?.opencodeGo?.error, window: viewModel.usageLimits?.opencodeGo?.tertiaryWindow)
+            case .commandCode5h:
+                return genericLimitValue(id: id, metric: metric, configured: viewModel.usageLimits?.commandCode?.configured, error: viewModel.usageLimits?.commandCode?.error, window: viewModel.usageLimits?.commandCode?.primaryWindow)
+            case .commandCodeWeekly:
+                return genericLimitValue(id: id, metric: metric, configured: viewModel.usageLimits?.commandCode?.configured, error: viewModel.usageLimits?.commandCode?.error, window: viewModel.usageLimits?.commandCode?.secondaryWindow)
             case .qoderQuota:
                 return genericLimitValue(id: id, metric: metric, configured: viewModel.usageLimits?.qoder?.configured, error: viewModel.usageLimits?.qoder?.error, window: viewModel.usageLimits?.qoder?.primaryWindow)
             case .qoderUltimate:
