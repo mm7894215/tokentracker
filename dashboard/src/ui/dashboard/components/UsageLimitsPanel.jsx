@@ -280,6 +280,7 @@ const STATUS_BADGE_TONES = {
 const REAUTH_CLI_COMMANDS = {
   claude: "claude",
   codex: "codex",
+  commandCode: "cmd login",
 };
 
 function StatusBadge({ label, age = null, tone = "live", tooltip = null }) {
@@ -644,6 +645,7 @@ function renderProviderGroup(id, data, mode, expanded, onToggle, subscription = 
       <>
         <StatusLine>{copy("limits.status.not_connected")}</StatusLine>
         {id === "opencodeGo" ? <OpenCodeGoSetupHint /> : null}
+        {id === "commandCode" ? <CommandCodeSetupHint /> : null}
         {id === "codingPlan" ? <ArkCodingPlanSetupHint /> : null}
         {id === "agentPlan" ? <ArkAgentPlanSetupHint /> : null}
       </>,
@@ -674,6 +676,7 @@ function renderProviderGroup(id, data, mode, expanded, onToggle, subscription = 
           ? renderProviderExtra(PROVIDER_LIMIT_SPECS.kiro.extra, data)
           : null}
         {id === "opencodeGo" ? <OpenCodeGoSetupHint /> : null}
+        {id === "commandCode" ? <CommandCodeSetupHint /> : null}
         {id === "codingPlan" ? <ArkCodingPlanSetupHint /> : null}
         {id === "agentPlan" ? <ArkAgentPlanSetupHint /> : null}
       </>,
@@ -870,6 +873,72 @@ function OpenCodeGoSetupHint() {
   );
 }
 
+// Command Code subscription usage comes from the CLI's own alpha endpoints,
+// authenticated exactly like the `cmd` CLI itself. Two supported logins: the
+// `cmd login` session the CLI stores in ~/.commandcode/auth.json (picked up
+// with no restart), or a COMMAND_CODE_API_KEY env var. TokenTracker never
+// sees, stores, or forwards the credential either way.
+function CommandCodeSetupHint() {
+  const [copied, setCopied] = useState(false);
+  const loginSnippet = "cmd login";
+  const snippet = [
+    "read -r -s COMMAND_CODE_API_KEY",
+    "export COMMAND_CODE_API_KEY",
+    'launchctl setenv COMMAND_CODE_API_KEY "$COMMAND_CODE_API_KEY"',
+  ].join("\n");
+
+  const onCopy = async (e) => {
+    e.stopPropagation();
+    try {
+      await navigator.clipboard.writeText(snippet);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    } catch (_e) {
+      // Clipboard can be unavailable in embedded or restricted contexts.
+    }
+  };
+
+  return (
+    <div className="mt-1.5 rounded-lg border border-oai-gray-200 dark:border-oai-gray-700/60 bg-oai-gray-50/50 dark:bg-oai-gray-900/20 p-3 text-[11px] text-oai-gray-600 dark:text-oai-gray-300">
+      <div className="text-[12px] font-semibold text-oai-gray-800 dark:text-oai-gray-100">
+        {copy("limits.commandCode.setupHint.title")}
+      </div>
+      <div className="mt-0.5 leading-snug text-oai-gray-500 dark:text-oai-gray-400">
+        {copy("limits.commandCode.setupHint.subtitle")}
+      </div>
+
+      <ol className="mt-2.5 space-y-2.5">
+        <HintStep n="1">
+          <div>{copy("limits.commandCode.setupHint.step1")}</div>
+          <pre className="mt-1.5 overflow-x-auto rounded-md bg-oai-gray-100 dark:bg-oai-gray-900/60 px-2 py-1.5 font-mono text-[10.5px] leading-relaxed whitespace-pre">
+            {loginSnippet}
+          </pre>
+        </HintStep>
+        <HintStep n="2">
+          <div>{copy("limits.commandCode.setupHint.step2")}</div>
+          <div className="mt-1.5 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onCopy}
+              className="shrink-0 rounded-md border border-oai-gray-300 dark:border-oai-gray-700 px-2 py-0.5 text-[10.5px] text-oai-gray-700 dark:text-oai-gray-200 hover:bg-oai-gray-100 dark:hover:bg-oai-gray-800 transition-colors"
+            >
+              {copied
+                ? copy("limits.commandCode.setupHint.copied")
+                : copy("limits.commandCode.setupHint.copy")}
+            </button>
+          </div>
+          <pre className="mt-1.5 overflow-x-auto rounded-md bg-oai-gray-100 dark:bg-oai-gray-900/60 px-2 py-1.5 font-mono text-[10.5px] leading-relaxed whitespace-pre">
+            {snippet}
+          </pre>
+          <div className="mt-1 text-[10px] text-oai-gray-400 dark:text-oai-gray-500">
+            {copy("limits.commandCode.setupHint.note_app")}
+          </div>
+        </HintStep>
+      </ol>
+    </div>
+  );
+}
+
 // Ark Coding Plan (火山方舟) quota comes from the official Ark CLI (arkcli)
 // running on this machine — there is no public quota endpoint, so the CLI is
 // feature-detected at fetch time. When it is missing (or not signed in) the
@@ -1033,8 +1102,8 @@ function useWidestLabelWidth(containerRef) {
   return labelWidth;
 }
 
-export function UsageLimitsPanel({ claude, codex, cursor, gemini, kimi, kiro, grok, antigravity, copilot, zcode, opencodeGo, qoder, qoderCn, codingPlan, agentPlan, order, visibility, displayMode, subscriptions = [], showSubscriptions = true }) {
-  const dataById = { claude, codex, cursor, gemini, kimi, kiro, grok, antigravity, copilot, zcode, opencodeGo, qoder, qoderCn, codingPlan, agentPlan };
+export function UsageLimitsPanel({ claude, codex, cursor, gemini, kimi, kiro, grok, antigravity, copilot, zcode, opencodeGo, commandCode, qoder, qoderCn, codingPlan, agentPlan, order, visibility, displayMode, subscriptions = [], showSubscriptions = true }) {
+  const dataById = { claude, codex, cursor, gemini, kimi, kiro, grok, antigravity, copilot, zcode, opencodeGo, commandCode, qoder, qoderCn, codingPlan, agentPlan };
   const containerRef = useRef(null);
   const labelWidth = useWidestLabelWidth(containerRef);
   const [expandedId, setExpandedId] = useState(null);
