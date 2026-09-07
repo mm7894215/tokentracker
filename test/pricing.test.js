@@ -129,12 +129,12 @@ test("matcher: GPT-5.6 codex tiers resolve to their real curated rates (not the 
   // LiteLLM has no gpt-5.6 yet; simulate that so curated must win.
   const litellm = { "gpt-5": { input: 1.25, output: 10, cache_read: 0.125 } };
   const cases = [
-    ["gpt-5.6-sol", 5, 30, "curated:exact"],
+    ["gpt-5.6-sol", 4, 20, "curated:exact"],
     ["gpt-5.6-terra", 2, 12, "curated:exact"],
     ["gpt-5.6-luna", 0.2, 1.2, "curated:exact"],
     // reasoning-effort variants codex appends must still land on the right tier
-    ["gpt-5.6-sol-high", 5, 30, null],
-    ["gpt-5.6-solhigh", 5, 30, "curated:fuzzy"],
+    ["gpt-5.6-sol-high", 4, 20, null],
+    ["gpt-5.6-solhigh", 4, 20, "curated:fuzzy"],
     ["gpt-5.6-terrahigh", 2, 12, "curated:fuzzy"],
     // bare / unknown-tier falls back to the balanced terra tier, never gpt-5
     ["gpt-5.6", 2, 12, "curated:fuzzy"],
@@ -145,6 +145,31 @@ test("matcher: GPT-5.6 codex tiers resolve to their real curated rates (not the 
     assert.equal(r.value.input, input, `${model} input`);
     assert.equal(r.value.output, output, `${model} output`);
     if (source) assert.equal(r.source, source, `${model} source`);
+  }
+});
+
+test("index: Astra and Sol use current short-context rates for all token categories and effort variants", () => {
+  // Official Standard short-context USD/MTok, verified 2026-09-07.
+  const cases = [
+    ["gpt-6-astra", { input: 10, output: 50, cache_read: 1, cache_write: 12.5 }],
+    ["gpt-5.6-sol", { input: 4, output: 20, cache_read: 0.4, cache_write: 5 }],
+  ];
+  const tokenFields = {
+    input: "input_tokens",
+    output: "output_tokens",
+    cache_read: "cached_input_tokens",
+    cache_write: "cache_creation_input_tokens",
+  };
+  for (const [baseModel, rates] of cases) {
+    for (const model of [baseModel, `${baseModel}-high`, `${baseModel}high`, `openai/${baseModel}-xhigh`]) {
+      for (const [category, field] of Object.entries(tokenFields)) {
+        assert.equal(
+          pricing.computeRowCost({ source: "codex", model, [field]: 1_000_000 }),
+          rates[category],
+          `${model} ${field} must retain short-context pricing even for large aggregate rows`,
+        );
+      }
+    }
   }
 });
 

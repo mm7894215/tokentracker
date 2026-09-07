@@ -59,6 +59,28 @@ test("MODEL_PRICING + getModelPricing are byte-identical across all 5 edge files
   }
 });
 
+test("cloud Astra and Sol pricing matches current local short-context rates", () => {
+  const { getModelPricing } = require("../src/lib/pricing");
+  const block = extractBlock(CANONICAL);
+  const cases = [
+    ["gpt-6-astra", { input: 10, output: 50, cache_read: 1, cache_write: 12.5 }],
+    ["gpt-5.6-sol", { input: 4, output: 20, cache_read: 0.4, cache_write: 5 }],
+  ];
+  for (const [model, rates] of cases) {
+    for (const [field, value] of Object.entries(rates)) {
+      assert.strictEqual(getModelPricing(model)[field], value, `${model} local ${field}`);
+    }
+    assert.ok(
+      block.includes(`"${model}": { input: ${rates.input}, output: ${rates.output}, cache_read: ${rates.cache_read}, cache_write: ${rates.cache_write} },`),
+      `${model} cloud rates must match the official short-context rates`,
+    );
+    assert.ok(
+      block.includes(`if (lower.includes("${model}")) return MODEL_PRICING["${model}"];`),
+      `${model} cloud matcher must cover reasoning-effort variants`,
+    );
+  }
+});
+
 test("canonical pricing block retains regression-prone entries and matcher order", () => {
   const block = extractBlock(CANONICAL);
 

@@ -47,12 +47,19 @@
       "cache_write": 1.25,
       "note": "Canonical undated alias emitted by Cursor. Pin to the same rates as claude-haiku-4-5-20251001 so local cost does not depend on which dated LiteLLM aliases are present in the current cache."
     },
+    "gpt-6-astra": {
+      "input": 10,
+      "output": 50,
+      "cache_read": 1,
+      "cache_write": 12.5,
+      "note": "Official Standard short-context USD/MTok verified 2026-09-07: https://developers.openai.com/api/docs/pricing. Matches the existing short-context estimation policy; long-context rates are not applied. Reasoning-effort variants are covered by fuzzy matching."
+    },
     "gpt-5.6-sol": {
-      "input": 5,
-      "output": 30,
-      "cache_read": 0.5,
-      "cache_write": 6.25,
-      "note": "GPT-5.6 family (public 2026-07-09). Flagship tier. Not yet in LiteLLM. developers.openai.com/api/docs/pricing short-context: $5/$30 per MTok, cached input 0.1x, cache write 1.25x. Codex emits gpt-5.6-sol (+ reasoning-effort variants like gpt-5.6-solhigh, caught by fuzzy). Remove once LiteLLM carries it."
+      "input": 4,
+      "output": 20,
+      "cache_read": 0.4,
+      "cache_write": 5,
+      "note": "Official Standard short-context promotional USD/MTok verified 2026-09-07: https://developers.openai.com/api/docs/pricing. Promotion available at least through 2026-11-21. Replaces the previous $5/$30 input/output rates. Reasoning-effort variants are covered by fuzzy matching; long-context rates are not applied."
     },
     "gpt-5.6-terra": {
       "input": 2,
@@ -404,6 +411,10 @@
     "auto": "composer-1"
   },
   "fuzzy": [
+    {
+      "match": "gpt-6-astra",
+      "ref": "gpt-6-astra"
+    },
     {
       "match": "gpt-5.6-sol",
       "ref": "gpt-5.6-sol"
