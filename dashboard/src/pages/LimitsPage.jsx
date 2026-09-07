@@ -207,6 +207,7 @@ export function LimitsPage() {
                 copilot={usageLimits?.copilot}
                 zcode={usageLimits?.zcode}
                 opencodeGo={usageLimits?.opencodeGo}
+                commandCode={usageLimits?.commandCode}
                 qoder={usageLimits?.qoder}
                 qoderCn={usageLimits?.qoderCn}
                 codingPlan={usageLimits?.codingPlan}

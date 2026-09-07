@@ -1608,3 +1608,13 @@ limits.tooltip.ark_cached,ui,LimitsPage,UsageLimitsPanel,tooltip_ark_cached,"Cac
 limits.agentPlan.setupHint.snippet_install,ui,LimitsPage,UsageLimitsPanel,agent_plan_hint_snippet_install,"npm install -g @volcengine/ark-cli",,active
 limits.agentPlan.setupHint.snippet_login,ui,LimitsPage,UsageLimitsPanel,agent_plan_hint_snippet_login,"arkcli auth login volc-sso   # browser SSO (recommended)",,active
 limits.agentPlan.setupHint.snippet_status,ui,LimitsPage,UsageLimitsPanel,agent_plan_hint_snippet_status,"arkcli auth status           # verify the session",,active
+limits.provider.command_code,ui,LimitsPage,UsageLimitsPanel,provider_command_code,"Command Code",,active
+limits.label.command_code_5h,ui,LimitsPage,UsageLimitsPanel,command_code_5h,"5h",,active
+limits.label.command_code_weekly,ui,LimitsPage,UsageLimitsPanel,command_code_weekly,"Weekly",,active
+limits.commandCode.setupHint.title,ui,LimitsPage,UsageLimitsPanel,command_code_hint_title,"Connect Command Code",,active
+limits.commandCode.setupHint.subtitle,ui,LimitsPage,UsageLimitsPanel,command_code_hint_subtitle,"Reads your subscription usage from the official Command Code API with the same login as the cmd CLI.",,active
+limits.commandCode.setupHint.step1,ui,LimitsPage,UsageLimitsPanel,command_code_hint_step1,"Option 1 — sign in with the cmd CLI (recommended): run cmd login once. TokenTracker reuses that login with no restart.",,active
+limits.commandCode.setupHint.step2,ui,LimitsPage,UsageLimitsPanel,command_code_hint_step2,"Option 2 — use an API key instead: run this command, paste your key (input stays invisible), then restart TokenTracker:",,active
+limits.commandCode.setupHint.copy,ui,LimitsPage,UsageLimitsPanel,command_code_hint_copy,"Copy",,active
+limits.commandCode.setupHint.copied,ui,LimitsPage,UsageLimitsPanel,command_code_hint_copied,"Copied",,active
+limits.commandCode.setupHint.note_app,ui,LimitsPage,UsageLimitsPanel,command_code_hint_note_app,"macOS app: use the launchctl setenv line, then reopen the app.",,active

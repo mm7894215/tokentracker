@@ -115,6 +115,7 @@ describe("useLimitsDisplayPrefs", () => {
         "claude",
         "codex",
         "codingPlan",
+        "commandCode",
         "copilot",
         "cursor",
         "gemini",
