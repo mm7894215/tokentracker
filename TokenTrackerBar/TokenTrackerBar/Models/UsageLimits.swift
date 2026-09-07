@@ -16,10 +16,11 @@ struct UsageLimitsResponse: Codable, Equatable {
     let qoder: QoderLimits?
     let qoderCn: QoderLimits?
     let codingPlan: CodingPlanLimits?
+    let agentPlan: AgentPlanLimits?
 
     enum CodingKeys: String, CodingKey {
         case fetchedAt = "fetched_at"
-        case claude, codex, cursor, gemini, kimi, kiro, grok, antigravity, copilot, zcode, qoder, qoderCn, codingPlan
+        case claude, codex, cursor, gemini, kimi, kiro, grok, antigravity, copilot, zcode, qoder, qoderCn, codingPlan, agentPlan
         case opencodeGo = "opencodeGo"
     }
 }
@@ -110,10 +111,21 @@ extension UsageLimitsResponse {
 
 enum UsageLimitsCache {
     static let defaultsKey = "UsageLimitsLastGoodResponse"
+    private static let maximumFutureSkew: TimeInterval = 5 * 60
 
-    static func load(defaults: UserDefaults = .standard) -> UsageLimitsResponse? {
+    static func load(
+        defaults: UserDefaults = .standard,
+        now: Date = Date()
+    ) -> UsageLimitsResponse? {
         guard let data = defaults.data(forKey: defaultsKey) else { return nil }
-        return try? JSONDecoder().decode(UsageLimitsResponse.self, from: data)
+        guard let limits = try? JSONDecoder().decode(UsageLimitsResponse.self, from: data) else {
+            return nil
+        }
+        if let fetchedAt = parseTimestamp(limits.fetchedAt),
+           fetchedAt.timeIntervalSince(now) > maximumFutureSkew {
+            return nil
+        }
+        return limits
     }
 
     static func save(
@@ -123,6 +135,14 @@ enum UsageLimitsCache {
         guard limits.hasAnyProviderWithoutError,
               let data = try? JSONEncoder().encode(limits) else { return }
         defaults.set(data, forKey: defaultsKey)
+    }
+
+    private static func parseTimestamp(_ rawValue: String) -> Date? {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = formatter.date(from: rawValue) { return date }
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter.date(from: rawValue)
     }
 }
 
@@ -522,6 +542,8 @@ struct CodingPlanLimits: Codable, Equatable {
     }
 }
 
+typealias AgentPlanLimits = CodingPlanLimits
+
 struct AntigravityLimits: Codable, Equatable {
     let configured: Bool
     let error: String?
@@ -566,6 +588,7 @@ extension UsageLimitsResponse {
             (qoder?.configured ?? false, qoder?.error),
             (qoderCn?.configured ?? false, qoderCn?.error),
             (codingPlan?.configured ?? false, codingPlan?.error),
+            (agentPlan?.configured ?? false, agentPlan?.error),
         ]
         return providers.contains { $0.0 && $0.1 == nil }
     }

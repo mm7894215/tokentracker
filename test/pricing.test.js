@@ -130,15 +130,15 @@ test("matcher: GPT-5.6 codex tiers resolve to their real curated rates (not the 
   // LiteLLM has no gpt-5.6 yet; simulate that so curated must win.
   const litellm = { "gpt-5": { input: 1.25, output: 10, cache_read: 0.125 } };
   const cases = [
-    ["gpt-5.6-sol", 5, 30, "curated:exact"],
+    ["gpt-5.6-sol", 4, 20, "curated:exact"],
     ["gpt-5.6-terra", 2, 12, "curated:exact"],
     ["gpt-5.6-luna", 0.2, 1.2, "curated:exact"],
     // reasoning-effort variants codex appends must still land on the right tier
-    ["gpt-5.6-sol-high", 5, 30, null],
-    ["gpt-5.6-solhigh", 5, 30, "curated:fuzzy"],
+    ["gpt-5.6-sol-high", 4, 20, null],
+    ["gpt-5.6-solhigh", 4, 20, "curated:fuzzy"],
     ["gpt-5.6-terrahigh", 2, 12, "curated:fuzzy"],
-    // bare / unknown-tier falls back to the balanced terra tier, never gpt-5
-    ["gpt-5.6", 2, 12, "curated:fuzzy"],
+    // The public bare alias resolves to Sol, never the older gpt-5 entry.
+    ["gpt-5.6", 4, 20, "curated:fuzzy"],
   ];
   for (const [model, input, output, source] of cases) {
     const r = matcher.lookupPricing(model, { curated, litellm, source: "codex" });
@@ -183,6 +183,36 @@ test("matcher: lookupPricing fuzzy match restores `digit-digit` to `digit.digit`
   assert.equal(r.hit, true, "expected dot-form fuzzy fallback to hit");
   assert.equal(r.source, "curated:exact-dot");
   assert.equal(r.value.input, 1.4);
+});
+
+test("matcher: GLM-5.3 and GLM-5.3-Flash resolve to their own curated rates (not the glm-5 fallback)", () => {
+  const curated = require("../src/lib/pricing/curated-overrides.json");
+  // LiteLLM keys the GLM-5.3 family only under provider prefixes
+  // (`zai/glm-5.3`, `zai/glm-5.3-flash`), so bare queue names must resolve
+  // via curated. Before these exact entries existed both ids fell through to
+  // the "glm-5" fuzzy needle, billing the flash SKU at $1.0/$3.2 per MTok —
+  // 6.7x its real rate.
+  const litellm = {};
+  const cases = [
+    // flagship 5.3 keeps the 5.2 list rate (LiteLLM `zai/glm-5.3`)
+    ["glm-5.3", 1.4, 4.4, 0.26, "curated:exact"],
+    // flash SKU mirrors LiteLLM `zai/glm-5.3-flash`
+    ["glm-5.3-flash", 0.15, 0.5, 0.03, "curated:exact"],
+    // cased / suffixed variants land on the flash entry via fuzzy
+    ["GLM-5.3-Flash", 0.15, 0.5, 0.03, "curated:fuzzy"],
+    ["glm-5.3-flash-thinking", 0.15, 0.5, 0.03, "curated:fuzzy"],
+    // droid dash-forms restore the dot and hit exact-dot
+    ["glm-5-3-flash", 0.15, 0.5, 0.03, "curated:exact-dot"],
+    ["glm-5-3", 1.4, 4.4, 0.26, "curated:exact-dot"],
+  ];
+  for (const [model, input, output, cache_read, source] of cases) {
+    const r = matcher.lookupPricing(model, { curated, litellm });
+    assert.equal(r.hit, true, `${model} should resolve`);
+    assert.equal(r.value.input, input, `${model} input`);
+    assert.equal(r.value.output, output, `${model} output`);
+    assert.equal(r.value.cache_read, cache_read, `${model} cache_read`);
+    if (source) assert.equal(r.source, source, `${model} source`);
+  }
 });
 
 test("matcher: lookupPricing strips a LiteLLM provider prefix for bare queue models", () => {
@@ -670,6 +700,35 @@ test("index: iFlytek MaaS reasoning 已计入输出且不继承 DeepSeek 分时�
   assert.equal(offPeak.output, 3.33);
 });
 
+test("index: getModelPricing resolves glm-5.3-flash at the LiteLLM flash rate, not glm-5", async () => {
+  pricing.resetPricingForTests();
+  const cachePath = tmpCachePath();
+  await pricing.ensurePricingLoaded({
+    cachePath,
+    fetchImpl: makeFetchImpl(FIXTURE_LITELLM),
+  });
+  // GLM-5.3-Flash reported by Claude Code-compatible GLM endpoints reaches
+  // the queue as a bare model name. It previously resolved through the
+  // "glm-5" fuzzy fallback ($1.0/$3.2 per MTok — 6.7x the real flash rate)
+  // because LiteLLM only keys it under the provider prefix `zai/glm-5.3-flash`.
+  const flash = pricing.getModelPricing("glm-5.3-flash", { source: "claude" });
+  assert.equal(flash.input, 0.15);
+  assert.equal(flash.output, 0.5);
+  assert.equal(flash.cache_read, 0.03);
+  // End-to-end: 1M input + 1M output must cost $0.65, not the $4.20 the
+  // glm-5 fallback charged.
+  const cost = pricing.computeRowCost({
+    source: "claude",
+    model: "glm-5.3-flash",
+    input_tokens: 1_000_000,
+    output_tokens: 1_000_000,
+    cached_input_tokens: 0,
+    cache_creation_input_tokens: 0,
+    reasoning_output_tokens: 0,
+  });
+  assert.equal(cost, 0.65);
+});
+
 test("index: getModelPricing resolves Sakana Fugu Ultra from CURATED (issue #214)", async () => {
   pricing.resetPricingForTests();
   const cachePath = tmpCachePath();
@@ -1023,6 +1082,34 @@ test("index: computeRowCost on Codex row does NOT double-count reasoning", async
     Math.abs(cost - expected) < 1e-9,
     `expected ${expected}, got ${cost}`,
   );
+});
+
+test("index: computeRowCost applies GPT-5.6 Sol long-context pricing to only the observed request subset", () => {
+  const row = {
+    source: "codex",
+    model: "gpt-5.6-sol-high",
+    input_tokens: 100_000,
+    cached_input_tokens: 200_000,
+    cache_creation_input_tokens: 10_000,
+    output_tokens: 20_000,
+    reasoning_output_tokens: 5_000,
+    long_context_input_tokens: 100_000,
+    long_context_cached_input_tokens: 200_000,
+    long_context_cache_creation_input_tokens: 10_000,
+    long_context_output_tokens: 20_000,
+    long_context_reasoning_output_tokens: 5_000,
+  };
+  // Standard: .4 + .08 + .05 + .4 = .93. Long-context premium:
+  // .4 + .08 + .05 + .2 = .73. Reasoning is already inside Codex output.
+  assert.ok(Math.abs(pricing.computeRowCost(row) - 1.66) < 1e-12);
+  assert.ok(Math.abs(pricing.computeRowCost({
+    ...row,
+    long_context_input_tokens: 0,
+    long_context_cached_input_tokens: 0,
+    long_context_cache_creation_input_tokens: 0,
+    long_context_output_tokens: 0,
+    long_context_reasoning_output_tokens: 0,
+  }) - 0.93) < 1e-12);
 });
 
 test("index: computeRowCost on non-Codex source DOES bill reasoning tokens", async () => {

@@ -32,6 +32,7 @@ const { fetchZcodeLimits } = require("./zcode-limits");
 const { fetchOpencodeGoLimits } = require("./opencode-go-limits");
 const { fetchQoderLimits, fetchQoderCnLimits } = require("./qoder-limits");
 const { fetchArkCodingPlanLimits } = require("./ark-coding-plan-limits");
+const { fetchArkAgentPlanLimits } = require("./ark-agent-plan-limits");
 const { fetchProviderServiceStatus } = require("./provider-status");
 const { readSqliteJsonRows, readSqliteJsonRowsAsync } = require("./sqlite-reader");
 const {
@@ -2166,10 +2167,19 @@ async function detectAntigravityProcess({
     );
     processes = parseWindowsProcesses(result?.stdout);
   } else {
-    const result = await runCommand(commandRunner, "/bin/ps", ["-ax", "-o", "pid=,command="], {
+    let result = await runCommand(commandRunner, "/bin/ps", ["-ax", "-o", "pid=,command="], {
       timeout: timeoutMs,
       signal,
     });
+    const isSpawnFailure = result?.error
+      && result.error.code !== "ETIMEDOUT"
+      && result.error.name !== "AbortError";
+    if (isSpawnFailure && !result?.stdout) {
+      result = await runCommand(commandRunner, "ps", ["-ax", "-o", "pid=,command="], {
+        timeout: timeoutMs,
+        signal,
+      });
+    }
     processes = String(result?.stdout || "")
       .split("\n")
       .map(parseProcessLine)
@@ -2632,10 +2642,70 @@ function parseWindowsListeningPorts(output, pid) {
   return Array.from(ports).sort((a, b) => a - b);
 }
 
+function parseLinuxProcListeningPorts(pid, { procRoot = "/proc" } = {}) {
+  const numPid = Number(pid);
+  if (!Number.isFinite(numPid) || numPid <= 0) return [];
+  const inodes = new Set();
+  try {
+    const fds = fs.readdirSync(path.join(procRoot, String(numPid), "fd"));
+    for (const fd of fds) {
+      try {
+        const link = fs.readlinkSync(path.join(procRoot, String(numPid), "fd", fd));
+        const m = link.match(/^socket:\[(\d+)\]$/);
+        if (m) inodes.add(m[1]);
+      } catch {}
+    }
+  } catch {
+    return [];
+  }
+  if (inodes.size === 0) return [];
+
+  const ports = new Set();
+  for (const table of [path.join(procRoot, "net", "tcp"), path.join(procRoot, "net", "tcp6")]) {
+    try {
+      const content = fs.readFileSync(table, "utf8");
+      for (const line of content.split("\n")) {
+        const parts = line.trim().split(/\s+/);
+        if (parts.length > 9 && parts[3] === "0A") {
+          const inode = parts[9];
+          if (inodes.has(inode)) {
+            const portHex = parts[1]?.split(":")[1];
+            if (portHex) {
+              const port = parseInt(portHex, 16);
+              if (Number.isInteger(port) && port > 0 && port <= 65535) {
+                ports.add(port);
+              }
+            }
+          }
+        }
+      }
+    } catch {}
+  }
+  return Array.from(ports).sort((a, b) => a - b);
+}
+
+function parseSsListeningPorts(output, pid) {
+  const ports = new Set();
+  const pidPattern = pid ? new RegExp(`\\bpid=${pid}\\b`) : null;
+  for (const line of String(output || "").split("\n")) {
+    if (!line.includes("LISTEN")) continue;
+    if (pidPattern && !pidPattern.test(line)) continue;
+    const match = line.match(/:(\d+)\s+/);
+    if (match) {
+      const port = Number(match[1]);
+      if (Number.isInteger(port) && port > 0 && port <= 65535) {
+        ports.add(port);
+      }
+    }
+  }
+  return Array.from(ports).sort((a, b) => a - b);
+}
+
 async function listAntigravityPorts(pid, {
   commandRunner,
   platform = process.platform,
   timeoutMs = ANTIGRAVITY_PROCESS_SCAN_TIMEOUT_MS,
+  procRoot = "/proc",
   signal,
 } = {}) {
   if (platform === "win32") {
@@ -2651,21 +2721,48 @@ async function listAntigravityPorts(pid, {
     }
     return ports;
   }
+
+  // On Linux, try procfs first when no mock command runner is provided (zero-spawn, no dependencies).
+  if (platform === "linux" && !commandRunner) {
+    const procPorts = parseLinuxProcListeningPorts(pid, { procRoot });
+    if (procPorts.length > 0) return procPorts;
+  }
+
   const lsof = await resolveLsofBinary({ commandRunner });
-  if (!lsof) {
+  if (lsof) {
+    const result = await runCommand(
+      commandRunner,
+      lsof,
+      ["-nP", "-iTCP", "-sTCP:LISTEN", "-a", "-p", String(pid)],
+      { timeout: timeoutMs, signal },
+    );
+    const ports = parseListeningPorts(result?.stdout);
+    if (ports.length > 0) return ports;
+  }
+
+  // On Linux, fall back to procfs (honoring procRoot) or ss if lsof is absent or yielded no ports.
+  if (platform === "linux") {
+    const procPorts = parseLinuxProcListeningPorts(pid, { procRoot });
+    if (procPorts.length > 0) return procPorts;
+
+    const ss = await whichBinary("ss", { commandRunner });
+    if (ss) {
+      const result = await runCommand(
+        commandRunner,
+        ss,
+        ["-H", "-tlpn"],
+        { timeout: timeoutMs, signal },
+      );
+      const ssPorts = parseSsListeningPorts(result?.stdout, pid);
+      if (ssPorts.length > 0) return ssPorts;
+    }
+  }
+
+  if (!lsof && platform !== "linux") {
     throw new Error("Antigravity port detection needs lsof. Install it, then retry.");
   }
-  const result = await runCommand(
-    commandRunner,
-    lsof,
-    ["-nP", "-iTCP", "-sTCP:LISTEN", "-a", "-p", String(pid)],
-    { timeout: timeoutMs, signal },
-  );
-  const ports = parseListeningPorts(result?.stdout);
-  if (!ports.length) {
-    throw new Error("Antigravity is running but not exposing ports yet. Try again in a few seconds.");
-  }
-  return ports;
+
+  throw new Error("Antigravity is running but not exposing ports yet. Try again in a few seconds.");
 }
 
 function antigravityDefaultBody() {
@@ -3619,7 +3716,7 @@ async function fetchUsageLimitsUncached({
     : null;
 
   const providerFetch = withFetchTimeout(fetchImpl, providerTimeoutMs);
-  const [claudeResult, codexResult, cursor, kimi, gemini, kiro, antigravity, copilot, grok, zcode, opencodeGoRaw, qoder, qoderCn, codingPlan, claudeServiceStatus] = await Promise.all([
+  const [claudeResult, codexResult, cursor, kimi, gemini, kiro, antigravity, copilot, grok, zcode, opencodeGoRaw, qoder, qoderCn, codingPlan, agentPlan, claudeServiceStatus] = await Promise.all([
     claudeToken && !freshClaudeCache && !claudeRetryAtMs
       ? withProviderTimeout(fetchClaudeUsageLimits(claudeToken, { fetchImpl: providerFetch, maxAttempts: 1 }), "Claude", providerTimeoutMs).then(
           (value) => ({ status: "fulfilled", value }),
@@ -3692,10 +3789,10 @@ async function fetchUsageLimitsUncached({
       "Qoder CN",
       providerTimeoutMs,
     ).catch((reason) => ({ configured: true, error: reason?.message || "Unknown error" })),
-    // Ark Coding Plan (火山方舟): subscription quota via the user's own
-    // arkcli binary. No token-consumption source — consumption for the
-    // compatible CLIs is already counted from their local files; this only
-    // surfaces the 5h/week/month quota percentages.
+    // Ark Coding Plan / Agent Plan (火山方舟): two parallel subscription
+    // products sharing the same arkcli binary. No token-consumption source —
+    // consumption for the compatible CLIs is already counted from their
+    // local files; these only surface the 5h/week/month quota percentages.
     withAbortableProviderTimeout(
       (signal) => fetchArkCodingPlanLimits({
         commandRunner,
@@ -3706,6 +3803,18 @@ async function fetchUsageLimitsUncached({
         providerTimeoutMs,
       }),
       "Ark Coding Plan",
+      providerTimeoutMs,
+    ).catch((reason) => ({ configured: true, error: reason?.message || "Unknown error" })),
+    withAbortableProviderTimeout(
+      (signal) => fetchArkAgentPlanLimits({
+        commandRunner,
+        home,
+        nowMs,
+        platform,
+        signal,
+        providerTimeoutMs,
+      }),
+      "Ark Agent Plan",
       providerTimeoutMs,
     ).catch((reason) => ({ configured: true, error: reason?.message || "Unknown error" })),
     // Public status-page probe (fail-soft, own 5-min cache in provider-status.js).
@@ -3904,6 +4013,7 @@ async function fetchUsageLimitsUncached({
     qoder: withPlanLabel(qoder, qoder?.plan_label, "Qoder"),
     qoderCn: withPlanLabel(qoderCn, qoderCn?.plan_label, "Qoder CN"),
     codingPlan: withPlanLabel(codingPlan, codingPlan?.plan_label, "Ark Coding Plan"),
+    agentPlan: withPlanLabel(agentPlan, agentPlan?.plan_label, "Ark Agent Plan"),
   };
 
   for (const [providerName, provider] of Object.entries(data)) {
@@ -3955,6 +4065,8 @@ module.exports = {
   loadAntigravityCredentials,
   parseListeningPorts,
   parseWindowsListeningPorts,
+  parseLinuxProcListeningPorts,
+  parseSsListeningPorts,
   listAntigravityPorts,
   detectAntigravityProcess,
   fetchAntigravityLimits,
