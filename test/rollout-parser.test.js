@@ -64,6 +64,9 @@ const {
   parseAntigravityIncremental,
   listAntigravitySessionFiles,
   estimateAntigravityTokens,
+  resolveAntigravityDbPath,
+  extractAntigravityGenInfo,
+  readAntigravityConversationDb,
   parseKimiCodeIncremental,
   resolveKimiHome,
   resolveKimiCodeHome,
@@ -12373,6 +12376,161 @@ for (const eventType of ["USER_INPUT", "USER_SETTINGS_CHANGE"]) {
     }
   });
 }
+
+function encodeAntigravityTestVarint(val) {
+  const bytes = [];
+  let n = val;
+  while (n >= 0x80) {
+    bytes.push((n & 0x7f) | 0x80);
+    n = Math.floor(n / 128);
+  }
+  bytes.push(n & 0x7f);
+  return Buffer.from(bytes);
+}
+function encodeAntigravityTestTag(f, wire) {
+  return encodeAntigravityTestVarint((f << 3) | wire);
+}
+function encodeAntigravityTestLd(f, buf) {
+  const b = Buffer.isBuffer(buf) ? buf : Buffer.from(buf);
+  return Buffer.concat([encodeAntigravityTestTag(f, 2), encodeAntigravityTestVarint(b.length), b]);
+}
+function encodeAntigravityTestVi(f, val) {
+  return Buffer.concat([encodeAntigravityTestTag(f, 0), encodeAntigravityTestVarint(val)]);
+}
+
+function buildAntigravityTestProto({ model, contextTokens, lastStepIndex }) {
+  const parts = [];
+  if (model) parts.push(encodeAntigravityTestLd(19, model));
+  if (Number.isFinite(contextTokens)) {
+    const f1 = encodeAntigravityTestVi(1, contextTokens);
+    const f10 = encodeAntigravityTestLd(10, f1);
+    const f9 = encodeAntigravityTestLd(9, f10);
+    parts.push(f9);
+  }
+  if (lastStepIndex != null) {
+    const k = encodeAntigravityTestLd(1, "last_step_index");
+    const v = encodeAntigravityTestLd(2, String(lastStepIndex));
+    parts.push(encodeAntigravityTestLd(20, Buffer.concat([k, v])));
+  }
+  return encodeAntigravityTestLd(1, Buffer.concat(parts));
+}
+
+test("resolveAntigravityDbPath maps brain transcript logs to conversations database", () => {
+  const transcriptPath =
+    "/Users/test/.gemini/antigravity/brain/session-abc-123/.system_generated/logs/transcript.jsonl";
+  const expectedDb = path.join(
+    "/Users/test/.gemini/antigravity",
+    "conversations",
+    "session-abc-123.db",
+  );
+  assert.equal(resolveAntigravityDbPath(transcriptPath), expectedDb);
+  assert.equal(resolveAntigravityDbPath("/var/tmp/other.jsonl"), null);
+});
+
+test("extractAntigravityGenInfo extracts model, context tokens, and step index from protobuf payload", () => {
+  const proto = buildAntigravityTestProto({
+    model: "gemini-3.8-flash",
+    contextTokens: 25000,
+    lastStepIndex: 0,
+  });
+  const info = extractAntigravityGenInfo(proto);
+  assert.deepEqual(info, {
+    model: "gemini-3.8-flash",
+    contextTokens: 25000,
+    lastStepIndex: 0,
+  });
+});
+
+test("parseAntigravityIncremental reads accurate usage and cache from SQLite gen_metadata", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-antigravity-sqlite-"));
+  try {
+    const brainDir = path.join(
+      tmp,
+      "antigravity",
+      "brain",
+      "conv-123",
+      ".system_generated",
+      "logs",
+    );
+    const convDir = path.join(tmp, "antigravity", "conversations");
+    await fs.mkdir(brainDir, { recursive: true });
+    await fs.mkdir(convDir, { recursive: true });
+    const transcriptPath = path.join(brainDir, "transcript.jsonl");
+    const dbPath = path.join(convDir, "conv-123.db");
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const cursors = { version: 1, files: {}, updatedAt: null };
+
+    sqliteCli.execFileSync("sqlite3", [
+      dbPath,
+      "CREATE TABLE gen_metadata (idx INTEGER PRIMARY KEY, data BLOB);",
+    ]);
+    const turn1Proto = buildAntigravityTestProto({
+      model: "gemini-3.8-flash",
+      contextTokens: 25000,
+      lastStepIndex: 0,
+    });
+    const turn2Proto = buildAntigravityTestProto({
+      model: "gemini-3.8-flash",
+      contextTokens: 30000,
+      lastStepIndex: 2,
+    });
+    sqliteCli.execFileSync("sqlite3", [
+      dbPath,
+      `INSERT INTO gen_metadata (idx, data) VALUES (0, X'${turn1Proto.toString("hex")}'), (1, X'${turn2Proto.toString("hex")}');`,
+    ]);
+
+    const lines = [
+      {
+        type: "USER_INPUT",
+        step_index: 0,
+        created_at: "2026-04-05T14:00:00.000Z",
+        content: "hello",
+      },
+      {
+        type: "PLANNER_RESPONSE",
+        step_index: 1,
+        created_at: "2026-04-05T14:01:00.000Z",
+        content: "hi",
+        thinking: "think1",
+      },
+      {
+        type: "USER_INPUT",
+        step_index: 2,
+        created_at: "2026-04-05T14:02:00.000Z",
+        content: "next prompt",
+      },
+      {
+        type: "PLANNER_RESPONSE",
+        step_index: 3,
+        created_at: "2026-04-05T14:03:00.000Z",
+        content: "done",
+        thinking: "think2",
+      },
+    ];
+    await fs.writeFile(transcriptPath, lines.map((l) => JSON.stringify(l)).join("\n"));
+
+    const result = await parseAntigravityIncremental({
+      sessionFiles: [transcriptPath],
+      cursors,
+      queuePath,
+    });
+    assert.equal(result.eventsAggregated, 2);
+
+    const queued = await readJsonLines(queuePath);
+    assert.equal(queued.length, 1);
+    assert.equal(queued[0].source, "antigravity");
+    assert.equal(queued[0].model, "gemini-3.8-flash");
+    assert.equal(queued[0].input_tokens, 30000);
+    assert.equal(queued[0].cached_input_tokens, 25000);
+    assert.equal(queued[0].conversation_count, 2);
+    assert.equal(
+      queued[0].total_tokens,
+      30000 + 25000 + queued[0].output_tokens + queued[0].reasoning_output_tokens,
+    );
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
 
 // ── Kimi Code official (@moonshot-ai/kimi-code) ──────────────────────────────
 

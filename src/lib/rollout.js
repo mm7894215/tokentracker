@@ -18722,6 +18722,113 @@ async function parseAntigravityIncremental({
   return { filesProcessed, eventsAggregated, bucketsQueued, projectBucketsQueued };
 }
 
+function decodeAntigravityVarint(buf, offset) {
+  let res = 0;
+  let shift = 0;
+  while (offset < buf.length) {
+    const b = buf[offset++];
+    res += (b & 0x7f) * 2 ** shift;
+    if (!(b & 0x80)) break;
+    shift += 7;
+  }
+  return [res, offset];
+}
+
+function findAntigravityProtoFields(buf) {
+  const fields = [];
+  let offset = 0;
+  while (offset < buf.length) {
+    const [tag, next] = decodeAntigravityVarint(buf, offset);
+    offset = next;
+    const fieldNum = tag >> 3;
+    const wireType = tag & 7;
+    if (wireType === 0) {
+      const [val, vNext] = decodeAntigravityVarint(buf, offset);
+      offset = vNext;
+      fields.push({ num: fieldNum, val });
+    } else if (wireType === 2) {
+      const [len, lNext] = decodeAntigravityVarint(buf, offset);
+      offset = lNext;
+      fields.push({ num: fieldNum, val: buf.subarray(offset, offset + len) });
+      offset += len;
+    } else if (wireType === 1) {
+      offset += 8;
+    } else if (wireType === 5) {
+      offset += 4;
+    } else {
+      break;
+    }
+  }
+  return fields;
+}
+
+function extractAntigravityGenInfo(buf) {
+  const root = findAntigravityProtoFields(buf);
+  const f1 = root.find((f) => f.num === 1)?.val;
+  if (!f1) return null;
+
+  const inner = findAntigravityProtoFields(f1);
+  let model = null;
+  const f19 = inner.find((f) => f.num === 19)?.val;
+  if (f19) model = Buffer.from(f19).toString("utf8").trim();
+
+  let contextTokens = 0;
+  const f9 = inner.find((f) => f.num === 9)?.val;
+  if (f9) {
+    const f10 = findAntigravityProtoFields(f9).find((f) => f.num === 10)?.val;
+    if (f10) {
+      const tok = findAntigravityProtoFields(f10).find((f) => f.num === 1)?.val;
+      if (Number.isFinite(tok)) contextTokens = tok;
+    }
+  }
+
+  let lastStepIndex = null;
+  for (const f of inner) {
+    if (f.num !== 20 || !f.val) continue;
+    const kv = findAntigravityProtoFields(f.val);
+    const k = kv.find((x) => x.num === 1)?.val;
+    const v = kv.find((x) => x.num === 2)?.val;
+    if (k && Buffer.from(k).toString("utf8") === "last_step_index" && v) {
+      const parsed = parseInt(Buffer.from(v).toString("utf8"), 10);
+      if (Number.isFinite(parsed)) lastStepIndex = parsed;
+    }
+  }
+
+  return { model, contextTokens, lastStepIndex };
+}
+
+function resolveAntigravityDbPath(transcriptPath) {
+  if (!transcriptPath || typeof transcriptPath !== "string") return null;
+  const m = transcriptPath.match(/^(.*)[/\\]brain[/\\]([^/\\]+)[/\\]\.system_generated[/\\]logs[/\\]transcript.*\.jsonl$/);
+  if (!m) return null;
+  return path.join(m[1], "conversations", `${m[2]}.db`);
+}
+
+function readAntigravityConversationDb(dbPath) {
+  if (!dbPath) return null;
+  try {
+    const rows = readSqliteJsonRows(
+      dbPath,
+      "SELECT idx, quote(data) as hex FROM gen_metadata ORDER BY idx",
+      { readOnly: true },
+    );
+    if (!Array.isArray(rows) || rows.length === 0) return null;
+
+    const stepMap = new Map();
+    for (const r of rows) {
+      if (!r || typeof r.hex !== "string" || !r.hex.startsWith("X'")) continue;
+      const buf = Buffer.from(r.hex.slice(2, -1), "hex");
+      const info = extractAntigravityGenInfo(buf);
+      if (info && info.lastStepIndex != null && info.contextTokens > 0) {
+        stepMap.set(info.lastStepIndex + 1, info);
+      }
+    }
+    return stepMap.size > 0 ? stepMap : null;
+  } catch (_) {
+    return null;
+  }
+}
+
 async function parseAntigravityFile({
   filePath,
   lastLine,
@@ -18773,6 +18880,9 @@ async function parseAntigravityFile({
   let previousContextTokens = resumed ? cachedPrev : 0;
   let lastCompletedLine = Math.min(Number.isFinite(lastLine) ? lastLine : 0, lines.length);
 
+  const dbPath = resolveAntigravityDbPath(filePath);
+  const stepMap = dbPath ? readAntigravityConversationDb(dbPath) : null;
+
   for (let i = scanStart; i < lines.length; i++) {
     const line = lines[i];
 
@@ -18795,7 +18905,12 @@ async function parseAntigravityFile({
     const eventContextTokens = antigravityContextTokens(parsed);
 
     if (!isNewEvent) {
-      contextTokens += eventContextTokens;
+      const dbTurn = stepMap && Number.isFinite(parsed.step_index) ? stepMap.get(parsed.step_index) : null;
+      if (dbTurn && dbTurn.contextTokens > 0) {
+        contextTokens = dbTurn.contextTokens;
+      } else {
+        contextTokens += eventContextTokens;
+      }
       lastCompletedLine = i + 1;
       continue;
     }
@@ -18822,17 +18937,36 @@ async function parseAntigravityFile({
       const content = typeof parsed.content === "string" ? parsed.content : "";
       const thinking = typeof parsed.thinking === "string" ? parsed.thinking : "";
 
-      const inputDelta = Math.max(0, contextTokens - previousContextTokens);
+      const dbTurn = stepMap && Number.isFinite(parsed.step_index) ? stepMap.get(parsed.step_index) : null;
+      let inputDelta = 0;
+      let cachedInputTokens = 0;
+
+      if (dbTurn && dbTurn.contextTokens > 0) {
+        if (dbTurn.model) {
+          const norm = normalizeAntigravityTranscriptModel(dbTurn.model);
+          if (norm) model = norm;
+        }
+        const curTokens = dbTurn.contextTokens;
+        if (previousContextTokens === 0) {
+          inputDelta = curTokens;
+        } else {
+          cachedInputTokens = Math.min(curTokens, previousContextTokens);
+          inputDelta = Math.max(0, curTokens - previousContextTokens);
+        }
+        contextTokens = curTokens;
+      } else {
+        inputDelta = Math.max(0, contextTokens - previousContextTokens);
+      }
+
       const outputTokens =
         antigravityValueTokens(content) + antigravityValueTokens(parsed.tool_calls);
       const reasoningTokens = antigravityValueTokens(thinking);
 
       delta.input_tokens = inputDelta;
+      delta.cached_input_tokens = cachedInputTokens;
       delta.output_tokens = outputTokens;
       delta.reasoning_output_tokens = reasoningTokens;
-      // Match the mainstream convention (Codebuddy / Kilocode / OMP / Hermes):
-      // total_tokens = sum of every token column. No cache columns here.
-      delta.total_tokens = inputDelta + outputTokens + reasoningTokens;
+      delta.total_tokens = inputDelta + cachedInputTokens + outputTokens + reasoningTokens;
       delta.billable_total_tokens = delta.total_tokens;
       delta.conversation_count = 1;
       billedPlanner = delta.total_tokens > 0;
@@ -20457,6 +20591,9 @@ module.exports = {
   parseAntigravityIncremental,
   estimateAntigravityTokens,
   isCjkCodePoint,
+  resolveAntigravityDbPath,
+  extractAntigravityGenInfo,
+  readAntigravityConversationDb,
 
   // Trae SOLO (ByteDance AI IDE)
   resolveTraePath,
