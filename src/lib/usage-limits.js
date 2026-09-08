@@ -667,11 +667,11 @@ function normalizeCursorUsageSummary(body) {
       planPercent = clampPercent((autoPercent + apiPercent) / 2);
     } else if (apiPercent !== null) {
       planPercent = apiPercent;
-    } else if (autoPercent === null) {
+    } else if (autoPercent !== null) {
+      planPercent = autoPercent;
+    } else {
       const fromPlanCents = cursorPercentFromCentsUsedLimit(plan?.used, plan?.limit);
       if (fromPlanCents !== null) planPercent = fromPlanCents;
-    } else {
-      planPercent = autoPercent;
     }
   }
   if (planPercent === null) {
@@ -842,7 +842,7 @@ function normalizeKimiUsageResponse(body) {
   return {
     membership_level: typeof body?.user?.membership?.level === "string" ? body.user.membership.level : null,
     subscription_type: typeof body?.subType === "string" ? body.subType : null,
-    parallel_limit: parallelLimit === null ? null : parallelLimit,
+    parallel_limit: parallelLimit !== null ? parallelLimit : null,
     primary_window: kimiWindowFromUsage(body?.usage),
     secondary_window: kimiWindowFromUsage(detail),
     tertiary_window: kimiWindowFromUsage(body?.totalQuota),
