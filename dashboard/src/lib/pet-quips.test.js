@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { getCopyLocale, setCopyLocale } from "./copy";
+import { ZH_CN_LOCALE } from "./locale";
 import {
   buildPetLimitSummary,
   buildPetLimitSummaries,
@@ -61,6 +63,31 @@ describe("desktop pet limit dialogue", () => {
       "Command Code 5h",
       "Command Code Weekly",
     ]);
+  });
+
+  it("resolves Command Code labels through the copy registry per locale (review 594)", () => {
+    const prevLocale = getCopyLocale();
+    try {
+      setCopyLocale(ZH_CN_LOCALE);
+      const limits = {
+        commandCode: {
+          configured: true,
+          error: null,
+          primary_window: { used_percent: 42, reset_at: "2099-01-01T00:00:00Z" },
+          secondary_window: { used_percent: 3, reset_at: "2099-01-02T00:00:00Z" },
+        },
+      };
+
+      const readings = buildPetLimitSummaries(limits);
+      // The provider name stays the brand; the weekly window must come from
+      // the zh-CN registry (每周), not a hardcoded English literal.
+      expect(readings.map(({ provider, window }) => `${provider} ${window}`)).toEqual([
+        "Command Code 5h",
+        "Command Code 每周",
+      ]);
+    } finally {
+      setCopyLocale(prevLocale);
+    }
   });
 
   it("adds the limit line to the tap conversation without replacing token quips", () => {
