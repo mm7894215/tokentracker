@@ -723,5 +723,9 @@
   "widgets.preview.reset_hours_minutes": "{{hours}} 小時 {{minutes}} 分鐘後",
   "widgets.preview.metric": "指標",
   "settings.limits.showSubscriptions": "顯示訂閱",
-  "settings.limits.showSubscriptionsHint": "在額度面板中顯示手動記錄的訂閱續費進度。"
+  "settings.limits.showSubscriptionsHint": "在額度面板中顯示手動記錄的訂閱續費進度。",
+  "limits.commandCode.setupHint.snippet_login": "cmd login",
+  "limits.commandCode.setupHint.snippet_read": "read -r -s COMMAND_CODE_API_KEY",
+  "limits.commandCode.setupHint.snippet_export": "export COMMAND_CODE_API_KEY",
+  "limits.commandCode.setupHint.snippet_setenv": "launchctl setenv COMMAND_CODE_API_KEY \"$COMMAND_CODE_API_KEY\""
 }

@@ -1618,3 +1618,7 @@ limits.commandCode.setupHint.step2,ui,LimitsPage,UsageLimitsPanel,command_code_h
 limits.commandCode.setupHint.copy,ui,LimitsPage,UsageLimitsPanel,command_code_hint_copy,"Copy",,active
 limits.commandCode.setupHint.copied,ui,LimitsPage,UsageLimitsPanel,command_code_hint_copied,"Copied",,active
 limits.commandCode.setupHint.note_app,ui,LimitsPage,UsageLimitsPanel,command_code_hint_note_app,"macOS app: use the launchctl setenv line, then reopen the app.",,active
+limits.commandCode.setupHint.snippet_login,ui,LimitsPage,UsageLimitsPanel,command_code_hint_snippet_login,"cmd login",,active
+limits.commandCode.setupHint.snippet_read,ui,LimitsPage,UsageLimitsPanel,command_code_hint_snippet_read,"read -r -s COMMAND_CODE_API_KEY",,active
+limits.commandCode.setupHint.snippet_export,ui,LimitsPage,UsageLimitsPanel,command_code_hint_snippet_export,"export COMMAND_CODE_API_KEY",,active
+limits.commandCode.setupHint.snippet_setenv,ui,LimitsPage,UsageLimitsPanel,command_code_hint_snippet_setenv,"launchctl setenv COMMAND_CODE_API_KEY ""$COMMAND_CODE_API_KEY""",,active

@@ -276,11 +276,13 @@ const STATUS_BADGE_TONES = {
 };
 
 // CLI to run when a provider's stored OAuth token has expired
-// (`auth_action_required: "reauth"` on the provider payload).
+// (`auth_action_required: "reauth"` on the provider payload). Claude and Codex
+// reauth with the bare binary; Command Code reauths with `cmd login`, which is
+// registry-owned (limits.commandCode.setupHint.snippet_login) so the tooltip
+// and the setup guide stay in sync.
 const REAUTH_CLI_COMMANDS = {
   claude: "claude",
   codex: "codex",
-  commandCode: "cmd login",
 };
 
 function StatusBadge({ label, age = null, tone = "live", tooltip = null }) {
@@ -725,7 +727,10 @@ function renderProviderGroup(id, data, mode, expanded, onToggle, subscription = 
   // silently freeze on the cached snapshot (issue 330) — more actionable than
   // the generic stale badge below, so it takes precedence.
   if (!badge && data.auth_action_required === "reauth") {
-    const command = REAUTH_CLI_COMMANDS[id];
+    const command =
+      id === "commandCode"
+        ? copy("limits.commandCode.setupHint.snippet_login")
+        : REAUTH_CLI_COMMANDS[id];
     badge = (
       <StatusBadge
         label={copy("limits.reauth.badge")}
@@ -880,11 +885,14 @@ function OpenCodeGoSetupHint() {
 // sees, stores, or forwards the credential either way.
 function CommandCodeSetupHint() {
   const [copied, setCopied] = useState(false);
-  const loginSnippet = "cmd login";
+  // Command lines stay identical across locales; they are copy keys per the
+  // repo i18n convention (review 594) so the setup guide and the reauth
+  // tooltip share one source of truth for `cmd login`.
+  const loginSnippet = copy("limits.commandCode.setupHint.snippet_login");
   const snippet = [
-    "read -r -s COMMAND_CODE_API_KEY",
-    "export COMMAND_CODE_API_KEY",
-    'launchctl setenv COMMAND_CODE_API_KEY "$COMMAND_CODE_API_KEY"',
+    copy("limits.commandCode.setupHint.snippet_read"),
+    copy("limits.commandCode.setupHint.snippet_export"),
+    copy("limits.commandCode.setupHint.snippet_setenv"),
   ].join("\n");
 
   const onCopy = async (e) => {

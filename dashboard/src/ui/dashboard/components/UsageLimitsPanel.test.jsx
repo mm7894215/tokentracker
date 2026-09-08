@@ -592,6 +592,34 @@ describe("UsageLimitsPanel", () => {
     expect(within(group).queryByText(/^Stale/i)).not.toBeInTheDocument();
   });
 
+  it("sources the Command Code reauth command from the copy registry into the tooltip (review 594)", () => {
+    render(
+      <UsageLimitsPanel
+        commandCode={{
+          configured: true,
+          error: null,
+          primary_window: { used_percent: 41, reset_at: "2026-07-24T12:00:00.000Z" },
+          stale: true,
+          cached_at: "2026-07-17T12:00:00.000Z",
+          auth_action_required: "reauth",
+          provenance: {
+            source: "disk-cache",
+            confidence: "observed",
+            stale: true,
+            captured_at: "2026-07-17T12:00:00.000Z",
+          },
+        }}
+        order={["commandCode"]}
+      />,
+    );
+
+    const group = screen.getByText("Command Code").closest("[role='button']");
+    expect(group).not.toBeNull();
+    expect(within(group).getByText(new RegExp(copy("limits.reauth.badge")))).toBeInTheDocument();
+    expect(within(group).getByText(/run `cmd login`/)).toBeInTheDocument();
+    expect(within(group).queryByText(/^Stale/i)).not.toBeInTheDocument();
+  });
+
   it.each([
     [ZH_CN_LOCALE, "实时", "过期"],
     [ZH_TW_LOCALE, "即時", "過期"],
