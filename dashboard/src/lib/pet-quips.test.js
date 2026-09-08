@@ -44,6 +44,25 @@ describe("desktop pet limit dialogue", () => {
     expect(atLimit).not.toMatch(/\d+%/);
   });
 
+  it("surfaces Command Code 5h/weekly windows when they are partially used", () => {
+    const limits = {
+      commandCode: {
+        configured: true,
+        error: null,
+        primary_window: { used_percent: 42, reset_at: "2099-01-01T00:00:00Z" },
+        secondary_window: { used_percent: 3, reset_at: "2099-01-02T00:00:00Z" },
+      },
+      // A configured-but-empty provider contributes no pet line.
+      opencodeGo: { configured: true, error: null, primary_window: { used_percent: 0, reset_at: 0 } },
+    };
+
+    const readings = buildPetLimitSummaries(limits);
+    expect(readings.map(({ provider, window }) => `${provider} ${window}`)).toEqual([
+      "Command Code 5h",
+      "Command Code Weekly",
+    ]);
+  });
+
   it("adds the limit line to the tap conversation without replacing token quips", () => {
     const pool = buildQuipPool("en", {
       tokens: 1200,

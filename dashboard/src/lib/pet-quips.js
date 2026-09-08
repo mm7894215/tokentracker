@@ -311,6 +311,7 @@ const PET_LIMIT_PROVIDER_NAMES = {
   zcode: "ZCode",
   opencodeGo: "OpenCode Go",
   qoder: "Qoder",
+  commandCode: "Command Code",
   codingPlan: "Ark Coding Plan",
 };
 
@@ -406,6 +407,10 @@ function collectPetLimitRows(limits) {
   addGeneric("zcode", limits.zcode, [["GLM-5.2", limits.zcode?.primary_window], ["GLM-5 Turbo", limits.zcode?.secondary_window], ["Other", limits.zcode?.tertiary_window]]);
   addGeneric("opencodeGo", limits.opencodeGo, [["5h", limits.opencodeGo?.primary_window], ["Weekly", limits.opencodeGo?.secondary_window], ["Month", limits.opencodeGo?.tertiary_window]]);
   addGeneric("qoder", limits.qoder, [["Credits", limits.qoder?.primary_window], ["Ultimate Free Calls", limits.qoder?.secondary_window]]);
+  addGeneric("commandCode", limits.commandCode, [
+    ["5h", limits.commandCode?.primary_window],
+    [copy("limits.label.command_code_weekly"), limits.commandCode?.secondary_window],
+  ]);
   addGeneric("codingPlan", limits.codingPlan, [["5h", limits.codingPlan?.primary_window], ["Week", limits.codingPlan?.secondary_window], ["Month", limits.codingPlan?.tertiary_window]]);
   addGeneric("agentPlan", limits.agentPlan, [
     ["5h", limits.agentPlan?.primary_window],
