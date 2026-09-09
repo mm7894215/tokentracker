@@ -658,10 +658,6 @@ test("index: iFlytek MaaS 使用附件中的完整来源级价格表", () => {
     assert.deepEqual(pricing.getModelPricing(model, { source: "acode" }), expected);
   }
 
-  const glm53 = iFlytekMaasPricing.xopglm53;
-  for (const model of ["auto", "astronclaw-auto", "future-auto"]) {
-    assert.deepEqual(pricing.getModelPricing(model, { source: "acode" }), glm53);
-  }
   assert.deepEqual(pricing.getModelPricing("xsparkx2agent", { source: "acode" }), iFlytekMaasPricing.xsparkx2);
   assert.ok(!curatedPricing.source_exclusive?.includes("acode"));
   assert.deepEqual(
@@ -676,6 +672,38 @@ test("index: iFlytek MaaS 使用附件中的完整来源级价格表", () => {
   // AStudio source-specific prices must not override public prices for same-named
   // models from other sources.
   assert.deepEqual(pricing.getModelPricing("GLM-5.2"), { input: 1.4, output: 4.4, cache_read: 0.26 });
+});
+
+test("index: unresolved AStudio routers stay unpriced without affecting other sources", () => {
+  pricing.resetPricingForTests();
+  for (const model of [
+    "auto", "something-auto", "astronclaw-auto", "future-auto",
+    "glm-5.3-auto", " AUTO ", " Something-AUTO ",
+  ]) {
+    const row = {
+      source: "acode",
+      model,
+      input_tokens: 1_000_000,
+      output_tokens: 1_000_000,
+      cached_input_tokens: 1_000_000,
+      cache_creation_input_tokens: 1_000_000,
+      reasoning_output_tokens: 1_000_000,
+    };
+    const lookup = matcher.lookupPricing(model, {
+      source: "ACODE",
+      curated: curatedPricing,
+      litellm: { [model.trim()]: { input: 99, output: 99 } },
+    });
+    assert.equal(lookup.hit, false, model);
+    assert.deepEqual(pricing.getModelPricing(model, { source: "acode" }), pricing.ZERO_PRICING, model);
+    assert.equal(pricing.computeRowCost(row), 0, model);
+    assert.equal(row.model, model);
+  }
+  assert.equal(pricing.getModelPricing("auto", { source: "cursor" }).input, 1.25);
+  assert.deepEqual(
+    pricing.getModelPricing("auto", { source: "workbuddy" }),
+    pricing.getModelPricing("hy3-preview-agent"),
+  );
 });
 
 test("index: iFlytek MaaS reasoning 已计入输出且不继承 DeepSeek 分时折扣", () => {

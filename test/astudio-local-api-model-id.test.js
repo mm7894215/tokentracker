@@ -57,6 +57,8 @@ test("local usage APIs preserve raw AStudio model IDs", async () => {
       queueRow({ source: "acode", model: "xsparkx2agent", hourStart: `${day}T03:00:00.000Z`, totalTokens: 50 }),
       queueRow({ source: "acode", model: "custom-service-id", hourStart: `${day}T04:00:00.000Z`, totalTokens: 25 }),
       queueRow({ source: "codex", model: "xopglm52", hourStart: `${day}T05:00:00.000Z`, totalTokens: 10 }),
+      queueRow({ source: "acode", model: "auto", hourStart: `${day}T06:00:00.000Z`, totalTokens: 20 }),
+      queueRow({ source: "acode", model: "something-auto", hourStart: `${day}T07:00:00.000Z`, totalTokens: 15 }),
     ];
     await fs.promises.writeFile(queuePath, `${rows.map(JSON.stringify).join("\n")}\n`);
     const handler = createLocalApiHandler({ queuePath });
@@ -67,6 +69,8 @@ test("local usage APIs preserve raw AStudio model IDs", async () => {
       xopglm52: 110,
       xsparkx2agent: 50,
       "custom-service-id": 25,
+      auto: 20,
+      "something-auto": 15,
     });
 
     const hourly = await callEndpoint(
@@ -78,6 +82,8 @@ test("local usage APIs preserve raw AStudio model IDs", async () => {
       "xsparkx2agent",
       "custom-service-id",
       "xopglm52",
+      "auto",
+      "something-auto",
     ]);
 
     const monthly = await callEndpoint(handler, `/functions/tokentracker-usage-monthly?${query}`);
@@ -98,8 +104,14 @@ test("local usage APIs preserve raw AStudio model IDs", async () => {
         { model: "xopglm52", model_id: "xopglm52" },
         { model: "xsparkx2agent", model_id: "xsparkx2agent" },
         { model: "custom-service-id", model_id: "custom-service-id" },
+        { model: "auto", model_id: "auto" },
+        { model: "something-auto", model_id: "something-auto" },
       ],
     );
+    for (const model of ["auto", "something-auto"]) {
+      const entry = astudio.models.find((entry) => entry.model === model);
+      assert.equal(Number(entry.totals.total_cost_usd), 0, model);
+    }
     const codex = breakdown.sources.find((entry) => entry.source === "codex");
     assert.deepEqual(codex.models[0], {
       ...codex.models[0],

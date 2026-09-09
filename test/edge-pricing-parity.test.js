@@ -14,6 +14,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
+const { transformSync } = require("esbuild");
 const { test } = require("node:test");
 const assert = require("node:assert");
 const curatedPricing = require("../src/lib/pricing/curated-overrides.json");
@@ -139,10 +140,6 @@ test("canonical pricing block retains the complete iFlytek MaaS source table", (
   assert.ok(!block.includes("MODEL_ALIASES"), "定价区块不得维护 displayName 到 service ID 的映射");
   assert.ok(!block.includes("IFLYTEK_MAAS_MODEL_NAMES"), "定价区块不得维护 displayName");
   assert.ok(!block.includes("getModelDisplayName"), "定价区块不得包含展示逻辑");
-  assert.ok(
-    block.includes('if (lower === "auto" || lower.endsWith("-auto")) return "xopglm53";'),
-    "iFlytek MaaS auto 模型定价当前和 GLM-5.3 保持一致",
-  );
   assert.ok(block.includes('if (lower === "xsparkx2agent") return "xsparkx2";'));
   assert.ok(block.includes("return lower;"));
   assert.ok(block.includes('source.toLowerCase() === "acode"'));
@@ -154,6 +151,36 @@ test("canonical pricing block retains the complete iFlytek MaaS source table", (
     !block.includes("return iFlytekMaasPricing || ZERO_PRICING;"),
     "iFlytek MaaS source misses must not return zero before public pricing",
   );
+});
+
+test("all edge pricing implementations leave unresolved AStudio routers unpriced", () => {
+  for (const name of [CANONICAL, ...MIRRORS]) {
+    const { code } = transformSync(extractBlock(name), { loader: "ts", target: "es2020" });
+    const getModelPricing = vm.runInNewContext(`${code}\ngetModelPricing;`);
+    for (const model of [
+      "auto", "something-auto", "astronclaw-auto", "future-auto",
+      "glm-5.3-auto", " AUTO ", " Something-AUTO ",
+    ]) {
+      assert.deepEqual(
+        JSON.parse(JSON.stringify(getModelPricing(model, "ACODE"))),
+        { input: 0, output: 0, cache_read: 0, cache_write: 0 },
+        `${name}: ${model}`,
+      );
+    }
+    for (const [model, expected] of [
+      ["xsparkx2agent", curatedPricing.source_exact.acode.xsparkx2],
+      ["xopglm53", curatedPricing.source_exact.acode.xopglm53],
+    ]) {
+      assert.deepEqual(
+        JSON.parse(JSON.stringify(getModelPricing(model, "acode"))),
+        expected,
+        `${name}: ${model}`,
+      );
+    }
+    assert.deepEqual(getModelPricing("gpt-5.4", "acode"), getModelPricing("gpt-5.4"), name);
+    assert.ok(getModelPricing("gpt-5.4", "acode").input > 0, name);
+    assert.equal(getModelPricing("auto", "cursor").input, 1.25, name);
+  }
 });
 
 test("edge APIs preserve raw model IDs without display-name conversion", () => {

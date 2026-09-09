@@ -169,9 +169,6 @@ function normalizeIFlytekMaasModel(model) {
   if (!model || typeof model !== "string") return model;
   const trimmed = model.trim();
   const lower = trimmed.toLowerCase();
-  // AStudio's iFlytek MaaS automatic routing does not expose the underlying
-  // model; its pricing is currently kept aligned with GLM-5.3.
-  if (lower === "auto" || lower.endsWith("-auto")) return "xopglm53";
   // The default Agent slug maps to the Spark X2 service in the supplied price list.
   if (lower === "xsparkx2agent") return "xsparkx2";
   return trimmed;
@@ -259,6 +256,11 @@ function lookupPricing(model, { curated, litellm, source } = {}) {
   // 0. CURATED source exact. Source-specific prices apply only to their source,
   // preventing collisions with public prices for same-named models from other CLIs.
   const sourceKey = typeof source === "string" ? source.toLowerCase() : "";
+  // AStudio does not disclose its routed model. Stop before generic aliases
+  // and fuzzy matching can turn an unresolved router into a priced model.
+  if (sourceKey === "acode" && (lower === "auto" || lower.endsWith("-auto"))) {
+    return { hit: false, source: "miss", value: null };
+  }
   const sourceExact = curated.source_exact?.[sourceKey];
   if (sourceExact) {
     const sourceValue = lookupExactCaseInsensitive(sourceExact, lookupModel);

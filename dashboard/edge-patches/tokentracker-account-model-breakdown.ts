@@ -338,7 +338,6 @@ const IFLYTEK_MAAS_MODEL_PRICING: Record<string, { input: number; output: number
 };
 function normalizeIFlytekMaasModel(model: string) {
   const lower = model.trim().toLowerCase();
-  if (lower === "auto" || lower.endsWith("-auto")) return "xopglm53";
   if (lower === "xsparkx2agent") return "xsparkx2";
   return lower;
 }
@@ -346,7 +345,10 @@ function normalizeIFlytekMaasModel(model: string) {
 function getModelPricing(model: string, source = "") {
   if (!model) return ZERO_PRICING;
   if (source.toLowerCase() === "acode") {
-    const iFlytekMaasPricing = IFLYTEK_MAAS_MODEL_PRICING[normalizeIFlytekMaasModel(model)];
+    const normalized = normalizeIFlytekMaasModel(model);
+    // Undisclosed routing must not inherit generic aliases or fuzzy prices.
+    if (normalized === "auto" || normalized.endsWith("-auto")) return ZERO_PRICING;
+    const iFlytekMaasPricing = IFLYTEK_MAAS_MODEL_PRICING[normalized];
     if (iFlytekMaasPricing) return iFlytekMaasPricing;
   }
   const exact = MODEL_PRICING[model];
