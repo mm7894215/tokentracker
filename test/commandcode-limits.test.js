@@ -60,6 +60,13 @@ function creditsPayload({
   };
 }
 
+it("keeps malformed usage unknown instead of displaying an unused window", () => {
+  for (const used of [null, undefined, "", "  ", false, [], {}]) {
+    assert.equal(normalizeCommandcodeWindowLimits({ fiveHour: { used, cap: 100 } }), null);
+  }
+  assert.equal(normalizeCommandcodeWindowLimits({ fiveHour: { used: 0, cap: 100 } }).fiveHour.used_percent, 0);
+});
+
 describe("readCommandcodeApiKey", () => {
   it("prefers COMMAND_CODE_API_KEY over the auth file", () => {
     const { tmp, home } = makeAuthHome({

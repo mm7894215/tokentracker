@@ -1614,7 +1614,7 @@ limits.label.command_code_5h,ui,LimitsPage,UsageLimitsPanel,command_code_5h,"5h"
 limits.label.command_code_weekly,ui,LimitsPage,UsageLimitsPanel,command_code_weekly,"Weekly",,active
 limits.commandCode.setupHint.title,ui,LimitsPage,UsageLimitsPanel,command_code_hint_title,"Connect Command Code",,active
 limits.commandCode.setupHint.subtitle,ui,LimitsPage,UsageLimitsPanel,command_code_hint_subtitle,"Reads your subscription usage from the official Command Code API with the same login as the cmd CLI.",,active
-limits.commandCode.setupHint.step1,ui,LimitsPage,UsageLimitsPanel,command_code_hint_step1,"Option 1 — sign in with the cmd CLI (recommended): run cmd login once. TokenTracker reuses that login with no restart.",,active
+limits.commandCode.setupHint.step1,ui,LimitsPage,UsageLimitsPanel,command_code_hint_step1,"Option 1 — sign in with the Command Code CLI (recommended): run the login command below. TokenTracker reuses that login with no restart.",,active
 limits.commandCode.setupHint.step2,ui,LimitsPage,UsageLimitsPanel,command_code_hint_step2,"Option 2 — use an API key instead: run this command, paste your key (input stays invisible), then restart TokenTracker:",,active
 limits.commandCode.setupHint.copy,ui,LimitsPage,UsageLimitsPanel,command_code_hint_copy,"Copy",,active
 limits.commandCode.setupHint.copied,ui,LimitsPage,UsageLimitsPanel,command_code_hint_copied,"Copied",,active
@@ -1623,3 +1623,7 @@ limits.commandCode.setupHint.snippet_login,ui,LimitsPage,UsageLimitsPanel,comman
 limits.commandCode.setupHint.snippet_read,ui,LimitsPage,UsageLimitsPanel,command_code_hint_snippet_read,"read -r -s COMMAND_CODE_API_KEY",,active
 limits.commandCode.setupHint.snippet_export,ui,LimitsPage,UsageLimitsPanel,command_code_hint_snippet_export,"export COMMAND_CODE_API_KEY",,active
 limits.commandCode.setupHint.snippet_setenv,ui,LimitsPage,UsageLimitsPanel,command_code_hint_snippet_setenv,"launchctl setenv COMMAND_CODE_API_KEY ""$COMMAND_CODE_API_KEY""",,active
+limits.commandCode.setupHint.snippet_login_windows,ui,LimitsPage,UsageLimitsPanel,command_code_hint_snippet_login_windows,"cmdc auth login",,active
+limits.commandCode.setupHint.snippet_env_windows,ui,LimitsPage,UsageLimitsPanel,command_code_hint_snippet_env_windows,"$token = Read-Host -AsSecureString\n$env:COMMAND_CODE_API_KEY = [System.Net.NetworkCredential]::new('', $token).Password\n[Environment]::SetEnvironmentVariable('COMMAND_CODE_API_KEY', $env:COMMAND_CODE_API_KEY, 'User')",,active
+limits.commandCode.setupHint.note_windows,ui,LimitsPage,UsageLimitsPanel,command_code_hint_note_windows,"Windows: run in PowerShell, then restart TokenTracker.",,active
+limits.commandCode.setupHint.note_linux,ui,LimitsPage,UsageLimitsPanel,command_code_hint_note_linux,"Linux: start TokenTracker from this terminal to inherit the environment variable.",,active

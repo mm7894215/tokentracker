@@ -287,6 +287,27 @@ describe("UsageLimitsPanel", () => {
     expect(screen.getByRole("button", { name: "Copied" })).toBeInTheDocument();
   });
 
+  it("uses Command Code's Windows binary and PowerShell setup", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("navigator", { userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64)", clipboard: { writeText } });
+    render(<UsageLimitsPanel commandCode={{ configured: false }} order={["commandCode"]} />);
+    expect(screen.getByText("cmdc auth login")).toBeInTheDocument();
+    await fireEvent.click(screen.getByRole("button", { name: "Copy" }));
+    expect(writeText.mock.calls[0][0]).toContain("Read-Host -AsSecureString\n");
+    expect(writeText.mock.calls[0][0]).toContain("SetEnvironmentVariable");
+    expect(writeText.mock.calls[0][0]).not.toMatch(/launchctl|read -r/);
+  });
+
+  it("omits macOS launchctl from the Command Code Linux setup", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("navigator", { userAgent: "Mozilla/5.0 (X11; Linux x86_64)", clipboard: { writeText } });
+    render(<UsageLimitsPanel commandCode={{ configured: false }} order={["commandCode"]} />);
+    expect(screen.getByText("cmd login")).toBeInTheDocument();
+    await fireEvent.click(screen.getByRole("button", { name: "Copy" }));
+    expect(writeText.mock.calls[0][0]).toContain("export COMMAND_CODE_API_KEY");
+    expect(writeText.mock.calls[0][0]).not.toContain("launchctl");
+  });
+
   it("does not describe a pace marker when the provider cannot render one (issue 445)", () => {
     render(
       <UsageLimitsPanel

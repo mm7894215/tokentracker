@@ -18,6 +18,17 @@ import { cycleView, countdownText, remainingLabel } from "../../../lib/subscript
 
 const LIMITS_PROVIDER_ICON_CLASS = "shrink-0 text-oai-black dark:text-oai-white";
 
+function commandCodeSetupPlatform() {
+  const ua = typeof navigator === "undefined" ? "" : navigator.userAgent || "";
+  return /Windows/i.test(ua) ? "windows" : /Linux/i.test(ua) ? "linux" : "macos";
+}
+
+function commandCodeLoginSnippet() {
+  return commandCodeSetupPlatform() === "windows"
+    ? copy("limits.commandCode.setupHint.snippet_login_windows")
+    : copy("limits.commandCode.setupHint.snippet_login");
+}
+
 function formatReset(isoOrUnix) {
   const ts = resetToMs(isoOrUnix);
   if (!Number.isFinite(ts)) return null;
@@ -729,7 +740,7 @@ function renderProviderGroup(id, data, mode, expanded, onToggle, subscription = 
   if (!badge && data.auth_action_required === "reauth") {
     const command =
       id === "commandCode"
-        ? copy("limits.commandCode.setupHint.snippet_login")
+        ? commandCodeLoginSnippet()
         : REAUTH_CLI_COMMANDS[id];
     badge = (
       <StatusBadge
@@ -882,17 +893,21 @@ function OpenCodeGoSetupHint() {
 // authenticated exactly like the `cmd` CLI itself. Two supported logins: the
 // `cmd login` session the CLI stores in ~/.commandcode/auth.json (picked up
 // with no restart), or a COMMAND_CODE_API_KEY env var. TokenTracker never
-// sees, stores, or forwards the credential either way.
+// exposes the credential to the dashboard; the local backend sends it only to
+// Command Code's API.
 function CommandCodeSetupHint() {
   const [copied, setCopied] = useState(false);
   // Command lines stay identical across locales; they are copy keys per the
   // repo i18n convention (review 594) so the setup guide and the reauth
   // tooltip share one source of truth for `cmd login`.
-  const loginSnippet = copy("limits.commandCode.setupHint.snippet_login");
-  const snippet = [
+  const platform = commandCodeSetupPlatform();
+  const loginSnippet = commandCodeLoginSnippet();
+  const snippet = platform === "windows"
+    ? copy("limits.commandCode.setupHint.snippet_env_windows").replaceAll("\\n", "\n")
+    : [
     copy("limits.commandCode.setupHint.snippet_read"),
     copy("limits.commandCode.setupHint.snippet_export"),
-    copy("limits.commandCode.setupHint.snippet_setenv"),
+    ...(platform === "macos" ? [copy("limits.commandCode.setupHint.snippet_setenv")] : []),
   ].join("\n");
 
   const onCopy = async (e) => {
@@ -939,7 +954,9 @@ function CommandCodeSetupHint() {
             {snippet}
           </pre>
           <div className="mt-1 text-[10px] text-oai-gray-400 dark:text-oai-gray-500">
-            {copy("limits.commandCode.setupHint.note_app")}
+            {platform === "windows" ? copy("limits.commandCode.setupHint.note_windows")
+              : platform === "linux" ? copy("limits.commandCode.setupHint.note_linux")
+                : copy("limits.commandCode.setupHint.note_app")}
           </div>
         </HintStep>
       </ol>

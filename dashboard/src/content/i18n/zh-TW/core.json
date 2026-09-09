@@ -604,7 +604,7 @@
   "limits.opencodeGo.setupHint.copied": "已複製",
   "limits.commandCode.setupHint.title": "連接 Command Code",
   "limits.commandCode.setupHint.subtitle": "透過官方 Command Code API 讀取你的訂閱用量，沿用與 cmd CLI 相同的登入。",
-  "limits.commandCode.setupHint.step1": "方式一——使用 cmd CLI 登入（建議）：執行一次 cmd login。TokenTracker 無需重新啟動即可沿用該登入。",
+  "limits.commandCode.setupHint.step1": "方式 1 — 使用 Command Code CLI 登入（推薦）：執行下方登入命令。TokenTracker 自動沿用登入，無需重新啟動。",
   "limits.commandCode.setupHint.step2": "方式二——改用 API Key：執行以下命令，貼上你的 Key（輸入不會顯示），然後重新啟動 TokenTracker：",
   "limits.commandCode.setupHint.copy": "複製",
   "limits.commandCode.setupHint.copied": "已複製",
@@ -728,5 +728,9 @@
   "limits.commandCode.setupHint.snippet_login": "cmd login",
   "limits.commandCode.setupHint.snippet_read": "read -r -s COMMAND_CODE_API_KEY",
   "limits.commandCode.setupHint.snippet_export": "export COMMAND_CODE_API_KEY",
-  "limits.commandCode.setupHint.snippet_setenv": "launchctl setenv COMMAND_CODE_API_KEY \"$COMMAND_CODE_API_KEY\""
+  "limits.commandCode.setupHint.snippet_setenv": "launchctl setenv COMMAND_CODE_API_KEY \"$COMMAND_CODE_API_KEY\"",
+  "limits.commandCode.setupHint.snippet_login_windows": "cmdc auth login",
+  "limits.commandCode.setupHint.snippet_env_windows": "$token = Read-Host -AsSecureString\\n$env:COMMAND_CODE_API_KEY = [System.Net.NetworkCredential]::new('', $token).Password\\n[Environment]::SetEnvironmentVariable('COMMAND_CODE_API_KEY', $env:COMMAND_CODE_API_KEY, 'User')",
+  "limits.commandCode.setupHint.note_windows": "Windows：在 PowerShell 中執行，然後重新啟動 TokenTracker。",
+  "limits.commandCode.setupHint.note_linux": "Linux：從目前終端啟動 TokenTracker，以讀取環境變數。"
 }

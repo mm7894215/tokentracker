@@ -121,6 +121,10 @@ function buildWindow({ usedPercent, resetAt, windowSeconds = null }) {
 // one window, not a crash.
 function normalizeCommandcodeWindow(raw, windowSeconds) {
   if (!raw || typeof raw !== "object") return null;
+  // Missing or malformed usage is unknown, not an unused (0%) window.
+  const numeric = (value) => typeof value === "number"
+    || (typeof value === "string" && value.trim() !== "" && Number.isFinite(Number(value)));
+  if (!numeric(raw.used) || !numeric(raw.cap ?? raw.total ?? raw.limit)) return null;
   const used = Number(raw.used);
   const cap = Number(raw.cap ?? raw.total ?? raw.limit);
   if (!Number.isFinite(used) || !Number.isFinite(cap) || cap <= 0 || used < 0)
@@ -213,7 +217,7 @@ async function fetchCommandcodeJson({ url, apiKey, fetchImpl, label }) {
   }
   if (response?.status === 401 || response?.status === 403) {
     const error = new Error(
-      "CommandCode token expired — run `cmd login` once to refresh.",
+      "CommandCode token expired — run `cmd login` (macOS/Linux) or `cmdc auth login` (Windows) to refresh.",
     );
     error.code = "AUTH_EXPIRED";
     throw error;
