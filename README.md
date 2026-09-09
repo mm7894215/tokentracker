@@ -161,7 +161,7 @@ An Arch `PKGBUILD` for a local pacman install lives in `TokenTrackerLinux/packag
 - 🌐 **Optional leaderboard** — Compare with developers worldwide; drag-to-reorder columns to focus on the providers you care about (opt-in, sign in to participate)
 - 🔄 **Cross-device account view** — Optional cloud sync merges usage across your machines (laptop, desktop, server) into one view. Off by default; local tracking stays independent.
 - 🧩 **Optional Skills tab** — browse 250+ public skills from `anthropics/skills`, `ComposioHQ/awesome-claude-skills`, `skills.sh` and any GitHub repo you add; sync them across Claude / Codex / Grok / Antigravity / Gemini / OpenCode / Hermes with named targets and one-click Undo
-- 🔒 **Privacy-first** — Token counts and timestamps only. Prompts, completions, and code never leave your machine.
+- 🔒 **Privacy-first** — Local usage metrics only (token counts, timestamps, and model names). Prompts, completions, and code never leave your machine.
 
 ---
 
@@ -338,7 +338,7 @@ TokenTracker processes your usage data locally. It never collects or uploads pro
 | **No code or prompt collection** | TokenTracker parses local log files for token counts and timestamps. Prompts, completions, code, and conversation bodies are never saved or uploaded. |
 | **Local-first by default** | Usage tracking runs entirely on your machine. No account, login, or API keys required. Cloud sync and the public leaderboard are strictly opt-in. |
 | **Auditable** | Open source. Check [`src/lib/rollout.js`](src/lib/rollout.js) — only numbers, timestamps, and model names are extracted. |
-| **Transparent network activity** | Fully documented in the [Privacy Policy](docs/PRIVACY.md). Default requests are limited to direct provider quota checks (using credentials already on your machine), update checks, and anonymous telemetry (daily heartbeat + PostHog pageviews, both disabled with `TOKENTRACKER_NO_TELEMETRY=1` or `DO_NOT_TRACK=1`). Telemetry never includes tokens, models, prompts, or code. |
+| **Transparent network activity** | Fully documented in the [Privacy Policy](docs/PRIVACY.md). Default requests are limited to direct provider quota checks (using credentials already on your machine), GitHub star counts and update checks, and anonymous telemetry (daily heartbeat + PostHog pageviews, both disabled with `TOKENTRACKER_NO_TELEMETRY=1` or `DO_NOT_TRACK=1`). Telemetry never includes tokens, models, prompts, or code. |
 
 ---
 

@@ -102,7 +102,7 @@ brew install xiufengsun/tokentracker/tokentracker
 - 🌐 **可选排行榜** —— 与全球开发者对比；列可拖拽排序，聚焦你关心的 provider（需登录参与）
 - 🔄 **跨设备账户视图** —— 开启云同步后，Dashboard 会把你在每台机器（笔记本 + 台式机 + 服务器）上的用量合并成一个视图——总量、趋势、热力图、模型明细全部跨设备聚合（可选，需登录）
 - 🧩 **可选 Skills 面板** —— 浏览 250+ 公开 skill（来自 `anthropics/skills`、`ComposioHQ/awesome-claude-skills`、`skills.sh` 以及你自己添加的任何 GitHub 仓库），在 Claude / Codex / Grok / Antigravity / Gemini / OpenCode / Hermes 之间同步，目标 Agent 文字可见、可单独管理、一键撤销
-- 🔒 **隐私优先** —— 只记录 token 数量与时间戳。Prompt、模型回复和代码绝不离开你的机器。
+- 🔒 **隐私优先** —— 仅记录本地用量指标（token 数量、时间戳与模型名称）。Prompt、模型回复和代码绝不离开你的机器。
 
 ---
 
@@ -270,7 +270,7 @@ TokenTracker 在本地处理你的用量数据。绝不收集或上传 prompt、
 | **不收集代码与 Prompt** | TokenTracker 解析本地日志文件中的 token 数量与时间戳。Prompt、回复正文、代码和对话内容绝不保存或上传。 |
 | **默认本地优先** | 用量追踪完全跑在你的本地机器上。无需账号、登录或 API Key。云端同步与公开排行榜完全属于自选（Opt-in）。 |
 | **可公开审计** | 完全开源。欢迎查阅 [`src/lib/rollout.js`](src/lib/rollout.js) —— 仅提取数字、时间戳与模型名称。 |
-| **透明的网络请求** | 完整披露于[隐私政策](docs/PRIVACY.md)。默认发起的网络请求仅限于：直接查询 provider 配额（使用你机器上已有的本地凭证）、检查更新，以及匿名产品遥测（每日一次心跳和 PostHog 页面访问，均可通过 `TOKENTRACKER_NO_TELEMETRY=1` 或 `DO_NOT_TRACK=1` 关闭）。遥测绝不包含 token、模型名、prompt 或代码。 |
+| **透明的网络请求** | 完整披露于[隐私政策](docs/PRIVACY.md)。默认发起的网络请求仅限于：直接查询 provider 配额（使用你机器上已有的本地凭证）、获取 GitHub Star 数与检查更新，以及匿名产品遥测（每日一次心跳和 PostHog 页面访问，均可通过 `TOKENTRACKER_NO_TELEMETRY=1` 或 `DO_NOT_TRACK=1` 关闭）。遥测绝不包含 token、模型名、prompt 或代码。 |
 
 ---
 
