@@ -40,7 +40,8 @@ test("public discovery surfaces describe all 36 supported tools", () => {
   assert.match(index, /Four desktop widgets/);
   assert.match(index, /Achievements/);
   assert.match(index, /Service Status page/);
-  assert.match(index, /usage limits for 14 providers/i);
+  assert.match(index, /__TOKENTRACKER_DISCOVERY_TRACKED_USAGE__/);
+  assert.match(read("dashboard/src/content/copy.csv"), /landing\.discovery\.tracked_usage,.*usage limits for 14 providers/i);
 
   const llms = read("dashboard/public/llms.txt");
   assert.match(llms, /Supported AI coding tools \(36\)/);
