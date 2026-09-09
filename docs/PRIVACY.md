@@ -1,6 +1,6 @@
 # Privacy Policy
 
-_Last updated: 2026-07-27 · Applies to the `tokentracker-cli` npm package, the macOS app, the Windows app, and [www.tokentracker.cc](https://www.tokentracker.cc)._
+_Last updated: 2026-09-09 · Applies to the `tokentracker-cli` npm package, the macOS app, the Windows app, the Linux app, and [www.tokentracker.cc](https://www.tokentracker.cc)._
 
 TokenTracker reads the local logs that AI coding tools already write to your disk, and turns them into token counts and cost estimates. It is local-first: the dashboard, the parsers and the database all run on your machine.
 
@@ -12,9 +12,9 @@ This document lists **every** network request the software can make, what each o
 
 TokenTracker's parsers extract numbers and timestamps only. TRAE Work CN is a narrow exception to the local-only source model, and it is off by default: only when you explicitly set `TOKENTRACKER_TRAE_CN_USAGE=1`, during an eligible non-background sync, when local TRAE Work CN auth exists, does TokenTracker transmit the existing sign-in authorization from the locally signed-in app to TRAE's internal API for a read-only usage request. Without that variable nothing is ever sent. It is not an unconditional or default generic network request. That authorization is never persisted or logged.
 
-**Apart from the disclosed TRAE Work CN authorization, never read or recorded anywhere:**
+**Apart from the disclosed TRAE Work CN authorization, never persisted, collected, or uploaded anywhere:**
 
-- **Prompts, responses, and conversation bodies**
+- **Prompts, responses, and conversation bodies** — TokenTracker may parse local tool files containing conversation records to extract usage metrics, but prompt and response texts are never persisted, collected, or transmitted
 - **File contents** from your projects
 - **Commit messages and diffs** — Git attribution runs `git log` locally, uses the subject line only to detect reverts, and keeps nothing
 - **API keys, cookies, and session tokens** belonging to your AI providers are never persisted or logged by TokenTracker
