@@ -207,6 +207,17 @@ export const PROVIDER_LIMIT_SPECS = {
       ];
     },
   },
+  commandCode: {
+    // CommandCode subscription: 5h + weekly rolling windows over included
+    // monthly credits. Server-defined caps (client-trusted used% only), so no
+    // windowSeconds-based pacing projection — mirrors opencodeGo.
+    windows(data) {
+      return [
+        { key: "5h", labelKey: "limits.label.command_code_5h", window: data.primary_window },
+        { key: "weekly", labelKey: "limits.label.command_code_weekly", window: data.secondary_window },
+      ];
+    },
+  },
   agentPlan: {
     // Volcano Ark Agent Plan quota refreshes on three windows: a rolling
     // 5-hour (5h), a weekly, and a monthly one. Percentages come straight
@@ -268,6 +279,8 @@ export function usageLimitsLabelCopyAnchor() {
     copy("limits.label.qoder_ultimate"),
     copy("limits.label.qoder_cn_credits"),
     copy("limits.label.qoder_cn_ultimate"),
+    copy("limits.label.command_code_5h"),
+    copy("limits.label.command_code_weekly"),
     copy("limits.label.ark_coding_plan_5h"),
     copy("limits.label.ark_coding_plan_weekly"),
     copy("limits.label.ark_coding_plan_monthly"),

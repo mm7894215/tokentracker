@@ -147,6 +147,10 @@ export function AppearanceSection() {
                 label: copy("settings.appearance.token_format.compact"),
               },
               {
+                value: TOKEN_FORMAT_MODES.CHINESE,
+                label: copy("settings.appearance.token_format.chinese"),
+              },
+              {
                 value: TOKEN_FORMAT_MODES.FULL,
                 label: copy("settings.appearance.token_format.full"),
               },

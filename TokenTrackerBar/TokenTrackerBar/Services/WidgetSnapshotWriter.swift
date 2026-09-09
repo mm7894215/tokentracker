@@ -440,6 +440,20 @@ enum WidgetSnapshotWriter {
             }
         }
 
+        // Command Code
+        if let commandCode = limits.commandCode, commandCode.configured {
+            if let w = commandCode.primaryWindow {
+                out.append(LimitProvider(source: "commandCode", label: "Command Code",
+                                         fraction: w.usedPercent / 100.0,
+                                         resetsAt: parseISO(w.resetAt)))
+            }
+            if let w = commandCode.secondaryWindow {
+                out.append(LimitProvider(source: "commandCode", label: "Command Code · Weekly",
+                                         fraction: w.usedPercent / 100.0,
+                                         resetsAt: parseISO(w.resetAt)))
+            }
+        }
+
         // GitHub Copilot
         if let copilot = limits.copilot, copilot.configured {
             if let w = copilot.primaryWindow {

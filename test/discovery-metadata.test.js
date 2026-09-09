@@ -9,11 +9,11 @@ const ROOT = path.resolve(__dirname, "..");
 const read = (relativePath) => fs.readFileSync(path.join(ROOT, relativePath), "utf8");
 
 const README_EXPECTATIONS = [
-  ["README.md", /36 AI coding tools/, /\|\s+\*\*AI tools supported\*\*\s+\|\s+\*\*36\*\*/, /Rate-limit tracking.*✅ 13 providers/],
-  ["README.zh-CN.md", /36 款 AI 编码工具/, /\|\s+\*\*支持的 AI 工具数\*\*\s+\|\s+\*\*36\*\*/, /限额追踪.*✅ 13 家 provider/],
-  ["README.ja.md", /36 種類の AI コーディングツール/, /\|\s+\*\*対応 AI ツール数\*\*\s+\|\s+\*\*36\*\*/, /レート制限トラッキング.*✅ 13 プロバイダー/],
-  ["README.ko.md", /36개의 AI 코딩 도구/, /\|\s+\*\*지원하는 AI 도구 수\*\*\s+\|\s+\*\*36\*\*/, /레이트 제한 추적.*✅ 13개 프로바이더/],
-  ["README.de.md", /36 KI-Coding-Tools/, /\|\s+\*\*Unterstützte KI-Tools\*\*\s+\|\s+\*\*36\*\*/, /Rate-Limit-Tracking.*✅ 13 Provider/],
+  ["README.md", /36 AI coding tools/, /\|\s+\*\*AI tools supported\*\*\s+\|\s+\*\*36\*\*/, /Rate-limit tracking.*✅ 14 providers/],
+  ["README.zh-CN.md", /36 款 AI 编码工具/, /\|\s+\*\*支持的 AI 工具数\*\*\s+\|\s+\*\*36\*\*/, /限额追踪.*✅ 14 家 provider/],
+  ["README.ja.md", /36 種類の AI コーディングツール/, /\|\s+\*\*対応 AI ツール数\*\*\s+\|\s+\*\*36\*\*/, /レート制限トラッキング.*✅ 14 プロバイダー/],
+  ["README.ko.md", /36개의 AI 코딩 도구/, /\|\s+\*\*지원하는 AI 도구 수\*\*\s+\|\s+\*\*36\*\*/, /레이트 제한 추적.*✅ 14개 프로바이더/],
+  ["README.de.md", /36 KI-Coding-Tools/, /\|\s+\*\*Unterstützte KI-Tools\*\*\s+\|\s+\*\*36\*\*/, /Rate-Limit-Tracking.*✅ 14 Provider/],
 ];
 
 test("public discovery surfaces describe all 36 supported tools", () => {
@@ -40,7 +40,8 @@ test("public discovery surfaces describe all 36 supported tools", () => {
   assert.match(index, /Four desktop widgets/);
   assert.match(index, /Achievements/);
   assert.match(index, /Service Status page/);
-  assert.match(index, /usage limits for 13 providers/i);
+  assert.match(index, /__TOKENTRACKER_DISCOVERY_TRACKED_USAGE__/);
+  assert.match(read("dashboard/src/content/copy.csv"), /landing\.discovery\.tracked_usage,.*usage limits for 14 providers/i);
 
   const llms = read("dashboard/public/llms.txt");
   assert.match(llms, /Supported AI coding tools \(36\)/);

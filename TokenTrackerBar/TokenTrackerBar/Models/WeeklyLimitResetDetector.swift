@@ -35,6 +35,7 @@ enum LimitResetProviderIconCatalog {
         case "copilot": return "copilot.svg"
         case "zcode": return "zcode.svg"
         case "opencodeGo": return "opencode.svg"
+        case "commandCode": return "commandcode.svg"
         case "qoder": return "qoder.svg"
         case "codingPlan": return "volcano-ark.svg"
         case "agentPlan": return "volcano-ark.svg"
@@ -243,6 +244,12 @@ extension UsageLimitsResponse {
                 ("primary", "5h", opencodeGo.primaryWindow),
                 ("secondary", "Weekly", opencodeGo.secondaryWindow),
                 ("tertiary", "Monthly", opencodeGo.tertiaryWindow),
+            ])
+        }
+        if let commandCode {
+            addGeneric("commandCode", commandCode.configured, commandCode.error, [
+                ("primary", "5h", commandCode.primaryWindow),
+                ("secondary", "Weekly", commandCode.secondaryWindow),
             ])
         }
         if let qoder {

@@ -18,6 +18,17 @@ import { cycleView, countdownText, remainingLabel } from "../../../lib/subscript
 
 const LIMITS_PROVIDER_ICON_CLASS = "shrink-0 text-oai-black dark:text-oai-white";
 
+function commandCodeSetupPlatform() {
+  const ua = typeof navigator === "undefined" ? "" : navigator.userAgent || "";
+  return /Windows/i.test(ua) ? "windows" : /Linux/i.test(ua) ? "linux" : "macos";
+}
+
+function commandCodeLoginSnippet() {
+  return commandCodeSetupPlatform() === "windows"
+    ? copy("limits.commandCode.setupHint.snippet_login_windows")
+    : copy("limits.commandCode.setupHint.snippet_login");
+}
+
 function formatReset(isoOrUnix) {
   const ts = resetToMs(isoOrUnix);
   if (!Number.isFinite(ts)) return null;
@@ -276,7 +287,10 @@ const STATUS_BADGE_TONES = {
 };
 
 // CLI to run when a provider's stored OAuth token has expired
-// (`auth_action_required: "reauth"` on the provider payload).
+// (`auth_action_required: "reauth"` on the provider payload). Claude and Codex
+// reauth with the bare binary; Command Code reauths with `cmd login`, which is
+// registry-owned (limits.commandCode.setupHint.snippet_login) so the tooltip
+// and the setup guide stay in sync.
 const REAUTH_CLI_COMMANDS = {
   claude: "claude",
   codex: "codex",
@@ -644,6 +658,7 @@ function renderProviderGroup(id, data, mode, expanded, onToggle, subscription = 
       <>
         <StatusLine>{copy("limits.status.not_connected")}</StatusLine>
         {id === "opencodeGo" ? <OpenCodeGoSetupHint /> : null}
+        {id === "commandCode" ? <CommandCodeSetupHint /> : null}
         {id === "codingPlan" ? <ArkCodingPlanSetupHint /> : null}
         {id === "agentPlan" ? <ArkAgentPlanSetupHint /> : null}
       </>,
@@ -674,6 +689,7 @@ function renderProviderGroup(id, data, mode, expanded, onToggle, subscription = 
           ? renderProviderExtra(PROVIDER_LIMIT_SPECS.kiro.extra, data)
           : null}
         {id === "opencodeGo" ? <OpenCodeGoSetupHint /> : null}
+        {id === "commandCode" ? <CommandCodeSetupHint /> : null}
         {id === "codingPlan" ? <ArkCodingPlanSetupHint /> : null}
         {id === "agentPlan" ? <ArkAgentPlanSetupHint /> : null}
       </>,
@@ -722,7 +738,10 @@ function renderProviderGroup(id, data, mode, expanded, onToggle, subscription = 
   // silently freeze on the cached snapshot (issue 330) — more actionable than
   // the generic stale badge below, so it takes precedence.
   if (!badge && data.auth_action_required === "reauth") {
-    const command = REAUTH_CLI_COMMANDS[id];
+    const command =
+      id === "commandCode"
+        ? commandCodeLoginSnippet()
+        : REAUTH_CLI_COMMANDS[id];
     badge = (
       <StatusBadge
         label={copy("limits.reauth.badge")}
@@ -864,6 +883,81 @@ function OpenCodeGoSetupHint() {
           </div>
           <pre className="mt-1.5 overflow-x-auto rounded-md bg-oai-gray-100 dark:bg-oai-gray-900/60 px-2 py-1.5 font-mono text-[10.5px] leading-relaxed whitespace-pre">{snippet}</pre>
           <div className="mt-1 text-[10px] text-oai-gray-400 dark:text-oai-gray-500">{copy("limits.opencodeGo.setupHint.note_app")}</div>
+        </HintStep>
+      </ol>
+    </div>
+  );
+}
+
+// Command Code subscription usage comes from the CLI's own alpha endpoints,
+// authenticated exactly like the `cmd` CLI itself. Two supported logins: the
+// `cmd login` session the CLI stores in ~/.commandcode/auth.json (picked up
+// with no restart), or a COMMAND_CODE_API_KEY env var. TokenTracker never
+// exposes the credential to the dashboard; the local backend sends it only to
+// Command Code's API.
+function CommandCodeSetupHint() {
+  const [copied, setCopied] = useState(false);
+  // Command lines stay identical across locales; they are copy keys per the
+  // repo i18n convention (review 594) so the setup guide and the reauth
+  // tooltip share one source of truth for `cmd login`.
+  const platform = commandCodeSetupPlatform();
+  const loginSnippet = commandCodeLoginSnippet();
+  const snippet = platform === "windows"
+    ? copy("limits.commandCode.setupHint.snippet_env_windows").replaceAll("\\n", "\n")
+    : [
+    copy("limits.commandCode.setupHint.snippet_read"),
+    copy("limits.commandCode.setupHint.snippet_export"),
+    ...(platform === "macos" ? [copy("limits.commandCode.setupHint.snippet_setenv")] : []),
+  ].join("\n");
+
+  const onCopy = async (e) => {
+    e.stopPropagation();
+    try {
+      await navigator.clipboard.writeText(snippet);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    } catch (_e) {
+      // Clipboard can be unavailable in embedded or restricted contexts.
+    }
+  };
+
+  return (
+    <div className="mt-1.5 rounded-lg border border-oai-gray-200 dark:border-oai-gray-700/60 bg-oai-gray-50/50 dark:bg-oai-gray-900/20 p-3 text-[11px] text-oai-gray-600 dark:text-oai-gray-300">
+      <div className="text-[12px] font-semibold text-oai-gray-800 dark:text-oai-gray-100">
+        {copy("limits.commandCode.setupHint.title")}
+      </div>
+      <div className="mt-0.5 leading-snug text-oai-gray-500 dark:text-oai-gray-400">
+        {copy("limits.commandCode.setupHint.subtitle")}
+      </div>
+
+      <ol className="mt-2.5 space-y-2.5">
+        <HintStep n="1">
+          <div>{copy("limits.commandCode.setupHint.step1")}</div>
+          <pre className="mt-1.5 overflow-x-auto rounded-md bg-oai-gray-100 dark:bg-oai-gray-900/60 px-2 py-1.5 font-mono text-[10.5px] leading-relaxed whitespace-pre">
+            {loginSnippet}
+          </pre>
+        </HintStep>
+        <HintStep n="2">
+          <div>{copy("limits.commandCode.setupHint.step2")}</div>
+          <div className="mt-1.5 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onCopy}
+              className="shrink-0 rounded-md border border-oai-gray-300 dark:border-oai-gray-700 px-2 py-0.5 text-[10.5px] text-oai-gray-700 dark:text-oai-gray-200 hover:bg-oai-gray-100 dark:hover:bg-oai-gray-800 transition-colors"
+            >
+              {copied
+                ? copy("limits.commandCode.setupHint.copied")
+                : copy("limits.commandCode.setupHint.copy")}
+            </button>
+          </div>
+          <pre className="mt-1.5 overflow-x-auto rounded-md bg-oai-gray-100 dark:bg-oai-gray-900/60 px-2 py-1.5 font-mono text-[10.5px] leading-relaxed whitespace-pre">
+            {snippet}
+          </pre>
+          <div className="mt-1 text-[10px] text-oai-gray-400 dark:text-oai-gray-500">
+            {platform === "windows" ? copy("limits.commandCode.setupHint.note_windows")
+              : platform === "linux" ? copy("limits.commandCode.setupHint.note_linux")
+                : copy("limits.commandCode.setupHint.note_app")}
+          </div>
         </HintStep>
       </ol>
     </div>
@@ -1033,8 +1127,8 @@ function useWidestLabelWidth(containerRef) {
   return labelWidth;
 }
 
-export function UsageLimitsPanel({ claude, codex, cursor, gemini, kimi, kiro, grok, antigravity, copilot, zcode, opencodeGo, qoder, qoderCn, codingPlan, agentPlan, order, visibility, displayMode, subscriptions = [], showSubscriptions = true }) {
-  const dataById = { claude, codex, cursor, gemini, kimi, kiro, grok, antigravity, copilot, zcode, opencodeGo, qoder, qoderCn, codingPlan, agentPlan };
+export function UsageLimitsPanel({ claude, codex, cursor, gemini, kimi, kiro, grok, antigravity, copilot, zcode, opencodeGo, commandCode, qoder, qoderCn, codingPlan, agentPlan, order, visibility, displayMode, subscriptions = [], showSubscriptions = true }) {
+  const dataById = { claude, codex, cursor, gemini, kimi, kiro, grok, antigravity, copilot, zcode, opencodeGo, commandCode, qoder, qoderCn, codingPlan, agentPlan };
   const containerRef = useRef(null);
   const labelWidth = useWidestLabelWidth(containerRef);
   const [expandedId, setExpandedId] = useState(null);

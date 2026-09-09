@@ -545,8 +545,9 @@ settings.appearance.theme.system,ui,SettingsPage,SettingsPage,theme_system,"Syst
 settings.appearance.currency.label,ui,SettingsPage,SettingsPage,currency_label,"Currency",,active
 settings.appearance.currency.hint,ui,SettingsPage,SettingsPage,currency_hint,"Select the display currency for usage costs.",,active
 settings.appearance.token_format.label,ui,SettingsPage,SettingsPage,token_format_label,"Token numbers",,active
-settings.appearance.token_format.hint,ui,SettingsPage,SettingsPage,token_format_hint,"Apply K/M/B or full numbers everywhere. Hover compact values to see the exact number.",,active
+settings.appearance.token_format.hint,ui,SettingsPage,SettingsPage,token_format_hint,"Apply K/M/B, Chinese units, or full numbers everywhere. Hover compact values to see the exact number.",,active
 settings.appearance.token_format.compact,ui,SettingsPage,SettingsPage,token_format_compact,"Compact",,active
+settings.appearance.token_format.chinese,ui,SettingsPage,SettingsPage,token_format_chinese,"Chinese units (Wan/Yi)",,active
 settings.appearance.token_format.full,ui,SettingsPage,SettingsPage,token_format_full,"Full",,active
 settings.appearance.currency.opt.usd,ui,SettingsPage,SettingsPage,currency_opt_usd,"USD ($)",,active
 settings.appearance.currency.opt.eur,ui,SettingsPage,SettingsPage,currency_opt_eur,"EUR (€)",,active
@@ -1608,3 +1609,24 @@ limits.tooltip.ark_cached,ui,LimitsPage,UsageLimitsPanel,tooltip_ark_cached,"Cac
 limits.agentPlan.setupHint.snippet_install,ui,LimitsPage,UsageLimitsPanel,agent_plan_hint_snippet_install,"npm install -g @volcengine/ark-cli",,active
 limits.agentPlan.setupHint.snippet_login,ui,LimitsPage,UsageLimitsPanel,agent_plan_hint_snippet_login,"arkcli auth login volc-sso   # browser SSO (recommended)",,active
 limits.agentPlan.setupHint.snippet_status,ui,LimitsPage,UsageLimitsPanel,agent_plan_hint_snippet_status,"arkcli auth status           # verify the session",,active
+limits.provider.command_code,ui,LimitsPage,UsageLimitsPanel,provider_command_code,"Command Code",,active
+limits.label.command_code_5h,ui,LimitsPage,UsageLimitsPanel,command_code_5h,"5h",,active
+limits.label.command_code_weekly,ui,LimitsPage,UsageLimitsPanel,command_code_weekly,"Weekly",,active
+limits.commandCode.setupHint.title,ui,LimitsPage,UsageLimitsPanel,command_code_hint_title,"Connect Command Code",,active
+limits.commandCode.setupHint.subtitle,ui,LimitsPage,UsageLimitsPanel,command_code_hint_subtitle,"Reads your subscription usage from the official Command Code API with the same login as the cmd CLI.",,active
+limits.commandCode.setupHint.step1,ui,LimitsPage,UsageLimitsPanel,command_code_hint_step1,"Option 1 — sign in with the Command Code CLI (recommended): run the login command below. TokenTracker reuses that login with no restart.",,active
+limits.commandCode.setupHint.step2,ui,LimitsPage,UsageLimitsPanel,command_code_hint_step2,"Option 2 — use an API key instead: run this command, paste your key (input stays invisible), then restart TokenTracker:",,active
+limits.commandCode.setupHint.copy,ui,LimitsPage,UsageLimitsPanel,command_code_hint_copy,"Copy",,active
+limits.commandCode.setupHint.copied,ui,LimitsPage,UsageLimitsPanel,command_code_hint_copied,"Copied",,active
+limits.commandCode.setupHint.note_app,ui,LimitsPage,UsageLimitsPanel,command_code_hint_note_app,"macOS app: use the launchctl setenv line, then reopen the app.",,active
+limits.commandCode.setupHint.snippet_login,ui,LimitsPage,UsageLimitsPanel,command_code_hint_snippet_login,"cmd login",,active
+limits.commandCode.setupHint.snippet_read,ui,LimitsPage,UsageLimitsPanel,command_code_hint_snippet_read,"read -r -s COMMAND_CODE_API_KEY",,active
+limits.commandCode.setupHint.snippet_export,ui,LimitsPage,UsageLimitsPanel,command_code_hint_snippet_export,"export COMMAND_CODE_API_KEY",,active
+limits.commandCode.setupHint.snippet_setenv,ui,LimitsPage,UsageLimitsPanel,command_code_hint_snippet_setenv,"launchctl setenv COMMAND_CODE_API_KEY ""$COMMAND_CODE_API_KEY""",,active
+limits.commandCode.setupHint.snippet_login_windows,ui,LimitsPage,UsageLimitsPanel,command_code_hint_snippet_login_windows,"cmdc auth login",,active
+limits.commandCode.setupHint.snippet_env_windows,ui,LimitsPage,UsageLimitsPanel,command_code_hint_snippet_env_windows,"$token = Read-Host -AsSecureString\n$env:COMMAND_CODE_API_KEY = [System.Net.NetworkCredential]::new('', $token).Password\n[Environment]::SetEnvironmentVariable('COMMAND_CODE_API_KEY', $env:COMMAND_CODE_API_KEY, 'User')",,active
+limits.commandCode.setupHint.note_windows,ui,LimitsPage,UsageLimitsPanel,command_code_hint_note_windows,"Windows: run in PowerShell, then restart TokenTracker.",,active
+limits.commandCode.setupHint.note_linux,ui,LimitsPage,UsageLimitsPanel,command_code_hint_note_linux,"Linux: start TokenTracker from this terminal to inherit the environment variable.",,active
+landing.discovery.tracked_usage,landing,LandingPage,index.html,tracked_usage,"Token Tracker tracks input, output, cached, and cache-creation tokens per model, project, and time window. It also detects usage limits for 14 providers, including Claude, Codex, Cursor, Gemini, Antigravity, Qoder, Qoder CN, and Command Code.",Build-time static discovery copy,active
+landing.discovery.limits_summary,landing,LandingPage,index.html,limits_summary,"live quota and subscription status for 14 providers, with last-good caching for local providers such as Antigravity and Qoder.",Build-time static discovery copy,active
+landing.discovery.faq_usage,landing,LandingPage,index.html,faq_usage,"Input, output, cached, and cache-creation tokens per model, project, and time window. It also surfaces usage limits for 14 providers, including Claude, Codex, Cursor, Gemini, Antigravity, Qoder, Qoder CN, and Command Code.",Build-time static discovery copy,active

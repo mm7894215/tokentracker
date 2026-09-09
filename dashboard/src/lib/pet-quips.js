@@ -314,10 +314,11 @@ const PET_LIMIT_PROVIDER_NAMES = {
   codingPlan: "Ark Coding Plan",
 };
 
-// Ark Agent Plan resolves through the copy registry (review 563) so the pet
-// row always matches the Limits page naming.
+// Ark Agent Plan and Command Code resolve through the copy registry (reviews
+// 563 / 594) so the pet row always matches the Limits page naming.
 const PET_LIMIT_PROVIDER_COPY_NAME_KEYS = {
   agentPlan: "limits.provider.ark_agent_plan",
+  commandCode: "limits.provider.command_code",
 };
 
 // Unix timestamps are normally seconds; values above this order of magnitude
@@ -406,6 +407,10 @@ function collectPetLimitRows(limits) {
   addGeneric("zcode", limits.zcode, [["GLM-5.2", limits.zcode?.primary_window], ["GLM-5 Turbo", limits.zcode?.secondary_window], ["Other", limits.zcode?.tertiary_window]]);
   addGeneric("opencodeGo", limits.opencodeGo, [["5h", limits.opencodeGo?.primary_window], ["Weekly", limits.opencodeGo?.secondary_window], ["Month", limits.opencodeGo?.tertiary_window]]);
   addGeneric("qoder", limits.qoder, [["Credits", limits.qoder?.primary_window], ["Ultimate Free Calls", limits.qoder?.secondary_window]]);
+  addGeneric("commandCode", limits.commandCode, [
+    [copy("limits.label.command_code_5h"), limits.commandCode?.primary_window],
+    [copy("limits.label.command_code_weekly"), limits.commandCode?.secondary_window],
+  ]);
   addGeneric("codingPlan", limits.codingPlan, [["5h", limits.codingPlan?.primary_window], ["Week", limits.codingPlan?.secondary_window], ["Month", limits.codingPlan?.tertiary_window]]);
   addGeneric("agentPlan", limits.agentPlan, [
     ["5h", limits.agentPlan?.primary_window],
