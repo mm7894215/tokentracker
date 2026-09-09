@@ -18670,6 +18670,9 @@ async function parseAntigravityIncremental({
     const initialContextTokens = sameFile ? Number(prev.contextTokens || 0) : 0;
     const initialPrevContext = sameFile ? Number(prev.previousContextTokens || 0) : 0;
     const initialModel = sameFile && typeof prev.currentModel === "string" ? prev.currentModel : null;
+    const initialLastPlannerModel =
+      sameFile && typeof prev.lastPlannerModel === "string" ? prev.lastPlannerModel : null;
+    const initialUsageSource = sameFile && typeof prev.usageSource === "string" ? prev.usageSource : null;
 
     const projectContext = projectEnabled
       ? await resolveProjectContextForFile({
@@ -18689,6 +18692,8 @@ async function parseAntigravityIncremental({
       initialContextTokens,
       initialPrevContext,
       initialModel,
+      initialLastPlannerModel,
+      initialUsageSource,
       hourlyState,
       touchedBuckets,
       source: fileSource,
@@ -18706,6 +18711,8 @@ async function parseAntigravityIncremental({
       contextTokens: result.contextTokens,
       previousContextTokens: result.previousContextTokens,
       currentModel: result.currentModel,
+      lastPlannerModel: result.lastPlannerModel,
+      usageSource: result.usageSource,
       updatedAt: new Date().toISOString(),
     };
 
@@ -18738,12 +18745,121 @@ async function parseAntigravityIncremental({
   return { filesProcessed, eventsAggregated, bucketsQueued, projectBucketsQueued };
 }
 
+function decodeAntigravityVarint(buf, offset) {
+  let res = 0;
+  let shift = 0;
+  while (offset < buf.length) {
+    const b = buf[offset++];
+    res += (b & 0x7f) * 2 ** shift;
+    if (!(b & 0x80)) break;
+    shift += 7;
+  }
+  return [res, offset];
+}
+
+function findAntigravityProtoFields(buf) {
+  const fields = [];
+  let offset = 0;
+  while (offset < buf.length) {
+    const [tag, next] = decodeAntigravityVarint(buf, offset);
+    offset = next;
+    const fieldNum = tag >> 3;
+    const wireType = tag & 7;
+    if (wireType === 0) {
+      const [val, vNext] = decodeAntigravityVarint(buf, offset);
+      offset = vNext;
+      fields.push({ num: fieldNum, val });
+    } else if (wireType === 2) {
+      const [len, lNext] = decodeAntigravityVarint(buf, offset);
+      offset = lNext;
+      fields.push({ num: fieldNum, val: buf.subarray(offset, offset + len) });
+      offset += len;
+    } else if (wireType === 1) {
+      offset += 8;
+    } else if (wireType === 5) {
+      offset += 4;
+    } else {
+      break;
+    }
+  }
+  return fields;
+}
+
+function extractAntigravityGenInfo(buf) {
+  const root = findAntigravityProtoFields(buf);
+  const f1 = root.find((f) => f.num === 1)?.val;
+  if (!f1) return null;
+
+  const inner = findAntigravityProtoFields(f1);
+  let model = null;
+  const f19 = inner.find((f) => f.num === 19)?.val;
+  if (f19) model = Buffer.from(f19).toString("utf8").trim();
+
+  let contextTokens = 0;
+  const f9 = inner.find((f) => f.num === 9)?.val;
+  if (f9) {
+    const f10 = findAntigravityProtoFields(f9).find((f) => f.num === 10)?.val;
+    if (f10) {
+      const tok = findAntigravityProtoFields(f10).find((f) => f.num === 1)?.val;
+      if (Number.isFinite(tok)) contextTokens = tok;
+    }
+  }
+
+  let lastStepIndex = null;
+  for (const f of inner) {
+    if (f.num !== 20 || !f.val) continue;
+    const kv = findAntigravityProtoFields(f.val);
+    const k = kv.find((x) => x.num === 1)?.val;
+    const v = kv.find((x) => x.num === 2)?.val;
+    if (k && Buffer.from(k).toString("utf8") === "last_step_index" && v) {
+      const parsed = parseInt(Buffer.from(v).toString("utf8"), 10);
+      if (Number.isFinite(parsed)) lastStepIndex = parsed;
+    }
+  }
+
+  return { model, contextTokens, lastStepIndex };
+}
+
+function resolveAntigravityDbPath(transcriptPath) {
+  if (!transcriptPath || typeof transcriptPath !== "string") return null;
+  const m = transcriptPath.match(/^(.*)[/\\]brain[/\\]([^/\\]+)[/\\]\.system_generated[/\\]logs[/\\]transcript.*\.jsonl$/);
+  if (!m) return null;
+  return path.join(m[1], "conversations", `${m[2]}.db`);
+}
+
+function readAntigravityConversationDb(dbPath) {
+  if (!dbPath) return null;
+  try {
+    const rows = readSqliteJsonRows(
+      dbPath,
+      "SELECT idx, quote(data) as hex FROM gen_metadata ORDER BY idx",
+      { readOnly: true },
+    );
+    if (!Array.isArray(rows) || rows.length === 0) return null;
+
+    const stepMap = new Map();
+    for (const r of rows) {
+      if (!r || typeof r.hex !== "string" || !r.hex.startsWith("X'")) continue;
+      const buf = Buffer.from(r.hex.slice(2, -1), "hex");
+      const info = extractAntigravityGenInfo(buf);
+      if (info && info.lastStepIndex != null && info.contextTokens > 0) {
+        stepMap.set(info.lastStepIndex + 1, info);
+      }
+    }
+    return stepMap.size > 0 ? stepMap : null;
+  } catch (_) {
+    return null;
+  }
+}
+
 async function parseAntigravityFile({
   filePath,
   lastLine,
   initialContextTokens,
   initialPrevContext,
   initialModel,
+  initialLastPlannerModel,
+  initialUsageSource,
   hourlyState,
   touchedBuckets,
   source,
@@ -18760,6 +18876,8 @@ async function parseAntigravityFile({
       contextTokens: 0,
       previousContextTokens: 0,
       currentModel: null,
+      lastPlannerModel: null,
+      usageSource: "estimated",
     };
   }
 
@@ -18768,6 +18886,8 @@ async function parseAntigravityFile({
     .map((line) => line.trim())
     .filter(Boolean);
   let eventsAggregated = 0;
+  const dbPath = resolveAntigravityDbPath(filePath);
+  const stepMap = dbPath ? readAntigravityConversationDb(dbPath) : null;
   // Resume cached context-token total + model so historical lines (i < lastLine)
   // don't need to be re-tokenized on every sync. Falls back to a full re-walk
   // when the cached state is missing (legacy cursor) or the file rotated.
@@ -18776,7 +18896,9 @@ async function parseAntigravityFile({
   const cachedTokens = Number.isFinite(initialContextTokens) ? initialContextTokens : 0;
   const cachedPrev = Number.isFinite(initialPrevContext) ? initialPrevContext : 0;
   const cachedModel = typeof initialModel === "string" ? initialModel : null;
-  const resumed = canResume && (cachedTokens > 0 || cachedModel !== null);
+  const sqliteCursor = initialUsageSource === "sqlite";
+  const resumed =
+    canResume && (cachedTokens > 0 || cachedModel !== null) && (!stepMap || sqliteCursor);
   const scanStart = resumed ? lastLine : 0;
   let currentModel = resumed ? cachedModel : null;
   if (!currentModel) {
@@ -18787,6 +18909,11 @@ async function parseAntigravityFile({
   // tokens accumulated AFTER that point count as new input on the next planner
   // call — prevents O(N²) double-counting of the full history every turn.
   let previousContextTokens = resumed ? cachedPrev : 0;
+  let lastPlannerModel = null;
+  if (resumed) {
+    lastPlannerModel =
+      typeof initialLastPlannerModel === "string" ? initialLastPlannerModel : cachedModel;
+  }
   let lastCompletedLine = Math.min(Number.isFinite(lastLine) ? lastLine : 0, lines.length);
 
   for (let i = scanStart; i < lines.length; i++) {
@@ -18809,9 +18936,27 @@ async function parseAntigravityFile({
     }
 
     const eventContextTokens = antigravityContextTokens(parsed);
+    const dbTurn =
+      parsed.type === "PLANNER_RESPONSE" && stepMap && Number.isFinite(parsed.step_index)
+        ? stepMap.get(parsed.step_index)
+        : null;
+    const dbContextTokens = dbTurn && dbTurn.contextTokens > 0 ? dbTurn.contextTokens : 0;
+    if (dbTurn && dbTurn.model) {
+      const norm = normalizeAntigravityTranscriptModel(dbTurn.model);
+      if (norm) currentModel = norm;
+    }
 
     if (!isNewEvent) {
-      contextTokens += eventContextTokens;
+      if (parsed.type === "PLANNER_RESPONSE") {
+        if (dbContextTokens > 0) {
+          contextTokens = dbContextTokens;
+        }
+        previousContextTokens = contextTokens;
+        lastPlannerModel = currentModel;
+        contextTokens += eventContextTokens;
+      } else {
+        contextTokens += eventContextTokens;
+      }
       lastCompletedLine = i + 1;
       continue;
     }
@@ -18838,7 +18983,14 @@ async function parseAntigravityFile({
       const content = typeof parsed.content === "string" ? parsed.content : "";
       const thinking = typeof parsed.thinking === "string" ? parsed.thinking : "";
 
+      if (dbContextTokens > 0) {
+        contextTokens = dbContextTokens;
+      }
+      if (lastPlannerModel && model !== lastPlannerModel) {
+        previousContextTokens = 0;
+      }
       const inputDelta = Math.max(0, contextTokens - previousContextTokens);
+
       const outputTokens =
         antigravityValueTokens(content) + antigravityValueTokens(parsed.tool_calls);
       const reasoningTokens = antigravityValueTokens(thinking);
@@ -18846,8 +18998,6 @@ async function parseAntigravityFile({
       delta.input_tokens = inputDelta;
       delta.output_tokens = outputTokens;
       delta.reasoning_output_tokens = reasoningTokens;
-      // Match the mainstream convention (Codebuddy / Kilocode / OMP / Hermes):
-      // total_tokens = sum of every token column. No cache columns here.
       delta.total_tokens = inputDelta + outputTokens + reasoningTokens;
       delta.billable_total_tokens = delta.total_tokens;
       delta.conversation_count = 1;
@@ -18881,6 +19031,7 @@ async function parseAntigravityFile({
     // so they MUST be billed as input on the next planner — don't fold them into
     // previousContextTokens or that history vanishes from the totals.
     previousContextTokens = contextTokens;
+    lastPlannerModel = model;
     contextTokens += eventContextTokens;
     lastCompletedLine = i + 1;
   }
@@ -18891,6 +19042,8 @@ async function parseAntigravityFile({
     contextTokens,
     previousContextTokens,
     currentModel,
+    lastPlannerModel,
+    usageSource: stepMap ? "sqlite" : "estimated",
   };
 }
 
@@ -20473,6 +20626,9 @@ module.exports = {
   parseAntigravityIncremental,
   estimateAntigravityTokens,
   isCjkCodePoint,
+  resolveAntigravityDbPath,
+  extractAntigravityGenInfo,
+  readAntigravityConversationDb,
 
   // Trae SOLO (ByteDance AI IDE)
   resolveTraePath,
