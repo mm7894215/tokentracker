@@ -57,6 +57,7 @@ To erase everything TokenTracker knows about you, delete that directory. `tokent
 | **TRAE Work CN usage read** | TRAE's internal API | Transmits the existing sign-in authorization from the locally signed-in TRAE Work CN app to TRAE; reads usage metadata only. TokenTracker never persists or logs the auth token or prompt/response content. | Off unless you set `TOKENTRACKER_TRAE_CN_USAGE=1`; then during eligible non-background sync when local TRAE Work CN auth exists |
 | **GitHub star count** | `api.github.com` | Nothing but the request itself (public repo metadata) | On dashboard load |
 | **Update check** | `api.github.com` | Nothing but the request itself | Windows: once at launch. macOS: only when you click "Check for Updates" |
+| **Pricing data refresh** | `raw.githubusercontent.com` | Nothing but the request itself (public model pricing JSON from BerriAI/litellm) | At most once every 24 hours when the local pricing cache is missing or stale |
 
 Both telemetry items are disabled together by a single switch:
 
@@ -66,7 +67,7 @@ export TOKENTRACKER_NO_TELEMETRY=1     # or DO_NOT_TRACK=1
 
 You can also set `"telemetry": false` in `~/.tokentracker/tracker/config.json`. On localhost and inside the desktop apps, the dashboard asks the local server for this preference before initialising analytics — and if the answer cannot be confirmed, analytics stays **off** (fail-closed).
 
-Audit: [`src/lib/telemetry.js`](../src/lib/telemetry.js), [`dashboard/src/lib/analytics.js`](../dashboard/src/lib/analytics.js).
+Audit: [`src/lib/telemetry.js`](../src/lib/telemetry.js), [`dashboard/src/lib/analytics.js`](../dashboard/src/lib/analytics.js), [`src/lib/pricing/litellm-fetcher.js`](../src/lib/pricing/litellm-fetcher.js).
 
 ### 3.2 Only after you opt in or click something
 
@@ -117,7 +118,7 @@ Signing in is **entirely optional**. TokenTracker is fully functional without an
 | InsForge | Backend for accounts, cloud sync, leaderboard, heartbeat | [github.com/InsForge](https://github.com/InsForge) |
 | PostHog | Anonymous product analytics | [posthog.com/privacy](https://posthog.com/privacy) |
 | Vercel | Hosting for www.tokentracker.cc | [vercel.com/legal/privacy-policy](https://vercel.com/legal/privacy-policy) |
-| GitHub | Source hosting, releases, OAuth, star counts | [GitHub Privacy Statement](https://docs.github.com/en/site-policy/privacy-policies/github-privacy-statement) |
+| GitHub | Source hosting, releases, OAuth, star counts, upstream pricing data (`raw.githubusercontent.com`) | [GitHub Privacy Statement](https://docs.github.com/en/site-policy/privacy-policies/github-privacy-statement) |
 | Google | OAuth sign-in, fonts on share cards | [policies.google.com/privacy](https://policies.google.com/privacy) |
 
 AI providers whose quota endpoints TokenTracker reads (Anthropic, OpenAI, Cursor, GitHub Copilot, Google, Moonshot, Z.ai, Qoder, …) are governed by their own policies. TokenTracker acts on your behalf with credentials already on your machine; it does not create any new relationship with them.

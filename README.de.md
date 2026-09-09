@@ -263,7 +263,7 @@ TokenTracker verarbeitet deine Nutzungsdaten lokal. Prompts, Code oder Modellant
 | **Keine Erfassung von Code oder Prompts** | TokenTracker parst lokale Protokolldateien nach Token-Zahlen und Zeitstempeln. Prompts, Modellantworten, Code und Konversationsinhalte werden nie gespeichert oder hochgeladen. |
 | **Standardmäßig Local-First** | Die Nutzungserfassung läuft vollständig auf deinem Rechner. Kein Account, kein Login und keine API-Keys erforderlich. Cloud-Sync und das öffentliche Leaderboard sind rein optional (Opt-in). |
 | **Überprüfbar** | Open Source. Sieh selbst in [`src/lib/rollout.js`](src/lib/rollout.js) – es werden nur Zahlen, Zeitstempel und Modellnamen extrahiert. |
-| **Transparente Netzwerkaktivität** | Vollständig in der [Datenschutzerklärung](docs/PRIVACY.md) dokumentiert. Standardanfragen beschränken sich auf direkte Provider-Quota-Abfragen (mit bereits lokal vorhandenen Zugangsdaten), GitHub-Star-Counts und Versionsprüfungen sowie anonyme Telemetrie (täglicher Heartbeat + PostHog-Aufrufe, beide deaktivierbar via `TOKENTRACKER_NO_TELEMETRY=1` oder `DO_NOT_TRACK=1`). Telemetrie enthält niemals Tokens, Modelle, Prompts oder Code. |
+| **Transparente Netzwerkaktivität** | Vollständig in der [Datenschutzerklärung](docs/PRIVACY.md) dokumentiert. Standardanfragen beschränken sich auf direkte Provider-Quota-Abfragen (mit bereits lokal vorhandenen Zugangsdaten), GitHub-Star-Counts, Versionsprüfungen, Aktualisierungen der Preisdaten (`raw.githubusercontent.com`) sowie anonyme Telemetrie (täglicher Heartbeat + PostHog-Aufrufe, beide deaktivierbar via `TOKENTRACKER_NO_TELEMETRY=1` oder `DO_NOT_TRACK=1`). Telemetrie enthält niemals Tokens, Modelle, Prompts oder Code. |
 
 ---
 
