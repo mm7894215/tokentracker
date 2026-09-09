@@ -79,6 +79,7 @@ const {
   bucketKey,
 } = require("../src/lib/rollout");
 const { purgeProjectUsage } = require("../src/lib/project-usage-purge");
+const { computeRowCost } = require("../src/lib/pricing");
 
 const { mockPlatform, mockMethod } = require("./helpers/mock");
 const { resetWslProbeCache } = require("../src/lib/wsl-probe");
@@ -6299,13 +6300,18 @@ test("parseVsCodeCopilotChatIncremental replays JSONL patches and ignores offici
     const deepseek = firstRows.find((row) => row.model === "deepseek-v4-flash-amd");
     assert.deepEqual(
       { input: luna.input_tokens, output: luna.output_tokens, total: luna.total_tokens },
-      { input: 100, output: 20, total: 120 },
+      { input: 0, output: 20, total: 120 },
     );
     assert.deepEqual(
       { input: deepseek.input_tokens, output: deepseek.output_tokens, total: deepseek.total_tokens },
-      { input: 300, output: 40, total: 340 },
+      { input: 0, output: 40, total: 340 },
     );
-    assert.equal(firstRows.some((row) => row.model === "copilot/auto"), false);
+    assert.equal(firstRows.some((row) => row.model === "auto"), false);
+    assert.equal(firstRows.some((row) => row.input_tokens === 9999), false);
+    // promptTokens is an aggregate input count with no cache split in this
+    // source. It remains visible in total_tokens, but only the proven output
+    // portion is eligible for the per-token cost calculation.
+    assert.equal(computeRowCost(luna), 20 * 1.2 / 1_000_000);
 
     await fs.appendFile(
       sessionPath,
@@ -6322,7 +6328,7 @@ test("parseVsCodeCopilotChatIncremental replays JSONL patches and ignores offici
       (row) => row.source === "copilot" && row.model === "gpt-5.6-luna",
     );
     const latestLuna = rowsAfterUpdate.at(-1);
-    assert.equal(latestLuna.input_tokens, 100);
+    assert.equal(latestLuna.input_tokens, 0);
     assert.equal(latestLuna.output_tokens, 35);
     assert.equal(latestLuna.total_tokens, 135);
 
@@ -6355,6 +6361,8 @@ test("parseVsCodeCopilotChatIncremental reads legacy JSON snapshots and reconcil
       }),
       "utf8",
     );
+    const fixedMtime = new Date(Date.parse("2026-09-02T08:00:00.000Z"));
+    await fs.utimes(sessionPath, fixedMtime, fixedMtime);
     const first = await parseVsCodeCopilotChatIncremental({
       sessionPaths: [sessionPath],
       cursors,
@@ -6366,6 +6374,7 @@ test("parseVsCodeCopilotChatIncremental reads legacy JSON snapshots and reconcil
     );
     assert.equal(rows.at(-1).total_tokens, 525);
 
+    const firstStat = await fs.stat(sessionPath);
     await fs.writeFile(
       sessionPath,
       JSON.stringify({
@@ -6376,6 +6385,10 @@ test("parseVsCodeCopilotChatIncremental reads legacy JSON snapshots and reconcil
       }),
       "utf8",
     );
+    await fs.utimes(sessionPath, fixedMtime, fixedMtime);
+    const secondStat = await fs.stat(sessionPath);
+    assert.equal(secondStat.size, firstStat.size);
+    assert.equal(secondStat.mtimeMs, firstStat.mtimeMs);
     const second = await parseVsCodeCopilotChatIncremental({
       sessionPaths: [sessionPath],
       cursors,
@@ -6385,9 +6398,95 @@ test("parseVsCodeCopilotChatIncremental reads legacy JSON snapshots and reconcil
     rows = (await readJsonLines(queuePath)).filter(
       (row) => row.source === "copilot" && row.model === "Qwen3.8-27B-NVFP4",
     );
-    assert.equal(rows.at(-1).input_tokens, 600);
+    assert.equal(rows.at(-1).input_tokens, 0);
     assert.equal(rows.at(-1).output_tokens, 30);
     assert.equal(rows.at(-1).total_tokens, 630);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseVsCodeCopilotChatIncremental prunes deleted files but keeps unreadable state", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-vscode-copilot-prune-"));
+  try {
+    const sessionPath = path.join(tmp, "session.json");
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const timestamp = Date.parse("2026-09-02T09:05:00.000Z");
+    const cursors = {};
+    await fs.writeFile(
+      sessionPath,
+      JSON.stringify({
+        requests: [
+          { requestId: "prune-1", modelId: "customendpoint/LiteLLM/gpt-5.6-luna", timestamp, promptTokens: 50, completionTokens: 5 },
+        ],
+      }),
+      "utf8",
+    );
+    await parseVsCodeCopilotChatIncremental({
+      sessionPaths: [sessionPath],
+      cursors,
+      queuePath,
+    });
+    assert.ok(cursors.copilotVsCode.files[sessionPath]);
+
+    await fs.writeFile(sessionPath, "{", "utf8");
+    const unreadable = await parseVsCodeCopilotChatIncremental({
+      sessionPaths: [sessionPath],
+      cursors,
+      queuePath,
+    });
+    assert.equal(unreadable.fileErrors, 1);
+    assert.ok(cursors.copilotVsCode.files[sessionPath]);
+
+    await fs.unlink(sessionPath);
+    const pruned = await parseVsCodeCopilotChatIncremental({
+      sessionPaths: [],
+      cursors,
+      queuePath,
+    });
+    assert.equal(pruned.fileErrors, 0);
+    assert.equal(Object.hasOwn(cursors.copilotVsCode.files, sessionPath), false);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseVsCodeCopilotChatIncremental bounds JSONL cursor overlap and strips request content", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-vscode-copilot-bounded-"));
+  try {
+    const sessionPath = path.join(tmp, "session.jsonl");
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const timestamp = Date.parse("2026-09-02T10:05:00.000Z");
+    const requests = Array.from({ length: 512 }, (_, index) => ({
+      requestId: `bounded-${index}`,
+      modelId: "customendpoint/LiteLLM/gpt-5.6-luna",
+      timestamp,
+      promptTokens: 50,
+      completionTokens: 5,
+      question: "private prompt content that must not enter cursor state",
+      response: "private response content that must not enter cursor state",
+    }));
+    const raw = JSON.stringify({ kind: 0, v: { requests } }) + "\n";
+    await fs.writeFile(sessionPath, raw, "utf8");
+    const cursors = {};
+
+    const result = await parseVsCodeCopilotChatIncremental({
+      sessionPaths: [sessionPath],
+      cursors,
+      queuePath,
+    });
+    assert.equal(result.eventsAggregated, requests.length);
+    const fileState = cursors.copilotVsCode.files[sessionPath];
+    assert.equal(Object.hasOwn(fileState, "requests"), false);
+    assert.ok(Array.isArray(fileState.requestOverlap));
+    assert.ok(fileState.requestOverlap.length <= 256);
+    assert.equal(
+      fileState.requestOverlap.some(
+        ({ request }) => Object.hasOwn(request, "question") || Object.hasOwn(request, "response"),
+      ),
+      false,
+    );
+    assert.ok(JSON.stringify(fileState).length < raw.length);
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }

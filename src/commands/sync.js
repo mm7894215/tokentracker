@@ -2723,6 +2723,11 @@ async function cmdSync(argv, context = {}) {
           },
         });
         copilotResult = mergeParseResult(copilotResult, vscodeCopilotResult);
+        if (vscodeCopilotResult.fileErrors > 0 && !opts.auto) {
+          process.stderr.write(
+            `VS Code Copilot sync: skipped ${vscodeCopilotResult.fileErrors} unreadable session file(s)\n`,
+          );
+        }
       } catch (err) {
         warnProviderParseFailure("VS Code Copilot", err, opts);
       }
