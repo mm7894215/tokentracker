@@ -12398,7 +12398,16 @@ function encodeAntigravityTestVi(f, val) {
   return Buffer.concat([encodeAntigravityTestTag(f, 0), encodeAntigravityTestVarint(val)]);
 }
 
-function buildAntigravityTestProto({ model, contextTokens, lastStepIndex }) {
+function buildAntigravityTestProto({
+  model,
+  contextTokens,
+  lastStepIndex,
+  uncachedInput,
+  cachedInput,
+  outputTokens,
+  textOutput,
+  reasoningOutput,
+}) {
   const parts = [];
   if (model) parts.push(encodeAntigravityTestLd(19, model));
   if (Number.isFinite(contextTokens)) {
@@ -12406,6 +12415,21 @@ function buildAntigravityTestProto({ model, contextTokens, lastStepIndex }) {
     const f10 = encodeAntigravityTestLd(10, f1);
     const f9 = encodeAntigravityTestLd(9, f10);
     parts.push(f9);
+  }
+  if (
+    Number.isFinite(uncachedInput) ||
+    Number.isFinite(cachedInput) ||
+    Number.isFinite(outputTokens) ||
+    Number.isFinite(textOutput) ||
+    Number.isFinite(reasoningOutput)
+  ) {
+    const f4Parts = [];
+    if (Number.isFinite(uncachedInput)) f4Parts.push(encodeAntigravityTestVi(2, uncachedInput));
+    if (Number.isFinite(outputTokens)) f4Parts.push(encodeAntigravityTestVi(3, outputTokens));
+    if (Number.isFinite(cachedInput)) f4Parts.push(encodeAntigravityTestVi(5, cachedInput));
+    if (Number.isFinite(textOutput)) f4Parts.push(encodeAntigravityTestVi(9, textOutput));
+    if (Number.isFinite(reasoningOutput)) f4Parts.push(encodeAntigravityTestVi(10, reasoningOutput));
+    parts.push(encodeAntigravityTestLd(4, Buffer.concat(f4Parts)));
   }
   if (lastStepIndex != null) {
     const k = encodeAntigravityTestLd(1, "last_step_index");
@@ -12491,11 +12515,185 @@ test("extractAntigravityGenInfo extracts model, context tokens, and step index f
     lastStepIndex: 0,
   });
   const info = extractAntigravityGenInfo(proto);
-  assert.deepEqual(info, {
+  assert.equal(info.model, "gemini-3.8-flash");
+  assert.equal(info.contextTokens, 25000);
+  assert.equal(info.lastStepIndex, 0);
+});
+
+test("extractAntigravityGenInfo extracts usage metadata from protobuf payload", () => {
+  const proto = buildAntigravityTestProto({
     model: "gemini-3.8-flash",
-    contextTokens: 25000,
     lastStepIndex: 0,
+    uncachedInput: 4583,
+    cachedInput: 16319,
+    outputTokens: 151,
+    textOutput: 82,
+    reasoningOutput: 69,
   });
+  const info = extractAntigravityGenInfo(proto);
+  assert.equal(info.model, "gemini-3.8-flash");
+  assert.equal(info.lastStepIndex, 0);
+  assert.equal(info.uncachedInput, 4583);
+  assert.equal(info.cachedInput, 16319);
+  assert.equal(info.outputTokens, 151);
+  assert.equal(info.textOutput, 82);
+  assert.equal(info.reasoningOutput, 69);
+});
+
+test("extractAntigravityGenInfo handles absent textOutput and defaults to zero", () => {
+  const proto = buildAntigravityTestProto({
+    model: "gemini-3.8-flash",
+    lastStepIndex: 0,
+    uncachedInput: 1000,
+    cachedInput: 2000,
+    outputTokens: 300,
+    reasoningOutput: 100,
+  });
+  const info = extractAntigravityGenInfo(proto);
+  assert.equal(info.outputTokens, 300);
+  assert.equal(info.reasoningOutput, 100);
+  assert.equal(info.textOutput, 0);
+});
+
+test("parseAntigravityIncremental records cached input tokens and reasoning tokens from SQLite gen_metadata", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-antigravity-cache-"));
+  try {
+    const { transcriptPath, queuePath } = await setupAntigravitySqliteSession(tmp, {
+      protos: [
+        buildAntigravityTestProto({
+          model: "gemini-3.8-flash",
+          lastStepIndex: 0,
+          uncachedInput: 18239,
+          cachedInput: 0,
+          outputTokens: 1366,
+          textOutput: 1286,
+          reasoningOutput: 80,
+        }),
+        buildAntigravityTestProto({
+          model: "gemini-3.8-flash",
+          lastStepIndex: 2,
+          uncachedInput: 4583,
+          cachedInput: 16319,
+          outputTokens: 151,
+          textOutput: 82,
+          reasoningOutput: 69,
+        }),
+      ],
+      lines: antigravityPlannerLines([
+        {
+          userStep: 0,
+          userAt: "2026-04-05T14:00:00.000Z",
+          userContent: "hello",
+          plannerStep: 1,
+          plannerAt: "2026-04-05T14:01:00.000Z",
+          plannerContent: "hi",
+          thinking: "think1",
+        },
+        {
+          userStep: 2,
+          userAt: "2026-04-05T14:02:00.000Z",
+          userContent: "next prompt",
+          plannerStep: 3,
+          plannerAt: "2026-04-05T14:03:00.000Z",
+          plannerContent: "done",
+          thinking: "think2",
+        },
+      ]),
+    });
+    const cursors = { version: 1, files: {}, updatedAt: null };
+
+    const result = await parseAntigravityIncremental({
+      sessionFiles: [transcriptPath],
+      cursors,
+      queuePath,
+    });
+    assert.equal(result.eventsAggregated, 2);
+
+    const queued = await readJsonLines(queuePath);
+    assert.equal(queued.length, 1);
+    assert.equal(queued[0].source, "antigravity");
+    assert.equal(queued[0].model, "gemini-3.8-flash");
+    assert.equal(queued[0].input_tokens, 18239 + 4583);
+    assert.equal(queued[0].cached_input_tokens, 16319);
+    assert.equal(queued[0].output_tokens, 1286 + 82);
+    assert.equal(queued[0].reasoning_output_tokens, 80 + 69);
+    assert.equal(queued[0].conversation_count, 2);
+    assert.equal(
+      queued[0].total_tokens,
+      queued[0].input_tokens +
+        queued[0].cached_input_tokens +
+        queued[0].output_tokens +
+        queued[0].reasoning_output_tokens,
+    );
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseAntigravityIncremental falls back to outputTokens minus reasoning when textOutput is absent and clamps to zero", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-antigravity-no-text-"));
+  try {
+    const { transcriptPath, queuePath } = await setupAntigravitySqliteSession(tmp, {
+      protos: [
+        buildAntigravityTestProto({
+          model: "gemini-3.8-flash",
+          lastStepIndex: 0,
+          uncachedInput: 1000,
+          cachedInput: 2000,
+          outputTokens: 300,
+          reasoningOutput: 100,
+        }),
+        buildAntigravityTestProto({
+          model: "gemini-3.8-flash",
+          lastStepIndex: 2,
+          uncachedInput: 500,
+          cachedInput: 2500,
+          outputTokens: 50,
+          reasoningOutput: 80,
+        }),
+      ],
+      lines: antigravityPlannerLines([
+        {
+          userStep: 0,
+          userAt: "2026-04-05T14:00:00.000Z",
+          userContent: "turn 1",
+          plannerStep: 1,
+          plannerAt: "2026-04-05T14:01:00.000Z",
+          plannerContent: "resp 1",
+          thinking: "think 1",
+        },
+        {
+          userStep: 2,
+          userAt: "2026-04-05T14:02:00.000Z",
+          userContent: "turn 2",
+          plannerStep: 3,
+          plannerAt: "2026-04-05T14:03:00.000Z",
+          plannerContent: "resp 2",
+          thinking: "think 2",
+        },
+      ]),
+    });
+    const cursors = { version: 1, files: {}, updatedAt: null };
+
+    const result = await parseAntigravityIncremental({
+      sessionFiles: [transcriptPath],
+      cursors,
+      queuePath,
+    });
+    assert.equal(result.eventsAggregated, 2);
+
+    const queued = await readJsonLines(queuePath);
+    assert.equal(queued.length, 1);
+    // Turn 1: output = 300 - 100 = 200, reasoning = 100
+    // Turn 2: output = max(0, 50 - 80) = 0, reasoning = 80
+    assert.equal(queued[0].output_tokens, 200);
+    assert.equal(queued[0].reasoning_output_tokens, 180);
+    assert.equal(queued[0].input_tokens, 1500);
+    assert.equal(queued[0].cached_input_tokens, 4500);
+    assert.equal(queued[0].total_tokens, 1500 + 4500 + 200 + 180);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
 });
 
 test("parseAntigravityIncremental uses SQLite context size without inferring cache hits", async () => {

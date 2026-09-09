@@ -18817,7 +18817,52 @@ function extractAntigravityGenInfo(buf) {
     }
   }
 
-  return { model, contextTokens, lastStepIndex };
+  let uncachedInput;
+  let cachedInput;
+  let outputTokens;
+  let textOutput;
+  let reasoningOutput;
+  let hasUsageMetadata = false;
+
+  const f4 = inner.find((f) => f.num === 4)?.val;
+  if (f4) {
+    const f4fields = findAntigravityProtoFields(f4);
+    const pTok = f4fields.find((f) => f.num === 2)?.val;
+    const cTok = f4fields.find((f) => f.num === 5)?.val;
+    const oTok = f4fields.find((f) => f.num === 3)?.val;
+    const tTok = f4fields.find((f) => f.num === 9)?.val;
+    const rTok = f4fields.find((f) => f.num === 10)?.val;
+    if (
+      Number.isFinite(pTok) ||
+      Number.isFinite(cTok) ||
+      Number.isFinite(oTok) ||
+      Number.isFinite(tTok) ||
+      Number.isFinite(rTok)
+    ) {
+      hasUsageMetadata = true;
+      uncachedInput = Number.isFinite(pTok) ? pTok : 0;
+      cachedInput = Number.isFinite(cTok) ? cTok : 0;
+      outputTokens = Number.isFinite(oTok) ? oTok : 0;
+      textOutput = Number.isFinite(tTok) ? tTok : 0;
+      reasoningOutput = Number.isFinite(rTok) ? rTok : 0;
+    }
+  }
+
+  return {
+    model,
+    contextTokens,
+    lastStepIndex,
+    ...(hasUsageMetadata
+      ? {
+          uncachedInput,
+          cachedInput,
+          outputTokens,
+          textOutput,
+          reasoningOutput,
+          hasUsageMetadata: true,
+        }
+      : {}),
+  };
 }
 
 function resolveAntigravityDbPath(transcriptPath) {
@@ -18842,7 +18887,11 @@ function readAntigravityConversationDb(dbPath) {
       if (!r || typeof r.hex !== "string" || !r.hex.startsWith("X'")) continue;
       const buf = Buffer.from(r.hex.slice(2, -1), "hex");
       const info = extractAntigravityGenInfo(buf);
-      if (info && info.lastStepIndex != null && info.contextTokens > 0) {
+      if (
+        info &&
+        info.lastStepIndex != null &&
+        (info.hasUsageMetadata || info.contextTokens > 0)
+      ) {
         stepMap.set(info.lastStepIndex + 1, info);
       }
     }
@@ -18948,7 +18997,9 @@ async function parseAntigravityFile({
 
     if (!isNewEvent) {
       if (parsed.type === "PLANNER_RESPONSE") {
-        if (dbContextTokens > 0) {
+        if (dbTurn?.hasUsageMetadata) {
+          contextTokens = (dbTurn.uncachedInput || 0) + (dbTurn.cachedInput || 0);
+        } else if (dbContextTokens > 0) {
           contextTokens = dbContextTokens;
         }
         previousContextTokens = contextTokens;
@@ -18980,28 +19031,51 @@ async function parseAntigravityFile({
     let billedPlanner = false;
 
     if (parsed.type === "PLANNER_RESPONSE") {
-      const content = typeof parsed.content === "string" ? parsed.content : "";
-      const thinking = typeof parsed.thinking === "string" ? parsed.thinking : "";
+      if (dbTurn?.hasUsageMetadata) {
+        const uncached = dbTurn.uncachedInput || 0;
+        const cached = dbTurn.cachedInput || 0;
+        const reasoning = dbTurn.reasoningOutput || 0;
+        let output = 0;
+        if (Number.isFinite(dbTurn.textOutput) && dbTurn.textOutput > 0) {
+          output = dbTurn.textOutput;
+        } else if (Number.isFinite(dbTurn.outputTokens)) {
+          output = Math.max(0, dbTurn.outputTokens - reasoning);
+        }
 
-      if (dbContextTokens > 0) {
-        contextTokens = dbContextTokens;
+        delta.input_tokens = uncached;
+        delta.cached_input_tokens = cached;
+        delta.output_tokens = output;
+        delta.reasoning_output_tokens = reasoning;
+        delta.total_tokens = uncached + cached + output + reasoning;
+        delta.billable_total_tokens = delta.total_tokens;
+        delta.conversation_count = 1;
+        billedPlanner = delta.total_tokens > 0;
+
+        contextTokens = uncached + cached;
+      } else {
+        const content = typeof parsed.content === "string" ? parsed.content : "";
+        const thinking = typeof parsed.thinking === "string" ? parsed.thinking : "";
+
+        if (dbContextTokens > 0) {
+          contextTokens = dbContextTokens;
+        }
+        if (lastPlannerModel && model !== lastPlannerModel) {
+          previousContextTokens = 0;
+        }
+        const inputDelta = Math.max(0, contextTokens - previousContextTokens);
+
+        const outputTokens =
+          antigravityValueTokens(content) + antigravityValueTokens(parsed.tool_calls);
+        const reasoningTokens = antigravityValueTokens(thinking);
+
+        delta.input_tokens = inputDelta;
+        delta.output_tokens = outputTokens;
+        delta.reasoning_output_tokens = reasoningTokens;
+        delta.total_tokens = inputDelta + outputTokens + reasoningTokens;
+        delta.billable_total_tokens = delta.total_tokens;
+        delta.conversation_count = 1;
+        billedPlanner = delta.total_tokens > 0;
       }
-      if (lastPlannerModel && model !== lastPlannerModel) {
-        previousContextTokens = 0;
-      }
-      const inputDelta = Math.max(0, contextTokens - previousContextTokens);
-
-      const outputTokens =
-        antigravityValueTokens(content) + antigravityValueTokens(parsed.tool_calls);
-      const reasoningTokens = antigravityValueTokens(thinking);
-
-      delta.input_tokens = inputDelta;
-      delta.output_tokens = outputTokens;
-      delta.reasoning_output_tokens = reasoningTokens;
-      delta.total_tokens = inputDelta + outputTokens + reasoningTokens;
-      delta.billable_total_tokens = delta.total_tokens;
-      delta.conversation_count = 1;
-      billedPlanner = delta.total_tokens > 0;
     }
 
     if (!billedPlanner) {
