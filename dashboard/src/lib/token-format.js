@@ -1,16 +1,17 @@
-import { formatCompactNumber, toDisplayNumber } from "./format";
+import { formatChineseNumber, formatCompactNumber, toDisplayNumber } from "./format";
 
 export const TOKEN_FORMAT_MODES = Object.freeze({
   COMPACT: "compact",
+  CHINESE: "chinese",
   FULL: "full",
 });
 
 export const TOKEN_FORMAT_STORAGE_KEY = "tt.tokenFormat";
 
 export function normalizeTokenFormatMode(value) {
-  return value === TOKEN_FORMAT_MODES.FULL
-    ? TOKEN_FORMAT_MODES.FULL
-    : TOKEN_FORMAT_MODES.COMPACT;
+  if (value === TOKEN_FORMAT_MODES.FULL) return TOKEN_FORMAT_MODES.FULL;
+  if (value === TOKEN_FORMAT_MODES.CHINESE) return TOKEN_FORMAT_MODES.CHINESE;
+  return TOKEN_FORMAT_MODES.COMPACT;
 }
 
 export function readTokenFormatMode() {
@@ -46,6 +47,9 @@ export function formatTokenCount(
 ) {
   if (forceFull || normalizeTokenFormatMode(mode) === TOKEN_FORMAT_MODES.FULL) {
     return toDisplayNumber(value);
+  }
+  if (normalizeTokenFormatMode(mode) === TOKEN_FORMAT_MODES.CHINESE) {
+    return formatChineseNumber(value, { decimals });
   }
   return formatCompactNumber(value, {
     decimals,
