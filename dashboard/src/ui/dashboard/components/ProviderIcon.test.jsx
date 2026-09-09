@@ -1,8 +1,21 @@
 import { render } from "@testing-library/react";
+import { createElement } from "react";
 import { describe, expect, it } from "vitest";
 import { ProviderIcon } from "./ProviderIcon.jsx";
 
 describe("ProviderIcon", () => {
+  it("renders LM Studio and Unsloth without generic placeholders", () => {
+    const lm = render(
+      createElement(ProviderIcon, { provider: "lmstudio", size: 20 }),
+    ).container;
+    expect(lm.querySelector('img[src="/brand-logos/lmstudio.svg"]')).not.toBeNull();
+
+    const unsloth = render(
+      createElement(ProviderIcon, { provider: "unsloth", size: 20 }),
+    ).container;
+    expect(unsloth.querySelector('img[src="/brand-logos/unsloth.svg"]')).not.toBeNull();
+  });
+
   it("renders the official AnythingLLM mark with explicit light and dark treatment", () => {
     const { container } = render(
       <ProviderIcon provider="anythingllm" size={20} className="shrink-0" />,
@@ -131,4 +144,19 @@ describe("ProviderIcon", () => {
       expect(icon, `${provider} maps to pi.svg`).not.toBeNull();
       expect(icon, `${provider} switches luminance`).toHaveClass("brightness-0", "dark:brightness-100");
     }
+  });
+
+  it("renders the Command Code mark from the official brand asset", () => {
+    const { container } = render(
+      <ProviderIcon provider="COMMAND-CODE" size={16} />,
+    );
+    const icon = container.querySelector(
+      'img[src="/brand-logos/commandcode.svg"]',
+    );
+
+    expect(icon).not.toBeNull();
+    expect(icon).toHaveAttribute("width", "16");
+    expect(icon).toHaveAttribute("height", "16");
+    expect(container.querySelector(".text-oai-gray-400")).toBeNull();
+    expect(container.querySelector("circle")).toBeNull();
   });

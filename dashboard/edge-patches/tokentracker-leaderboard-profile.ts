@@ -142,12 +142,17 @@ const MODEL_PRICING: Record<string, { input: number; output: number; cache_read:
   "gpt-5.4-pro": { input: 30, output: 180, cache_read: 3 },
   "gpt-5.5": { input: 5, output: 30, cache_read: 0.5 },
   // GPT-5.6 family (public 2026-07-09), developers.openai.com/api/docs/pricing.
-  // Three durable capability tiers: sol (flagship) / terra (balanced default) /
+  // Three durable capability tiers: sol (flagship and public alias) / terra (balanced) /
   // luna (lightweight). Codex reports the tier in the model id (gpt-5.6-sol,
   // + reasoning-effort variants like gpt-5.6-solhigh). Not yet in LiteLLM.
-  "gpt-5.6-sol": { input: 5, output: 30, cache_read: 0.5, cache_write: 6.25 },
+  "gpt-5.6-sol": { input: 4, output: 20, cache_read: 0.4, cache_write: 5 },
   "gpt-5.6-terra": { input: 2, output: 12, cache_read: 0.2, cache_write: 2.5 },
   "gpt-5.6-luna": { input: 0.2, output: 1.2, cache_read: 0.02, cache_write: 0.25 },
+  // GPT-6 Astra Standard USD/MTok, verified 2026-09-07:
+  // https://developers.openai.com/api/docs/models/gpt-6-astra
+  // Cloud buckets do not retain per-request context/service tier. Use the
+  // standard short-context estimate; never infer long context from totals.
+  "gpt-6-astra": { input: 10, output: 50, cache_read: 1, cache_write: 12.5 },
   "gpt-5-mini": { input: 0.25, output: 2, cache_read: 0.025 },
   "o3": { input: 2, output: 8, cache_read: 0.5 },
   // ── Google Gemini ──
@@ -180,6 +185,10 @@ const MODEL_PRICING: Record<string, { input: number; output: number; cache_read:
   //    matcher requires the user-supplied model name to CONTAIN the LiteLLM
   //    key, so the bare `glm-5.1` / `glm-4.6` strings reported by Claude
   //    Code-compatible GLM endpoints never match. Curate them here. ──
+  // GLM-5.3: flagship keeps the 5.2 list rate; Flash is a distinct cheap SKU
+  // (LiteLLM `zai/glm-5.3-flash`: $0.15/$0.50/$0.03 per MTok in/out/cache-read).
+  "glm-5.3": { input: 1.4, output: 4.4, cache_read: 0.26 },
+  "glm-5.3-flash": { input: 0.15, output: 0.5, cache_read: 0.03 },
   "glm-5.2": { input: 1.4, output: 4.4, cache_read: 0.26 },
   "glm-5.1": { input: 1.4, output: 4.4, cache_read: 0.26 },
   "glm-5": { input: 1.0, output: 3.2, cache_read: 0.2 },
@@ -275,13 +284,14 @@ function getModelPricing(model: string) {
   if (lower.includes("opus")) return MODEL_PRICING["claude-opus-4-6"];
   if (lower.includes("haiku")) return MODEL_PRICING["claude-haiku-4-5-20251001"];
   if (lower.includes("sonnet")) return MODEL_PRICING["claude-sonnet-4-6"];
+  if (lower.includes("gpt-6-astra")) return MODEL_PRICING["gpt-6-astra"];
   // gpt-5.6 tiers: sol/terra/luna carry reasoning-effort suffixes (solhigh,
   // etc.), so match by substring. Specific tiers precede the generic gpt-5.6
-  // fallback (which defaults to the balanced terra tier).
+  // fallback (the public gpt-5.6 alias points to the flagship sol tier).
   if (lower.includes("gpt-5.6-sol")) return MODEL_PRICING["gpt-5.6-sol"];
   if (lower.includes("gpt-5.6-terra")) return MODEL_PRICING["gpt-5.6-terra"];
   if (lower.includes("gpt-5.6-luna")) return MODEL_PRICING["gpt-5.6-luna"];
-  if (lower.includes("gpt-5.6")) return MODEL_PRICING["gpt-5.6-terra"];
+  if (lower.includes("gpt-5.6")) return MODEL_PRICING["gpt-5.6-sol"];
   if (lower.includes("gpt-5.4-pro")) return MODEL_PRICING["gpt-5.4-pro"];
   if (lower.includes("gpt-5.4")) return MODEL_PRICING["gpt-5.4"];
   if (lower.includes("gpt-5.5")) return MODEL_PRICING["gpt-5.5"];
@@ -341,6 +351,8 @@ function getModelPricing(model: string) {
   if (lower.includes("glm-4.7-flash")) return MODEL_PRICING["glm-4.7-flash"];
   if (lower.includes("glm-4.7")) return MODEL_PRICING["glm-4.7"];
   if (lower.includes("glm-4.6")) return MODEL_PRICING["glm-4.6"];
+  if (lower.includes("glm-5.3-flash")) return MODEL_PRICING["glm-5.3-flash"];
+  if (lower.includes("glm-5.3")) return MODEL_PRICING["glm-5.3"];
   if (lower.includes("glm-5-turbo")) return MODEL_PRICING["glm-5-turbo"];
   if (lower.includes("glm-5.2")) return MODEL_PRICING["glm-5.2"];
   if (lower.includes("glm-5.1")) return MODEL_PRICING["glm-5.1"];
@@ -405,6 +417,9 @@ interface GroupedRow extends UsageRow {
 }
 
 function computeRowCost(row: UsageRow): number {
+  // LM Studio developer-server and LM Link traffic is local inference. Its
+  // logs do not represent Bionic Secure Cloud billing.
+  if (row.source === "lmstudio") return 0;
   // Pi's GitHub Copilot provider is subscription-backed. Keep its token
   // counts, but do not reprice the recorded Claude model as Anthropic API use.
   if (row.source === "pi-github-copilot" || row.source === "pi-copilot") return 0;
@@ -417,10 +432,14 @@ function computeRowCost(row: UsageRow): number {
   // WorkBuddy's auto-router logs model="auto"; price it as its default Hunyuan
   // model (hy3-preview-agent) so it isn't billed as Cursor's composer-1. Mirrors
   // normalizeWorkbuddyModel in src/lib/pricing/matcher.js.
-  const modelForPricing =
-    row.source === "workbuddy" && (row.model || "").toLowerCase() === "auto"
+  const rawModel = String(row.model || "").trim();
+  const unslothUnpriced =
+    row.source === "unsloth" && /^(local|unpriced)\//i.test(rawModel);
+  const modelForPricing = unslothUnpriced
+    ? "__tokentracker_unpriced_unsloth_model__"
+    : row.source === "workbuddy" && rawModel.toLowerCase() === "auto"
       ? "hy3-preview-agent"
-      : row.model;
+      : rawModel;
   const p = getRowPricing({ ...row, model: modelForPricing });
   const reasoningIncludedInOutput = row.source === "codex" || row.source === "every-code";
   const reasoningCost = reasoningIncludedInOutput

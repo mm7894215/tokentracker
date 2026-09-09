@@ -384,9 +384,13 @@ const PROVIDER_LOGO_MAP = {
   CLAUDE: "/brand-logos/claude-code.svg",
   "CLAUDE-SCIENCE": "/brand-logos/claude-code.svg",
   CODEX: "/brand-logos/codex.svg",
+  // Command Code ships an official multi-color brand SVG asset in
+  // /public/brand-logos/, so it renders through the image path below.
+  "COMMAND-CODE": "/brand-logos/commandcode.svg",
   GEMINI: "/brand-logos/gemini.svg",
   "KILO-CLI": "/brand-logos/kilo.svg",
   "KILO-CODE": "/brand-logos/kilo.svg",
+  LMSTUDIO: "/brand-logos/lmstudio.svg",
   MIMO: "/brand-logos/mimo.svg",
   // oh-my-pi: multi-color brand mark (pi letterform + plugin connector). pi
   // itself publishes a white-only mark (pi.dev/logo.svg), so it gets the same
@@ -403,6 +407,7 @@ const PROVIDER_LOGO_MAP = {
   "PI-DOTS": "/brand-logos/dots.png",
   QODER: "/brand-logos/qoder.svg",
   REASONIX: "/brand-logos/reasonix.png",
+  UNSLOTH: "/brand-logos/unsloth.svg",
   // Qoder CN ships its own brand mark — the domestic edition's icon (a green
   // crescent) differs from the international black double-crescent, so it gets
   // its own traced asset instead of reusing qoder.svg.

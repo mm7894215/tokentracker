@@ -15,6 +15,12 @@ const {
   createUsageDeltaState,
   snapshotUsageBaselines,
 } = require("./codex-token-usage");
+const {
+  applyCodexModelEvent,
+  createCodexModelAttributionState,
+  currentCodexModel,
+  snapshotCodexModelAttributionState,
+} = require("./codex-model-attribution");
 const { USD_TICKS_PER_USD, normalizeGrokUsage } = require("./grok-usage");
 
 const DEFAULT_SOURCE = "codex";
@@ -435,6 +441,9 @@ async function parseRolloutIncremental({
       ? prev.tokenUsageBaselines || null
       : null;
     const lastModel = sameInode && !truncated ? prev.lastModel || null : null;
+    const modelAttributionState = sameInode && !truncated
+      ? prev.modelAttributionState || null
+      : null;
 
     const codexProjectFastPath = projectEnabled && fileSource === DEFAULT_SOURCE;
     const projectOffset = sameInode && !truncated ? Number(prev.projectOffset || 0) : 0;
@@ -506,6 +515,7 @@ async function parseRolloutIncremental({
           lastTotal,
           tokenUsageBaselines,
           lastModel,
+          modelAttributionState,
           projectState,
           projectMetaCache,
           publicRepoCache,
@@ -520,6 +530,7 @@ async function parseRolloutIncremental({
           lastTotal,
           tokenUsageBaselines,
           lastModel,
+          modelAttributionState,
           hourlyState,
           touchedBuckets,
           source: fileSource,
@@ -542,6 +553,7 @@ async function parseRolloutIncremental({
       lastTotal: result.lastTotal,
       tokenUsageBaselines: result.tokenUsageBaselines,
       lastModel: result.lastModel,
+      modelAttributionState: result.modelAttributionState,
       updatedAt: new Date().toISOString(),
     };
     if (codexProjectFastPath) {
@@ -2017,6 +2029,7 @@ async function parseRolloutFile({
   lastTotal,
   tokenUsageBaselines,
   lastModel,
+  modelAttributionState: previousModelAttributionState,
   hourlyState,
   touchedBuckets,
   source,
@@ -2042,6 +2055,7 @@ async function parseRolloutFile({
       lastTotal,
       tokenUsageBaselines,
       lastModel,
+      modelAttributionState: previousModelAttributionState,
       eventsAggregated: 0,
       projectFileContexts,
     };
@@ -2053,6 +2067,9 @@ async function parseRolloutFile({
   });
 
   let model = typeof lastModel === "string" ? lastModel : null;
+  const modelAttributionState = createCodexModelAttributionState(
+    previousModelAttributionState || { model },
+  );
   const usageDeltaState = createUsageDeltaState({
     lastTotal,
     baselines: tokenUsageBaselines,
@@ -2090,14 +2107,17 @@ async function parseRolloutFile({
     const { line } = record;
     if (!line) continue;
     const maybeTokenCount = line.includes('"token_count"');
-    const maybeTurnContext =
+    const maybeModelReroute =
       !maybeTokenCount &&
+      (line.includes('"model/rerouted"') || line.includes('"model_rerouted"'));
+    const maybeTurnContext =
+      !maybeTokenCount && !maybeModelReroute &&
       (line.includes('"turn_context"') || line.includes('"session_meta"')) &&
       (line.includes('"model"') ||
         line.includes('"cwd"') ||
         line.includes('"current_date"') ||
         line.includes('"forked_from_id"'));
-    if (!maybeTokenCount && !maybeTurnContext) {
+    if (!maybeTokenCount && !maybeTurnContext && !maybeModelReroute) {
       if (invalidRecordPolicy === "throw" || !record.terminated) {
         try {
           JSON.parse(line);
@@ -2120,6 +2140,9 @@ async function parseRolloutFile({
     }
     if (!record.terminated) committedEndOffset = scannedEndOffset;
 
+    applyCodexModelEvent(modelAttributionState, obj);
+    model = currentCodexModel(modelAttributionState) || model;
+
     if (
       (obj?.type === "turn_context" || obj?.type === "session_meta") &&
       obj?.payload &&
@@ -2130,9 +2153,6 @@ async function parseRolloutFile({
       }
       if (obj.type === "turn_context" && typeof obj.payload.current_date === "string") {
         currentDate = normalizeIsoDate(obj.payload.current_date);
-      }
-      if (typeof obj.payload.model === "string") {
-        model = obj.payload.model;
       }
       if (projectState && typeof obj.payload.cwd === "string") {
         const nextCwd = obj.payload.cwd.trim();
@@ -2167,7 +2187,9 @@ async function parseRolloutFile({
     if (totalUsage && typeof totalUsage === "object") latestTotal = totalUsage;
 
     const rawDelta = consumeUsageDelta(usageDeltaState, lastUsage, totalUsage);
-    const delta = rawDelta ? normalizeUsage(rawDelta) : null;
+    const totalOnlyResetSentinel = source === DEFAULT_SOURCE
+      && isCodexTotalOnlyResetSentinel(lastUsage, totalUsage);
+    const delta = rawDelta && !totalOnlyResetSentinel ? normalizeUsage(rawDelta) : null;
     if (!delta || isAllZeroUsage(delta)) continue;
     delta.conversation_count = 1;
 
@@ -2266,6 +2288,7 @@ async function parseRolloutFile({
     lastTotal: latestTotal,
     tokenUsageBaselines: snapshotUsageBaselines(usageDeltaState),
     lastModel: model,
+    modelAttributionState: snapshotCodexModelAttributionState(modelAttributionState),
     eventsAggregated,
     projectFileContexts,
   };
@@ -2277,6 +2300,7 @@ async function scanRolloutProjectFileContexts({
   lastTotal,
   tokenUsageBaselines,
   lastModel,
+  modelAttributionState,
   projectState,
   projectMetaCache,
   publicRepoCache,
@@ -2294,6 +2318,7 @@ async function scanRolloutProjectFileContexts({
       lastTotal,
       tokenUsageBaselines,
       lastModel,
+      modelAttributionState,
       eventsAggregated: 0,
       projectFileContexts,
     };
@@ -2370,6 +2395,7 @@ async function scanRolloutProjectFileContexts({
     lastTotal,
     tokenUsageBaselines,
     lastModel,
+    modelAttributionState,
     eventsAggregated: 0,
     projectFileContexts,
   };
@@ -4389,11 +4415,26 @@ function normalizeUsage(u) {
   // bytes twice: once at the full input rate and again at the cache_read
   // rate, producing ~6–7x cost inflation on cache-heavy Codex sessions
   // (verified against ccusage's per-day numbers on the same rollouts).
-  // We intentionally leave `total_tokens` unchanged: Codex reports
-  // total = input(inclusive of cached) + output, which numerically equals
-  // our schema's non_cached + cached + output + 0 (cache_creation=0 here).
+  // Preserve the reported total for compatibility with older Codex / Every
+  // Code shapes where output_tokens can exclude reasoning or some component
+  // fields are absent. The exact all-zero reset sentinel is rejected before
+  // normalization by isCodexTotalOnlyResetSentinel().
   out.input_tokens = Math.max(0, out.input_tokens - out.cached_input_tokens);
   return out;
+}
+
+function isCodexTotalOnlyResetSentinel(lastUsage, totalUsage) {
+  const componentTotal = (usage) => [
+    usage?.input_tokens,
+    usage?.cached_input_tokens,
+    usage?.cache_creation_input_tokens ?? usage?.cache_write_input_tokens,
+    usage?.output_tokens,
+    usage?.reasoning_output_tokens,
+  ].reduce((sum, value) => sum + Math.max(0, Number(value) || 0), 0);
+  return Number(lastUsage?.total_tokens || 0) > 0
+    && Number(totalUsage?.total_tokens || 0) === 0
+    && componentTotal(lastUsage) === 0
+    && componentTotal(totalUsage) === 0;
 }
 
 // Stable dedup key for one Claude jsonl entry. Anthropic's official protocol
@@ -4417,6 +4458,9 @@ function claudeMessageDedupKey(obj) {
 function normalizeClaudeUsage(u) {
   const inputTokens = toNonNegativeInt(u?.input_tokens);
   const outputTokens = toNonNegativeInt(u?.output_tokens);
+  const reasoningTokens = Math.min(outputTokens, toNonNegativeInt(
+    u?.output_tokens_details?.thinking_tokens ?? u?.output_tokens_details?.reasoning_tokens,
+  ));
   const cacheCreation = toNonNegativeInt(u?.cache_creation_input_tokens);
   const cacheRead = toNonNegativeInt(u?.cache_read_input_tokens);
   const totalTokens = inputTokens + outputTokens + cacheCreation + cacheRead;
@@ -4424,8 +4468,9 @@ function normalizeClaudeUsage(u) {
     input_tokens: inputTokens,
     cached_input_tokens: cacheRead,
     cache_creation_input_tokens: cacheCreation,
-    output_tokens: outputTokens,
-    reasoning_output_tokens: 0,
+    // Claude rows price reasoning separately; it is already included in usage.output_tokens.
+    output_tokens: outputTokens - reasoningTokens,
+    reasoning_output_tokens: reasoningTokens,
     total_tokens: totalTokens,
   };
 }
@@ -4900,6 +4945,42 @@ function isZcodeNativeMessage(data) {
   );
 }
 
+// ZCode persists inclusive parent counters in both its legacy OpenCode tables
+// and the newer model_usage table: cache read/write are already included in
+// input, and reasoning is already included in output. The shared OpenCode
+// parser expects disjoint columns, so split the subsets before it computes
+// queue totals and cost (issue #554).
+function normalizeZcodeInclusiveTokens(tokens) {
+  if (!tokens || typeof tokens !== "object") return tokens;
+  const rawInput = toNonNegativeInt(tokens.input);
+  const rawOutput = toNonNegativeInt(tokens.output);
+  const cacheRead = toNonNegativeInt(tokens.cache?.read);
+  const cacheWrite = toNonNegativeInt(tokens.cache?.write);
+  const reasoning = toNonNegativeInt(tokens.reasoning);
+  return {
+    ...tokens,
+    input: Math.max(0, rawInput - cacheRead - cacheWrite),
+    output: Math.max(0, rawOutput - reasoning),
+    reasoning,
+    cache: {
+      ...(tokens.cache && typeof tokens.cache === "object" ? tokens.cache : {}),
+      read: cacheRead,
+      write: cacheWrite,
+    },
+  };
+}
+
+function normalizeZcodeLegacyMessage(message) {
+  if (!message?.data?.tokens) return message;
+  return {
+    ...message,
+    data: {
+      ...message.data,
+      tokens: normalizeZcodeInclusiveTokens(message.data.tokens),
+    },
+  };
+}
+
 const ZCODE_NATIVE_USAGE_COLUMNS = new Set([
   "id",
   "logical_request_id",
@@ -5045,18 +5126,6 @@ function readZcodeNativeUsageMessages(dbPath, sqliteOptions = {}) {
     const startedAt = coerceEpochMs(row?.started_at);
     if (!providerID || !modelID || !sessionID || !id || !startedAt) continue;
 
-    // ZCode's persisted input/output columns are inclusive parents:
-    // cache read/write are subsets of input, and reasoning is a subset of
-    // output. TokenTracker stores those five columns disjointly, so split the
-    // subsets here before entering the shared OpenCode parser. This preserves
-    // sum(input + cache read + cache write + output + reasoning) without
-    // billing either subset twice.
-    const rawInput = toNonNegativeInt(row?.input_tokens);
-    const rawOutput = toNonNegativeInt(row?.output_tokens);
-    const cacheRead = toNonNegativeInt(row?.cache_read_input_tokens);
-    const cacheWrite = toNonNegativeInt(row?.cache_creation_input_tokens);
-    const reasoning = toNonNegativeInt(row?.reasoning_tokens);
-
     const data = {
       id,
       sessionID,
@@ -5064,15 +5133,15 @@ function readZcodeNativeUsageMessages(dbPath, sqliteOptions = {}) {
       providerID,
       modelID,
       time: { created: startedAt, completed: startedAt },
-      tokens: {
-        input: Math.max(0, rawInput - cacheRead - cacheWrite),
-        output: Math.max(0, rawOutput - reasoning),
-        reasoning,
+      tokens: normalizeZcodeInclusiveTokens({
+        input: row?.input_tokens,
+        output: row?.output_tokens,
+        reasoning: row?.reasoning_tokens,
         cache: {
-          read: cacheRead,
-          write: cacheWrite,
+          read: row?.cache_read_input_tokens,
+          write: row?.cache_creation_input_tokens,
         },
-      },
+      }),
     };
     if (typeof row?.directory === "string" && row.directory.trim()) {
       data.path = { cwd: row.directory.trim() };
@@ -5095,7 +5164,8 @@ function readZcodeDbMessages(dbPath, sqliteOptions = {}) {
   if (!dbPath || !fssync.existsSync(dbPath)) return [];
   const nativeMessages = readZcodeNativeUsageMessages(dbPath, sqliteOptions);
   const legacyMessages = readOpencodeDbMessages(dbPath, sqliteOptions)
-    .filter((message) => isZcodeNativeMessage(message.data));
+    .filter((message) => isZcodeNativeMessage(message.data))
+    .map(normalizeZcodeLegacyMessage);
   if (nativeMessages === null) return legacyMessages;
 
   const nativeStartMs = nativeMessages.reduce((earliest, message) => {
@@ -5723,6 +5793,396 @@ async function parseQoderDbIncremental({
         projectState,
         projectTouchedBuckets,
       })
+    : 0;
+  const updatedAt = new Date().toISOString();
+  hourlyState.updatedAt = updatedAt;
+  qoderState.updatedAt = updatedAt;
+  cursors.hourly = hourlyState;
+  cursors[cursorKey] = qoderState;
+  if (projectState) {
+    projectState.updatedAt = updatedAt;
+    cursors.projectHourly = projectState;
+  }
+  return { messagesProcessed, eventsAggregated, bucketsQueued, projectBucketsQueued };
+}
+
+// ── Qoder (new) — ~/.qoder/projects JSONL (com.qoder.app.stable, 2026-08+) ──
+//
+// Qoder 2026-08 (app 0.1.2+) migrated from SharedClientCache/cache/db/local.db
+// to Electron main.sqlite + ~/.qoder/projects/<slug>/<sessionId>.jsonl.
+// The new transcript's message.usage no longer carries prompt_tokens — it is a
+// credit-billed SDK: {input_tokens:0, output_tokens:0, credits:3.2, billable:true}.
+// Only rows with authoritative token fields are counted: credit-only usage
+// without tokens is intentionally not counted (usage stays unsupported, no
+// token delta) because there is no first-party evidence for a credit→token
+// rate. Cost was never estimated — no authoritative credit→USD rate is
+// published, so total_cost_usd stays 0.
+// Old local.db is kept as a legacy fallback; both sources now use distinct
+// cursor namespaces (qoder vs qoderNew) via disjoint messageKey prefixes
+// (row: vs jsonl:) but upload under the same source="qoder".
+
+function resolveQoderProjectsDir({ home = os.homedir(), env = process.env, platform = process.platform, deps = {} } = {}) {
+  const override = typeof env.QODER_PROJECTS_DIR === "string" && env.QODER_PROJECTS_DIR.trim()
+    ? path.resolve(env.QODER_PROJECTS_DIR.trim())
+    : null;
+  if (override) return override;
+  // QODER_HOME points at the app support dir for the legacy DB; the new
+  // projects dir is always ~/.qoder regardless of QODER_HOME.
+  // On Windows also probe WSL distro home (same pattern as other providers).
+  if (platform === "win32" && !env.QODER_PROJECTS_DIR) {
+    const discoverWslHome = deps.discoverWslHome || wsl.discoverWslHome;
+    const wslRoot = wsl.shouldProbeWsl(env) ? discoverWslHome(".qoder", { ...deps, env }) : null;
+    if (wslRoot) {
+      const wslProjects = path.join(wslRoot, "projects");
+      if ((deps.existsSync || fssync.existsSync)(wslProjects)) return wslProjects;
+    }
+  }
+  return path.join(home, ".qoder", "projects");
+}
+
+function resolveQoderCnProjectsDir({ home = os.homedir(), env = process.env, platform = process.platform, deps = {} } = {}) {
+  const override = typeof env.QODER_CN_PROJECTS_DIR === "string" && env.QODER_CN_PROJECTS_DIR.trim()
+    ? path.resolve(env.QODER_CN_PROJECTS_DIR.trim())
+    : null;
+  if (override) return override;
+  // The new CN app (com.qodercn.app.stable, 2026-08+) keeps its sessions in
+  // ~/.qoder-cn/projects — a sibling of the international ~/.qoder, not a
+  // shared directory. Pointing CN at ~/.qoder/projects made the "CN dir
+  // diverges from international" guards in sync.js/status.js always false,
+  // so new-version CN JSONL usage was silently never parsed (and on
+  // international-only installs would have double-counted under qoder-cn).
+  if (platform === "win32" && !env.QODER_CN_PROJECTS_DIR) {
+    const discoverWslHome = deps.discoverWslHome || wsl.discoverWslHome;
+    const wslRoot = wsl.shouldProbeWsl(env) ? discoverWslHome(".qoder-cn", { ...deps, env }) : null;
+    if (wslRoot) {
+      const wslProjects = path.join(wslRoot, "projects");
+      if ((deps.existsSync || fssync.existsSync)(wslProjects)) return wslProjects;
+    }
+  }
+  return path.join(home, ".qoder-cn", "projects");
+}
+
+async function listQoderNewSessionFiles(projectsDir) {
+  const out = [];
+  if (!projectsDir || !fssync.existsSync(projectsDir)) return out;
+  async function walk(dir) {
+    const entries = await safeReadDir(dir);
+    for (const e of entries) {
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) {
+        await walk(p);
+      } else if (e.isFile() && e.name.endsWith(".jsonl")) {
+        out.push(p);
+      }
+    }
+  }
+  await walk(projectsDir);
+  out.sort((a, b) => a.localeCompare(b));
+  return out;
+}
+
+function qoderNewModelFromRecord(record) {
+  const msgModel = record?.message?.model;
+  const direct = typeof msgModel === "string" ? msgModel.trim() : "";
+  // CN BYOK routes embed an install-local provider UUID in the model id
+  // ("qoder-custom-<uuid>/glm-5.3-flash"). Keep the bare model id so bucket
+  // keys stay stable across reinstalls and don't fragment per user; official
+  // ids (e.g. "qmodel_38max") have no prefix and pass through unchanged.
+  const stripped = direct.replace(
+    /^qoder-custom-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\//i,
+    "",
+  );
+  return normalizeModelInput(stripped) || "qoder-agent";
+}
+
+function qoderNewMessageKey(record, filePath, lineIndex = 0) {
+  const msgId = normalizeMessageKeyPart(record?.message?.id)
+    || normalizeMessageKeyPart(record?.uuid)
+    || normalizeMessageKeyPart(record?.id)
+    || null;
+  const sessionId = normalizeMessageKeyPart(record?.sessionId || record?.session_id);
+  // Prefix to avoid collision with legacy row: keys; fallback includes line index
+  // so multiple no-id records in the same file remain distinct.
+  const fallbackSuffix = Number.isFinite(lineIndex) ? `${filePath}:${lineIndex}` : filePath;
+  if (sessionId && msgId) return `jsonl:${sessionId}|${msgId}`;
+  if (msgId) return `jsonl:${msgId}`;
+  if (sessionId) return `jsonl:${sessionId}|${record?.uuid || fallbackSuffix}`;
+  return `jsonl:${fallbackSuffix}|${record?.uuid || ""}`;
+}
+
+function qoderNewTimestampMs(record) {
+  return coerceEpochMs(record?.timestamp)
+    || coerceEpochMs(record?.message?.timestamp)
+    || parseIsoTimestampMs(record?.timestamp)
+    || parseIsoTimestampMs(record?.message?.timestamp)
+    || 0;
+}
+
+function normalizeQoderNewTokens(usage) {
+  if (!usage || typeof usage !== "object") return null;
+  const credits = Number(usage.credits ?? usage.original_credits ?? 0);
+  let input = Number(usage.input_tokens ?? 0);
+  let cached = Number(usage.cache_read_input_tokens ?? usage.cached_tokens ?? 0);
+  let cacheCreation = Number(usage.cache_creation_input_tokens ?? 0);
+  let output = Number(usage.output_tokens ?? 0);
+  // Guard against malformed numbers (NaN/Infinity/negative) — align with
+  // legacy normalizeQoderTokens which returns null on such input.
+  if (!Number.isFinite(input) || input < 0) input = 0;
+  if (!Number.isFinite(cached) || cached < 0) cached = 0;
+  if (!Number.isFinite(cacheCreation) || cacheCreation < 0) cacheCreation = 0;
+  if (!Number.isFinite(output) || output < 0) output = 0;
+  // Only rows with authoritative token fields are counted; anything else
+  // falls through to null (unsupported, no token delta).
+  if (input > 0 || cached > 0 || cacheCreation > 0 || output > 0) {
+    const inp = Math.max(0, Math.trunc(input));
+    const cach = Math.max(0, Math.trunc(cached));
+    const out = Math.max(0, Math.trunc(output));
+    const cc = Math.max(0, Math.trunc(cacheCreation));
+    return {
+      input_tokens: inp,
+      cached_input_tokens: cach,
+      cache_creation_input_tokens: cc,
+      output_tokens: out,
+      reasoning_output_tokens: 0,
+      total_tokens: inp + cach + cc + out,
+      billable_total_tokens: inp + cach + cc + out,
+      credits: Number.isFinite(credits) && credits > 0 ? credits : 0,
+      usage_precision: null,
+    };
+  }
+  // Credit-only usage without authoritative token fields is intentionally
+  // not counted (no token delta): there is no first-party evidence for a
+  // credit→token rate. The caller still counts billable messages as
+  // conversation activity.
+  return null;
+}
+
+async function parseQoderNewIncremental({
+  sessionFiles,
+  cursors,
+  queuePath,
+  projectQueuePath,
+  onProgress,
+  sourceKey = "qoder",
+  cursorKey = "qoderNew",
+  publicRepoResolver,
+} = {}) {
+  await ensureDir(path.dirname(queuePath));
+  const files = Array.isArray(sessionFiles) ? sessionFiles : [];
+  // One-time migration: pre-#549 stored JSONL keys under the legacy "qoder"
+  // cursor (same namespace as SQLite). Move them to the new isolated namespace
+  // so history is not double-counted and legacy multi-install state is preserved.
+  if (cursorKey === "qoderNew" && cursors?.qoder && !cursors?.qoderNew) {
+    const legacy = normalizeQoderState(cursors.qoder);
+    const jsonlEntries = Object.entries(legacy.messages).filter(([k]) => k.startsWith("jsonl:"));
+    if (jsonlEntries.length > 0) {
+      const migrated = {};
+      for (const [k, v] of jsonlEntries) {
+        migrated[k] = v;
+        delete legacy.messages[k];
+      }
+      cursors.qoderNew = { messages: migrated, updatedAt: legacy.updatedAt || new Date().toISOString() };
+    }
+  }
+  if (cursorKey === "qoderCnNew" && cursors?.["qoder-cn"] && !cursors?.["qoderCnNew"]) {
+    const legacy = normalizeQoderState(cursors["qoder-cn"]);
+    const jsonlEntries = Object.entries(legacy.messages).filter(([k]) => k.startsWith("jsonl:"));
+    if (jsonlEntries.length > 0) {
+      const migrated = {};
+      for (const [k, v] of jsonlEntries) {
+        migrated[k] = v;
+        delete legacy.messages[k];
+      }
+      cursors["qoderCnNew"] = { messages: migrated, updatedAt: legacy.updatedAt || new Date().toISOString() };
+    }
+  }
+  const hourlyState = normalizeHourlyState(cursors?.hourly);
+  const qoderState = normalizeQoderState(cursors?.[cursorKey]);
+  const projectEnabled = typeof projectQueuePath === "string" && projectQueuePath.length > 0;
+  const projectState = projectEnabled ? normalizeProjectState(cursors?.projectHourly) : null;
+  const projectTouchedBuckets = projectEnabled ? new Set() : null;
+  const projectMetaCache = projectEnabled ? new Map() : null;
+  const publicRepoCache = projectEnabled ? new Map() : null;
+  const touchedBuckets = new Set();
+  const cb = typeof onProgress === "function" ? onProgress : null;
+
+  // Build current snapshot from all JSONL files
+  const currentByKey = new Map();
+  const fileCount = files.length;
+  for (let fileIdx = 0; fileIdx < files.length; fileIdx++) {
+    const filePath = files[fileIdx];
+    let raw;
+    try {
+      raw = await fs.readFile(filePath, "utf8");
+    } catch (_e) {
+      continue;
+    }
+    const lines = raw.split("\n");
+    for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+      const line = lines[lineIdx];
+      if (!line.trim()) continue;
+      let record;
+      try {
+        record = JSON.parse(line);
+      } catch (_e) {
+        continue;
+      }
+      if (record?.type !== "assistant") continue;
+      const msg = record?.message;
+      if (!msg || msg.role !== "assistant") continue;
+      // Skip synthetic sub-agent streaming chunks that carry no usage
+      const usage = msg.usage;
+      if (!usage || typeof usage !== "object") continue;
+      const base = normalizeQoderNewTokens(usage);
+      // Allow billable zero-token messages to still count conversation (no token delta)
+      const isBillable = usage.billable !== false;
+      if (!base && !isBillable) continue;
+      const timestampMs = qoderNewTimestampMs(record);
+      if (!timestampMs) continue;
+      const bucketStart = toUtcHalfHourStart(new Date(timestampMs).toISOString());
+      if (!bucketStart) continue;
+      const messageKey = qoderNewMessageKey(record, filePath, lineIdx);
+      if (!messageKey) continue;
+      const model = qoderNewModelFromRecord(record);
+      const totals = base ? {
+        input_tokens: base.input_tokens,
+        cached_input_tokens: base.cached_input_tokens,
+        cache_creation_input_tokens: base.cache_creation_input_tokens,
+        output_tokens: base.output_tokens,
+        reasoning_output_tokens: 0,
+        total_tokens: base.total_tokens,
+        billable_total_tokens: base.billable_total_tokens,
+        total_cost_usd: 0,
+        usage_precision: base.usage_precision || undefined,
+        conversation_count: 1,
+      } : {
+        input_tokens: 0,
+        cached_input_tokens: 0,
+        cache_creation_input_tokens: 0,
+        output_tokens: 0,
+        reasoning_output_tokens: 0,
+        total_tokens: 0,
+        billable_total_tokens: 0,
+        total_cost_usd: 0,
+        conversation_count: 1,
+      };
+      let projectKey = null;
+      let projectRef = null;
+      if (projectEnabled) {
+        const rawCwd = typeof record?.cwd === "string" ? record.cwd.trim() : "";
+        if (rawCwd) {
+          const startDir = wsl.mapWslCwdToUnc(rawCwd, filePath);
+          const context = await resolveProjectContextForPath({
+            startDir,
+            projectMetaCache,
+            publicRepoCache,
+            publicRepoResolver,
+            projectState,
+          });
+          projectKey = context?.projectKey || null;
+          projectRef = context?.projectRef || null;
+        }
+      }
+      currentByKey.set(messageKey, {
+        totals,
+        bucketStart,
+        model,
+        projectKey,
+        projectRef,
+        filePath,
+      });
+    }
+    if (cb && (fileIdx % 50 === 0 || fileIdx === files.length - 1)) {
+      cb({
+        index: fileIdx + 1,
+        total: fileCount,
+        messagesProcessed: currentByKey.size,
+        eventsAggregated: 0,
+        bucketsQueued: 0,
+      });
+    }
+  }
+
+  let messagesProcessed = currentByKey.size;
+  let eventsAggregated = 0;
+
+  // Subtract contributions that disappeared or changed
+  for (const [key, prev] of Object.entries(qoderState.messages)) {
+    if (!key.startsWith("jsonl:")) continue;
+    const cur = currentByKey.get(key);
+    const unchanged = cur
+      && totalsKey(prev.totals) === totalsKey(cur.totals)
+      && prev.bucketStart === cur.bucketStart
+      && prev.model === cur.model
+      && (prev.projectKey || null) === (cur.projectKey || null)
+      && (prev.totals?.total_cost_usd || 0) === (cur.totals.total_cost_usd || 0);
+    if (unchanged) continue;
+    if (prev.totals && prev.bucketStart && prev.model) {
+      const oldBucket = getHourlyBucket(hourlyState, sourceKey, prev.model, prev.bucketStart);
+      subtractTotals(oldBucket.totals, prev.totals);
+      touchedBuckets.add(bucketKey(sourceKey, prev.model, prev.bucketStart));
+      if (projectEnabled && prev.projectKey) {
+        const oldProjectBucket = getProjectBucket(projectState, prev.projectKey, sourceKey, prev.bucketStart, prev.projectRef || null);
+        subtractTotals(oldProjectBucket.totals, prev.totals);
+        projectTouchedBuckets.add(projectBucketKey(prev.projectKey, sourceKey, prev.bucketStart));
+      }
+    }
+    if (cur) {
+      const bucket = getHourlyBucket(hourlyState, sourceKey, cur.model, cur.bucketStart);
+      addTotals(bucket.totals, cur.totals);
+      if (cur.totals.usage_precision) bucket.usage_precision = cur.totals.usage_precision;
+      // addTotals handles total_cost_usd via USD_TICKS, but credits cost is small; ensure it accumulates
+      touchedBuckets.add(bucketKey(sourceKey, cur.model, cur.bucketStart));
+      if (projectEnabled && cur.projectKey) {
+        const projectBucket = getProjectBucket(projectState, cur.projectKey, sourceKey, cur.bucketStart, cur.projectRef);
+        addTotals(projectBucket.totals, cur.totals);
+        if (cur.totals.usage_precision) projectBucket.usage_precision = cur.totals.usage_precision;
+        projectTouchedBuckets.add(projectBucketKey(cur.projectKey, sourceKey, cur.bucketStart));
+      }
+      qoderState.messages[key] = {
+        totals: cur.totals,
+        conversationCount: cur.totals.conversation_count,
+        bucketStart: cur.bucketStart,
+        model: cur.model,
+        projectKey: cur.projectKey,
+        projectRef: cur.projectRef,
+        updatedAt: new Date().toISOString(),
+      };
+      eventsAggregated += 1;
+    } else {
+      delete qoderState.messages[key];
+      eventsAggregated += 1;
+    }
+  }
+
+  // Add brand-new keys
+  for (const [key, cur] of currentByKey.entries()) {
+    if (qoderState.messages[key]) continue;
+    const bucket = getHourlyBucket(hourlyState, sourceKey, cur.model, cur.bucketStart);
+    addTotals(bucket.totals, cur.totals);
+    if (cur.totals.usage_precision) bucket.usage_precision = cur.totals.usage_precision;
+    touchedBuckets.add(bucketKey(sourceKey, cur.model, cur.bucketStart));
+    if (projectEnabled && cur.projectKey) {
+      const projectBucket = getProjectBucket(projectState, cur.projectKey, sourceKey, cur.bucketStart, cur.projectRef);
+      addTotals(projectBucket.totals, cur.totals);
+      if (cur.totals.usage_precision) projectBucket.usage_precision = cur.totals.usage_precision;
+      projectTouchedBuckets.add(projectBucketKey(cur.projectKey, sourceKey, cur.bucketStart));
+    }
+    qoderState.messages[key] = {
+      totals: cur.totals,
+      conversationCount: cur.totals.conversation_count,
+      bucketStart: cur.bucketStart,
+      model: cur.model,
+      projectKey: cur.projectKey,
+      projectRef: cur.projectRef,
+      updatedAt: new Date().toISOString(),
+    };
+    eventsAggregated += 1;
+  }
+
+  const bucketsQueued = await enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets });
+  const projectBucketsQueued = projectEnabled
+    ? await enqueueTouchedProjectBuckets({ projectQueuePath, projectState, projectTouchedBuckets })
     : 0;
   const updatedAt = new Date().toISOString();
   hourlyState.updatedAt = updatedAt;
@@ -11179,6 +11639,955 @@ async function parseZedIncremental({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// LM Studio
+//
+// Data: pretty-printed OpenAI-compatible final responses beneath
+// `~/.lmstudio/server-logs/`. The reader recognizes both Chat Completions and
+// Responses API usage shapes. It scans only response identity, model, timestamp,
+// and the balanced `usage` object; prompt and response bodies are never parsed
+// or persisted.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const LMSTUDIO_SOURCE = "lmstudio";
+const LMSTUDIO_WINDOW_BYTES = 8 * 1024 * 1024;
+const LMSTUDIO_CHUNK_BYTES = 64 * 1024;
+const LMSTUDIO_IDENTITY_OVERLAP_BYTES = 512;
+const LMSTUDIO_MESSAGE_LIMIT = 10_000;
+const LMSTUDIO_USAGE_MARKER = Buffer.from('"usage"');
+
+function resolveLmstudioHome(env = process.env) {
+  const override = typeof env.TOKENTRACKER_LMSTUDIO_HOME === "string"
+    ? env.TOKENTRACKER_LMSTUDIO_HOME.trim()
+    : "";
+  if (override) return path.resolve(override);
+  const nativeHome = typeof env.LM_STUDIO_HOME === "string"
+    ? env.LM_STUDIO_HOME.trim()
+    : "";
+  if (nativeHome) return path.resolve(nativeHome);
+  return path.join(env.HOME || env.USERPROFILE || os.homedir(), ".lmstudio");
+}
+
+async function resolveLmstudioLogFiles(env = process.env) {
+  const root = path.join(resolveLmstudioHome(env), "server-logs");
+  const files = [];
+  const pending = [root];
+  while (pending.length > 0) {
+    const dir = pending.pop();
+    let entries;
+    try {
+      entries = await fs.readdir(dir, { withFileTypes: true });
+    } catch (_e) {
+      continue;
+    }
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) pending.push(fullPath);
+      else if (entry.isFile() && entry.name.toLowerCase().endsWith(".log")) files.push(fullPath);
+    }
+  }
+  return files.sort((a, b) => a.localeCompare(b));
+}
+
+function skipLmstudioWhitespace(buffer, index) {
+  while (index < buffer.length && /\s/.test(String.fromCharCode(buffer[index]))) index += 1;
+  return index;
+}
+
+function scanLmstudioUsageObjectStart(buffer, from = 0) {
+  let cursor = Math.max(0, from);
+  while (cursor < buffer.length) {
+    const marker = buffer.indexOf(LMSTUDIO_USAGE_MARKER, cursor);
+    if (marker < 0) break;
+    cursor = marker + LMSTUDIO_USAGE_MARKER.length;
+    if (marker > 0 && buffer[marker - 1] === 0x5c) continue;
+    const colon = skipLmstudioWhitespace(buffer, cursor);
+    if (colon >= buffer.length) return { found: null, certainTo: marker };
+    if (buffer[colon] !== 0x3a) continue;
+    const brace = skipLmstudioWhitespace(buffer, colon + 1);
+    if (brace >= buffer.length) return { found: null, certainTo: marker };
+    if (buffer[brace] === 0x7b) return { found: { marker, objectStart: brace }, certainTo: marker };
+  }
+  return {
+    found: null,
+    certainTo: Math.max(0, buffer.length - Math.max(0, LMSTUDIO_USAGE_MARKER.length - 1)),
+  };
+}
+
+function lmstudioBalancedObjectEnd(buffer, start) {
+  if (buffer[start] !== 0x7b) return -1;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let index = start; index < buffer.length; index++) {
+    const byte = buffer[index];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (byte === 0x5c) escaped = true;
+      else if (byte === 0x22) inString = false;
+      continue;
+    }
+    if (byte === 0x22) inString = true;
+    else if (byte === 0x7b) depth += 1;
+    else if (byte === 0x7d) {
+      depth -= 1;
+      if (depth === 0) return index + 1;
+    }
+  }
+  return -1;
+}
+
+function lmstudioJsonStringEnd(buffer, start) {
+  if (buffer[start] !== 0x22) return -1;
+  let escaped = false;
+  for (let index = start + 1; index < buffer.length; index++) {
+    const byte = buffer[index];
+    if (escaped) escaped = false;
+    else if (byte === 0x5c) escaped = true;
+    else if (byte === 0x22) return index + 1;
+  }
+  return -1;
+}
+
+function lastLmstudioJsonStringField(buffer, field) {
+  const markerBuffer = Buffer.from(`"${field}"`);
+  let cursor = 0;
+  let found = null;
+  while (cursor < buffer.length) {
+    const index = buffer.indexOf(markerBuffer, cursor);
+    if (index < 0) break;
+    cursor = index + markerBuffer.length;
+    if (index > 0 && buffer[index - 1] === 0x5c) continue;
+    let valueStart = skipLmstudioWhitespace(buffer, cursor);
+    if (buffer[valueStart] !== 0x3a) continue;
+    valueStart = skipLmstudioWhitespace(buffer, valueStart + 1);
+    const valueEnd = lmstudioJsonStringEnd(buffer, valueStart);
+    if (valueEnd < 0) continue;
+    try {
+      const value = JSON.parse(buffer.subarray(valueStart, valueEnd).toString("utf8"));
+      if (typeof value === "string") found = value;
+    } catch (_e) { }
+  }
+  return found;
+}
+
+function lastLmstudioTimestamp(buffer) {
+  const text = buffer.toString("utf8");
+  let timestamp = null;
+  for (const rawLine of text.split("\n")) {
+    const line = rawLine.startsWith("\r") ? rawLine.slice(1) : rawLine;
+    const match = /^\[(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})\]\[/.exec(line);
+    if (!match) continue;
+    const date = new Date(
+      Number(match[1]),
+      Number(match[2]) - 1,
+      Number(match[3]),
+      Number(match[4]),
+      Number(match[5]),
+      Number(match[6]),
+    );
+    if (!Number.isNaN(date.getTime())) timestamp = date.getTime();
+  }
+  return timestamp;
+}
+
+function normalizeLocalStudioTokens(usage) {
+  if (!usage || typeof usage !== "object") return null;
+  const prompt = toNonNegativeInt(
+    usage.prompt_tokens ?? usage.promptTokens ?? usage.input_tokens ?? usage.inputTokens,
+  );
+  const completion = toNonNegativeInt(
+    usage.completion_tokens ?? usage.completionTokens ?? usage.output_tokens ?? usage.outputTokens,
+  );
+  const total = Math.max(
+    toNonNegativeInt(usage.total_tokens ?? usage.totalTokens),
+    prompt + completion,
+  );
+  if (total <= 0) return null;
+  const promptDetails = usage.prompt_tokens_details
+    || usage.input_tokens_details
+    || usage.inputTokensDetails
+    || {};
+  const outputDetails = usage.completion_tokens_details
+    || usage.output_tokens_details
+    || usage.completionTokensDetails
+    || usage.outputTokensDetails
+    || {};
+  const cacheRead = Math.min(
+    prompt,
+    Math.max(
+      toNonNegativeInt(promptDetails.cached_tokens ?? promptDetails.cache_read_tokens),
+      toNonNegativeInt(usage.cached_tokens),
+    ),
+  );
+  const cacheWrite = Math.min(
+    Math.max(0, prompt - cacheRead),
+    Math.max(
+      toNonNegativeInt(
+        promptDetails.cache_creation_input_tokens ?? promptDetails.cache_write_tokens,
+      ),
+      toNonNegativeInt(usage.cache_creation_input_tokens),
+    ),
+  );
+  const reasoning = Math.min(
+    completion,
+    Math.max(
+      toNonNegativeInt(outputDetails.reasoning_tokens),
+      toNonNegativeInt(usage.reasoning_tokens),
+    ),
+  );
+  return {
+    input_tokens: Math.max(0, total - completion - cacheRead - cacheWrite),
+    cached_input_tokens: cacheRead,
+    cache_creation_input_tokens: cacheWrite,
+    output_tokens: Math.max(0, completion - reasoning),
+    reasoning_output_tokens: reasoning,
+    total_tokens: total,
+    billable_total_tokens: total,
+    total_cost_usd: 0,
+    conversation_count: 1,
+  };
+}
+
+function lmstudioResponseId(buffer) {
+  const id = lastLmstudioJsonStringField(buffer, "id");
+  return typeof id === "string" && ["chatcmpl-", "cmpl-", "resp_"].some((prefix) => id.startsWith(prefix))
+    ? id
+    : null;
+}
+
+function absorbLmstudioIdentity(identity, buffer) {
+  const responseId = lmstudioResponseId(buffer);
+  const model = lastLmstudioJsonStringField(buffer, "model");
+  const timestamp = lastLmstudioTimestamp(buffer);
+  if (responseId) identity.responseId = responseId;
+  if (model && model.trim()) identity.model = model.trim();
+  if (timestamp) identity.timestamp = timestamp;
+}
+
+function normalizeLmstudioResumeIdentity(value) {
+  const identity = {};
+  const responseId = typeof value?.responseId === "string" ? value.responseId : "";
+  if (["chatcmpl-", "cmpl-", "resp_"].some((prefix) => responseId.startsWith(prefix))) {
+    identity.responseId = responseId;
+  }
+  const model = typeof value?.model === "string" ? value.model.trim() : "";
+  if (model) identity.model = model;
+  const timestamp = Number(value?.timestamp);
+  if (Number.isFinite(timestamp) && timestamp > 0) identity.timestamp = timestamp;
+  return identity;
+}
+
+function lmstudioRecordFromSlices({ usageBuffer, metadataBuffer, carried, filePath, marker, fallbackTimestamp }) {
+  let usage;
+  try {
+    usage = JSON.parse(usageBuffer.toString("utf8"));
+  } catch (_e) {
+    return null;
+  }
+  const totals = normalizeLocalStudioTokens(usage);
+  if (!totals) return null;
+  const responseId = lmstudioResponseId(metadataBuffer) || carried.responseId || null;
+  const model = normalizeModelInput(
+    lastLmstudioJsonStringField(metadataBuffer, "model") || carried.model,
+  ) || DEFAULT_MODEL;
+  const timestampMs = lastLmstudioTimestamp(metadataBuffer) || carried.timestamp || fallbackTimestamp;
+  const bucketStart = timestampMs
+    ? toUtcHalfHourStart(new Date(timestampMs).toISOString())
+    : null;
+  if (!bucketStart) return null;
+  const fallback = crypto.createHash("sha256")
+    .update(filePath)
+    .update("\0")
+    .update(String(marker))
+    .update("\0")
+    .update(model)
+    .update("\0")
+    .update(totalsKey(totals))
+    .digest("base64url");
+  return {
+    key: responseId ? `lmstudio:${responseId}` : `lmstudio:${fallback}`,
+    model,
+    bucketStart,
+    totals,
+    marker,
+  };
+}
+
+async function readLmstudioFileRecords(
+  filePath,
+  {
+    windowBytes = LMSTUDIO_WINDOW_BYTES,
+    chunkBytes = LMSTUDIO_CHUNK_BYTES,
+    startOffset = 0,
+    resumeIdentity,
+  } = {},
+) {
+  const handle = await fs.open(filePath, "r");
+  try {
+    const initialStat = await handle.stat();
+    const fallbackTimestamp = initialStat.mtimeMs;
+    const records = [];
+    const initialOffset = Math.min(
+      initialStat.size,
+      Math.max(0, Number.isFinite(startOffset) ? Math.floor(startOffset) : 0),
+    );
+    let window = Buffer.alloc(0);
+    let windowStart = initialOffset;
+    let metadataStart = initialOffset;
+    let scannedTo = initialOffset;
+    let position = initialOffset;
+    let carried = normalizeLmstudioResumeIdentity(resumeIdentity);
+    const chunk = Buffer.alloc(Math.max(1, chunkBytes));
+
+    while (true) {
+      const { bytesRead } = await handle.read(chunk, 0, chunk.length, position);
+      if (bytesRead > 0) {
+        window = Buffer.concat([window, chunk.subarray(0, bytesRead)]);
+        position += bytesRead;
+      }
+      const atEof = bytesRead === 0;
+
+      while (true) {
+        const scanFrom = Math.min(window.length, Math.max(0, scannedTo - windowStart));
+        const scan = scanLmstudioUsageObjectStart(window, scanFrom);
+        if (!scan.found) {
+          scannedTo = windowStart + scan.certainTo;
+          break;
+        }
+        const objectEnd = lmstudioBalancedObjectEnd(window, scan.found.objectStart);
+        if (objectEnd < 0) {
+          scannedTo = atEof
+            ? windowStart + window.length
+            : windowStart + scan.found.marker;
+          break;
+        }
+        scannedTo = windowStart + objectEnd;
+        const absoluteMarker = windowStart + scan.found.marker;
+        const absoluteEnd = windowStart + objectEnd;
+        const metadataFrom = Math.min(
+          scan.found.marker,
+          Math.max(0, metadataStart - windowStart),
+        );
+        const record = lmstudioRecordFromSlices({
+          usageBuffer: window.subarray(scan.found.objectStart, objectEnd),
+          metadataBuffer: window.subarray(metadataFrom, scan.found.marker),
+          carried,
+          filePath,
+          marker: absoluteMarker,
+          fallbackTimestamp,
+        });
+        if (record) records.push(record);
+        metadataStart = absoluteEnd;
+        carried = {};
+      }
+
+      const keepFrom = Math.min(window.length, Math.max(0, metadataStart - windowStart));
+      if (keepFrom > 0) {
+        window = window.subarray(keepFrom);
+        windowStart += keepFrom;
+      }
+
+      if (window.length > windowBytes) {
+        const overflow = window.length - windowBytes;
+        const absorbTo = Math.min(
+          window.length,
+          overflow + LMSTUDIO_IDENTITY_OVERLAP_BYTES,
+        );
+        absorbLmstudioIdentity(carried, window.subarray(0, absorbTo));
+        window = window.subarray(overflow);
+        windowStart += overflow;
+        metadataStart = Math.max(metadataStart, windowStart);
+        scannedTo = Math.max(scannedTo, windowStart);
+      }
+
+      if (atEof) {
+        const finalStat = await handle.stat().catch(() => initialStat);
+        const nextIdentity = normalizeLmstudioResumeIdentity(carried);
+        return {
+          records,
+          stat: {
+            dev: finalStat.dev,
+            ino: finalStat.ino,
+            size: finalStat.size,
+            mtimeMs: finalStat.size === position ? finalStat.mtimeMs : -1,
+            resumeOffset: Math.max(metadataStart, position - windowBytes),
+            ...(Object.keys(nextIdentity).length > 0
+              ? { resumeIdentity: nextIdentity }
+              : {}),
+          },
+        };
+      }
+    }
+  } finally {
+    await handle.close().catch(() => {});
+  }
+}
+
+function retainNewestPassiveMessages(messages, maxEntries) {
+  const limit = Number.isInteger(maxEntries) && maxEntries > 0
+    ? maxEntries
+    : LMSTUDIO_MESSAGE_LIMIT;
+  const entries = Object.entries(messages);
+  if (entries.length <= limit) return messages;
+  entries.sort((left, right) => {
+    const leftTime = Date.parse(left[1]?.updatedAt || left[1]?.bucketStart || "") || 0;
+    const rightTime = Date.parse(right[1]?.updatedAt || right[1]?.bucketStart || "") || 0;
+    if (leftTime !== rightTime) return rightTime - leftTime;
+    return right[0].localeCompare(left[0]);
+  });
+  return Object.fromEntries(entries.slice(0, limit));
+}
+
+function reconcilePassiveUsageEvent({ event, source, messages, hourlyState, touchedBuckets }) {
+  const previous = messages[event.key];
+  const unchanged = previous
+    && previous.model === event.model
+    && previous.bucketStart === event.bucketStart
+    && totalsKey(previous.totals) === totalsKey(event.totals);
+  if (unchanged) return false;
+
+  if (previous?.model && previous?.bucketStart && previous?.totals) {
+    const oldBucket = getHourlyBucket(hourlyState, source, previous.model, previous.bucketStart);
+    subtractTotals(oldBucket.totals, previous.totals);
+    touchedBuckets.add(bucketKey(source, previous.model, previous.bucketStart));
+  }
+  const bucket = getHourlyBucket(hourlyState, source, event.model, event.bucketStart);
+  addTotals(bucket.totals, event.totals);
+  touchedBuckets.add(bucketKey(source, event.model, event.bucketStart));
+  messages[event.key] = {
+    model: event.model,
+    bucketStart: event.bucketStart,
+    totals: event.totals,
+    updatedAt: new Date().toISOString(),
+  };
+  return true;
+}
+
+async function parseLmstudioIncremental({
+  logFiles,
+  cursors,
+  queuePath,
+  onProgress,
+  messageLimit = LMSTUDIO_MESSAGE_LIMIT,
+  readerOptions,
+} = {}) {
+  await ensureDir(path.dirname(queuePath));
+  const files = Array.isArray(logFiles) ? [...logFiles].sort((a, b) => a.localeCompare(b)) : [];
+  const priorState = cursors.lmstudio && typeof cursors.lmstudio === "object"
+    ? cursors.lmstudio
+    : {};
+  let fileState = priorState.files && typeof priorState.files === "object"
+    ? { ...priorState.files }
+    : {};
+  let messages = priorState.messages && typeof priorState.messages === "object"
+    ? priorState.messages
+    : {};
+  const hourlyState = normalizeHourlyState(cursors?.hourly);
+  const touchedBuckets = new Set();
+  const presentFiles = new Set(files);
+  const cb = typeof onProgress === "function" ? onProgress : null;
+  const effectiveMessageLimit = Number.isInteger(messageLimit) && messageLimit > 0
+    ? messageLimit
+    : LMSTUDIO_MESSAGE_LIMIT;
+  let recordsProcessed = 0;
+  let eventsAggregated = 0;
+  let stateChanged = false;
+  const readOptions = readerOptions && typeof readerOptions === "object" ? readerOptions : {};
+  const filePlans = [];
+  let allFilesReadable = true;
+
+  for (const filePath of files) {
+    const previousFile = fileState[filePath];
+    let stat;
+    try {
+      stat = await fs.stat(filePath);
+    } catch (_e) {
+      allFilesReadable = false;
+      continue;
+    }
+    const unchanged = Boolean(previousFile
+      && previousFile.dev === stat.dev
+      && previousFile.ino === stat.ino
+      && previousFile.size === stat.size
+      && previousFile.mtimeMs === stat.mtimeMs
+      && Number.isFinite(previousFile.resumeOffset));
+    const canResume = Boolean(previousFile
+      && previousFile.dev === stat.dev
+      && previousFile.ino === stat.ino
+      && (stat.size > previousFile.size || previousFile.mtimeMs === -1)
+      && Number.isFinite(previousFile.resumeOffset)
+      && previousFile.resumeOffset >= 0
+      && previousFile.resumeOffset <= stat.size);
+    filePlans.push({ filePath, previousFile, unchanged, canResume });
+  }
+
+  const requiresRebuild = filePlans.some(
+    ({ previousFile, unchanged, canResume }) => previousFile && !unchanged && !canResume,
+  );
+  if (requiresRebuild) {
+    // Bounded message retention cannot safely deduplicate a replay from byte
+    // zero. Rebuild every current LM Studio log in isolation, then replace only
+    // this source's buckets while preserving their queue fingerprints.
+    if (!allFilesReadable || filePlans.length !== files.length) {
+      return { recordsProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
+    }
+    const rebuiltHourly = normalizeHourlyState(null);
+    const rebuiltMessages = {};
+    const rebuiltFiles = {};
+    const rebuiltTouched = new Set();
+    let rebuiltRecords = 0;
+    let rebuiltEvents = 0;
+    try {
+      for (let index = 0; index < filePlans.length; index++) {
+        const { filePath } = filePlans[index];
+        const parsed = await readLmstudioFileRecords(filePath, {
+          ...readOptions,
+          startOffset: 0,
+          resumeIdentity: undefined,
+        });
+        for (const event of parsed.records) {
+          if (reconcilePassiveUsageEvent({
+            event,
+            source: LMSTUDIO_SOURCE,
+            messages: rebuiltMessages,
+            hourlyState: rebuiltHourly,
+            touchedBuckets: rebuiltTouched,
+          })) rebuiltEvents += 1;
+        }
+        rebuiltFiles[filePath] = { ...parsed.stat, updatedAt: new Date().toISOString() };
+        rebuiltRecords += 1;
+        if (cb) {
+          cb({
+            index: index + 1,
+            total: files.length,
+            recordsProcessed: rebuiltRecords,
+            eventsAggregated: rebuiltEvents,
+            bucketsQueued: rebuiltTouched.size,
+          });
+        }
+      }
+    } catch (error) {
+      if (process.env.TOKENTRACKER_DEBUG) {
+        process.stderr.write(`[lmstudio] rebuild deferred: ${error?.message || error}\n`);
+      }
+      return { recordsProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
+    }
+
+    for (const [key, bucket] of Object.entries(hourlyState.buckets || {})) {
+      if (parseBucketKey(key).source !== LMSTUDIO_SOURCE || !bucket?.totals) continue;
+      bucket.totals = initTotals();
+      touchedBuckets.add(key);
+    }
+    for (const [key, bucket] of Object.entries(rebuiltHourly.buckets || {})) {
+      const current = hourlyState.buckets[key];
+      if (current && typeof current === "object") current.totals = cloneTotals(bucket.totals);
+      else hourlyState.buckets[key] = bucket;
+      touchedBuckets.add(key);
+    }
+    fileState = rebuiltFiles;
+    messages = rebuiltMessages;
+    recordsProcessed = rebuiltRecords;
+    eventsAggregated = rebuiltEvents;
+    stateChanged = true;
+  } else {
+    for (let index = 0; index < filePlans.length; index++) {
+      const { filePath, previousFile, unchanged, canResume } = filePlans[index];
+      if (!unchanged) {
+        try {
+          const parsed = await readLmstudioFileRecords(filePath, {
+            ...readOptions,
+            startOffset: canResume ? previousFile.resumeOffset : 0,
+            resumeIdentity: canResume ? previousFile.resumeIdentity : undefined,
+          });
+          for (const event of parsed.records) {
+            if (reconcilePassiveUsageEvent({
+              event,
+              source: LMSTUDIO_SOURCE,
+              messages,
+              hourlyState,
+              touchedBuckets,
+            })) eventsAggregated += 1;
+          }
+          fileState[filePath] = { ...parsed.stat, updatedAt: new Date().toISOString() };
+          recordsProcessed += 1;
+          stateChanged = true;
+        } catch (error) {
+          if (process.env.TOKENTRACKER_DEBUG) {
+            process.stderr.write(`[lmstudio] skipped ${filePath}: ${error?.message || error}\n`);
+          }
+        }
+      }
+      if (cb) {
+        cb({
+          index: index + 1,
+          total: files.length,
+          recordsProcessed,
+          eventsAggregated,
+          bucketsQueued: touchedBuckets.size,
+        });
+      }
+    }
+  }
+
+  for (const filePath of Object.keys(fileState)) {
+    if (!presentFiles.has(filePath)) {
+      delete fileState[filePath];
+      stateChanged = true;
+    }
+  }
+  if (
+    !stateChanged
+    && touchedBuckets.size === 0
+    && Object.keys(messages).length <= effectiveMessageLimit
+  ) {
+    return { recordsProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
+  }
+  const bucketsQueued = await enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets });
+  const updatedAt = new Date().toISOString();
+  hourlyState.updatedAt = updatedAt;
+  cursors.hourly = hourlyState;
+  cursors.lmstudio = {
+    files: fileState,
+    messages: retainNewestPassiveMessages(messages, effectiveMessageLimit),
+    updatedAt,
+  };
+  return { recordsProcessed, eventsAggregated, bucketsQueued };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Unsloth Studio
+//
+// Durable inference usage lives in `studio.db`. The SQL projections below
+// extract only stable IDs, timestamps, model identifiers, and scalar counters.
+// Message content, attachments, API subjects, credentials, and training data
+// never leave SQLite.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const UNSLOTH_SOURCE = "unsloth";
+const UNSLOTH_SQL_PAGE_SIZE = 500;
+const UNSLOTH_CURSOR_OVERLAP_ROWS = 256;
+const UNSLOTH_METERED_PROVIDER_TYPES = new Set([
+  "anthropic",
+  "deepseek",
+  "gemini",
+  "huggingface",
+  "kimi",
+  "mistral",
+  "openai",
+  "openrouter",
+  "qwen",
+]);
+
+function resolveUnslothDbPath(env = process.env) {
+  const override = typeof env.TOKENTRACKER_UNSLOTH_DB === "string"
+    ? env.TOKENTRACKER_UNSLOTH_DB.trim()
+    : "";
+  if (override) return path.resolve(override);
+  const studioHome = typeof env.UNSLOTH_STUDIO_HOME === "string"
+    ? env.UNSLOTH_STUDIO_HOME.trim()
+    : "";
+  if (studioHome) return path.join(path.resolve(studioHome), "studio.db");
+  return path.join(env.HOME || env.USERPROFILE || os.homedir(), ".unsloth", "studio", "studio.db");
+}
+
+function unslothSqliteFingerprint(dbPath) {
+  const fingerprint = sqliteSidecarFingerprint(dbPath);
+  delete fingerprint["-shm"];
+  return fingerprint;
+}
+
+function unslothRowPosition(row) {
+  const createdAt = row?.created_at == null ? "" : String(row.created_at);
+  const id = row?.id == null ? "" : String(row.id);
+  return createdAt && id ? { createdAt, id } : null;
+}
+
+function unslothPositionClause(rowAlias, position, inclusive) {
+  if (!position?.createdAt || !position?.id) return null;
+  const createdAt = sqliteStringLiteral(position.createdAt);
+  const id = sqliteStringLiteral(position.id);
+  const idOperator = inclusive ? ">=" : ">";
+  return `(${rowAlias}.created_at > ${createdAt} OR ` +
+    `(${rowAlias}.created_at = ${createdAt} AND ${rowAlias}.id ${idOperator} ${id}))`;
+}
+
+function readUnslothRowsPaged({
+  dbPath,
+  select,
+  from,
+  where,
+  rowAlias,
+  lowerBound,
+  options,
+}) {
+  const requestedPageSize = Number(options?.pageSize);
+  const pageSize = Number.isInteger(requestedPageSize) && requestedPageSize > 0
+    ? Math.min(requestedPageSize, UNSLOTH_SQL_PAGE_SIZE)
+    : UNSLOTH_SQL_PAGE_SIZE;
+  const rows = [];
+  let after = null;
+
+  while (true) {
+    const clauses = [where, `${rowAlias}.created_at IS NOT NULL`, `${rowAlias}.id IS NOT NULL`];
+    const positionClause = unslothPositionClause(rowAlias, after || lowerBound, !after);
+    if (positionClause) clauses.push(positionClause);
+    const page = readSqliteJsonRows(dbPath, `
+      SELECT
+        ${select}
+      FROM ${from}
+      WHERE ${clauses.filter(Boolean).join(" AND ")}
+      ORDER BY ${rowAlias}.created_at, ${rowAlias}.id
+      LIMIT ${pageSize}
+    `.trim(), options);
+    rows.push(...page);
+    if (page.length < pageSize) break;
+
+    const next = unslothRowPosition(page[page.length - 1]);
+    if (!next || (
+      after && next.createdAt === after.createdAt && next.id === after.id
+    )) {
+      throw new Error("Unsloth Studio pagination did not advance");
+    }
+    after = next;
+  }
+
+  return rows;
+}
+
+function readUnslothUsageRows(dbPath, sqliteOptions = {}, scanState = {}) {
+  if (!dbPath || !fssync.existsSync(dbPath)) return [];
+  const options = {
+    label: "Unsloth Studio",
+    maxBuffer: 32 * 1024 * 1024,
+    timeout: 30_000,
+    readOnly: true,
+    throwOnReadFailure: true,
+    ...sqliteOptions,
+  };
+  const tables = new Set(
+    readSqliteJsonRows(
+      dbPath,
+      "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('chat_messages','chat_threads','api_usage_events')",
+      options,
+    ).map((row) => row?.name).filter(Boolean),
+  );
+  const rows = [];
+
+  if (tables.has("chat_messages")) {
+    const joinThread = tables.has("chat_threads")
+      ? "LEFT JOIN chat_threads t ON t.id = m.thread_id"
+      : "";
+    const threadModel = tables.has("chat_threads") ? "t.model_id" : "NULL";
+    const field = (jsonPath, alias) =>
+      `CASE WHEN json_valid(m.metadata_json) THEN json_extract(m.metadata_json, '${jsonPath}') ELSE NULL END AS ${alias}`;
+    // Re-read a bounded tail because Studio finalizes recent rows in place and
+    // does not expose an updated_at column. Older immutable history stays behind
+    // the persisted timestamp/ID overlap cursor.
+    const chatRows = readUnslothRowsPaged({
+      dbPath,
+      select: `
+        'chat' AS usage_kind,
+        m.id,
+        m.created_at,
+        ${field("$.responseDetails.responseModelId", "response_model")},
+        ${field("$.contextUsage.modelId", "requested_model")},
+        ${field("$.responseDetails.providerType", "provider_type")},
+        ${threadModel} AS fallback_model,
+        ${field("$.contextUsage.promptTokens", "prompt_tokens")},
+        ${field("$.contextUsage.completionTokens", "completion_tokens")},
+        ${field("$.contextUsage.totalTokens", "total_tokens")},
+        ${field("$.contextUsage.cachedTokens", "cached_tokens")},
+        ${field("$.contextUsage.cacheWriteTokens", "cache_write_tokens")},
+        ${field("$.contextUsage.reasoningTokens", "reasoning_tokens")}
+      `.trim(),
+      from: `chat_messages m ${joinThread}`,
+      where: "m.role = 'assistant'",
+      rowAlias: "m",
+      lowerBound: scanState?.chat?.overlap,
+      options,
+    });
+    rows.push(...chatRows);
+  }
+
+  if (tables.has("api_usage_events")) {
+    const columns = new Set(
+      readSqliteJsonRows(dbPath, "PRAGMA table_info(api_usage_events)", options)
+        .map((row) => row?.name)
+        .filter(Boolean),
+    );
+    const required = ["id", "model", "prompt_tokens", "completion_tokens", "total_tokens", "created_at"];
+    if (required.every((column) => columns.has(column))) {
+      rows.push(...readUnslothRowsPaged({
+        dbPath,
+        select: `
+          'api' AS usage_kind,
+          e.id,
+          e.created_at,
+          e.model AS response_model,
+          e.model AS requested_model,
+          'local' AS provider_type,
+          NULL AS fallback_model,
+          e.prompt_tokens,
+          e.completion_tokens,
+          e.total_tokens,
+          0 AS cached_tokens,
+          0 AS cache_write_tokens,
+          0 AS reasoning_tokens
+        `.trim(),
+        from: "api_usage_events e",
+        where: "",
+        rowAlias: "e",
+        lowerBound: scanState?.api?.overlap,
+        options,
+      }));
+    }
+  }
+  return rows;
+}
+
+function qualifyUnslothModel(row) {
+  const rawModel = normalizeModelInput(row?.response_model)
+    || normalizeModelInput(row?.requested_model)
+    || normalizeModelInput(row?.fallback_model)
+    || DEFAULT_MODEL;
+  const providerType = normalizeMessageKeyPart(row?.provider_type).toLowerCase();
+  if (row?.usage_kind === "api" || providerType === "local") {
+    return `local/${rawModel}`;
+  }
+  if (!UNSLOTH_METERED_PROVIDER_TYPES.has(providerType)) {
+    return `unpriced/${providerType || "unknown"}/${rawModel}`;
+  }
+  const lowerModel = rawModel.toLowerCase();
+  return lowerModel.startsWith(`${providerType}/`)
+    ? rawModel
+    : `${providerType}/${rawModel}`;
+}
+
+function normalizeUnslothUsageRow(row) {
+  const totals = normalizeLocalStudioTokens({
+    prompt_tokens: row?.prompt_tokens,
+    completion_tokens: row?.completion_tokens,
+    total_tokens: row?.total_tokens,
+    cached_tokens: row?.cached_tokens,
+    cache_creation_input_tokens: row?.cache_write_tokens,
+    reasoning_tokens: row?.reasoning_tokens,
+  });
+  const id = normalizeMessageKeyPart(row?.id == null ? "" : String(row.id));
+  const timestampMs = coerceEpochMs(row?.created_at) || parseIsoTimestampMs(row?.created_at);
+  const bucketStart = timestampMs
+    ? toUtcHalfHourStart(new Date(timestampMs).toISOString())
+    : null;
+  if (!id || !totals || !bucketStart) return null;
+  const kind = row?.usage_kind === "api" ? "api" : "chat";
+  return {
+    key: `unsloth:${kind}:${id}`,
+    model: qualifyUnslothModel(row),
+    bucketStart,
+    totals,
+  };
+}
+
+async function parseUnslothIncremental({
+  dbPath,
+  cursors,
+  queuePath,
+  onProgress,
+  env,
+  sqliteOptions,
+  overlapRows = UNSLOTH_CURSOR_OVERLAP_ROWS,
+} = {}) {
+  await ensureDir(path.dirname(queuePath));
+  const resolvedDb = dbPath || resolveUnslothDbPath(env || process.env);
+  const priorState = cursors.unsloth && typeof cursors.unsloth === "object"
+    ? cursors.unsloth
+    : {};
+  const messages = priorState.messages && typeof priorState.messages === "object"
+    ? priorState.messages
+    : {};
+  if (!resolvedDb || !fssync.existsSync(resolvedDb)) {
+    cursors.unsloth = { ...priorState, messages, updatedAt: new Date().toISOString() };
+    return { recordsProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
+  }
+
+  const initialFingerprint = unslothSqliteFingerprint(resolvedDb);
+  const hasBoundedScan = priorState.scan
+    && typeof priorState.scan === "object"
+    && Object.keys(messages).length <= UNSLOTH_CURSOR_OVERLAP_ROWS * 2;
+  if (hasBoundedScan && sameSqliteFingerprint(initialFingerprint, priorState.fingerprint)) {
+    return { recordsProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
+  }
+
+  const rows = readUnslothUsageRows(resolvedDb, sqliteOptions, priorState.scan);
+  const hourlyState = normalizeHourlyState(cursors?.hourly);
+  const touchedBuckets = new Set();
+  const cb = typeof onProgress === "function" ? onProgress : null;
+  let recordsProcessed = 0;
+  let eventsAggregated = 0;
+  for (let index = 0; index < rows.length; index++) {
+    const event = normalizeUnslothUsageRow(rows[index]);
+    recordsProcessed += 1;
+    if (event && reconcilePassiveUsageEvent({
+      event,
+      source: UNSLOTH_SOURCE,
+      messages,
+      hourlyState,
+      touchedBuckets,
+    })) eventsAggregated += 1;
+    if (cb) {
+      cb({
+        index: index + 1,
+        total: rows.length,
+        recordsProcessed,
+        eventsAggregated,
+        bucketsQueued: touchedBuckets.size,
+      });
+    }
+  }
+
+  const retention = Number.isInteger(overlapRows) && overlapRows > 0
+    ? Math.min(overlapRows, UNSLOTH_CURSOR_OVERLAP_ROWS)
+    : UNSLOTH_CURSOR_OVERLAP_ROWS;
+  const nextScan = {};
+  const retainedMessageKeys = new Set();
+  for (const kind of ["chat", "api"]) {
+    const kindRows = rows.filter((row) => (row?.usage_kind === "api" ? "api" : "chat") === kind);
+    if (kindRows.length === 0) {
+      if (priorState.scan?.[kind]) nextScan[kind] = priorState.scan[kind];
+      for (const key of Object.keys(messages)) {
+        if (key.startsWith(`unsloth:${kind}:`)) retainedMessageKeys.add(key);
+      }
+      continue;
+    }
+    const tail = kindRows.slice(-retention);
+    const overlap = unslothRowPosition(tail[0]);
+    const latest = unslothRowPosition(kindRows[kindRows.length - 1]);
+    if (overlap && latest) nextScan[kind] = { overlap, latest };
+    for (const row of tail) {
+      const event = normalizeUnslothUsageRow(row);
+      if (event) retainedMessageKeys.add(event.key);
+    }
+  }
+  for (const key of Object.keys(messages)) {
+    if (key.startsWith("unsloth:") && !retainedMessageKeys.has(key)) delete messages[key];
+  }
+
+  const bucketsQueued = await enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets });
+  const finalFingerprint = unslothSqliteFingerprint(resolvedDb);
+  const updatedAt = new Date().toISOString();
+  hourlyState.updatedAt = updatedAt;
+  cursors.hourly = hourlyState;
+  cursors.unsloth = {
+    messages,
+    scan: nextScan,
+    fingerprint: sameSqliteFingerprint(initialFingerprint, finalFingerprint)
+      ? finalFingerprint
+      : initialFingerprint,
+    updatedAt,
+  };
+  return { recordsProcessed, eventsAggregated, bucketsQueued };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // AnythingLLM Desktop (Mintplex Labs)
 //
 // Data: SQLite at
@@ -14269,16 +15678,18 @@ async function migrateCopilotChatLogRecordDedup({
   touchedBuckets,
   seenIds,
 } = {}) {
+  // A v2 cursor can retain an offset for a rotated or deleted OTEL file that
+  // is no longer returned by discovery. Its historical contribution cannot be
+  // reconciled, but the stale offset must not block migration of new files.
+  const availableFiles = new Set(Array.isArray(files) ? files : []);
+  for (const filePath of Object.keys(fileOffsets || {})) {
+    if (!availableFiles.has(filePath)) delete fileOffsets[filePath];
+  }
   const trackedFiles = Object.keys(fileOffsets || {}).filter(
     (filePath) => Number(fileOffsets[filePath]?.size) > 0,
   );
   if (trackedFiles.length === 0) {
     return { applied: true, changed: false };
-  }
-
-  const availableFiles = new Set(Array.isArray(files) ? files : []);
-  if (trackedFiles.some((filePath) => !availableFiles.has(filePath))) {
-    return { applied: false, reason: "a previously parsed OTEL file is unavailable" };
   }
 
   const oldSeen = new Set();
@@ -14360,7 +15771,10 @@ async function migrateCopilotChatLogRecordDedup({
   }
 
   const keys = new Set([...oldTotals.keys(), ...newTotals.keys()]);
-  for (const key of keys) {
+  // Only keys that existed in the v2 contribution need coverage validation.
+  // A key that exists only in newTotals is a newly recovered Chat request; its
+  // old contribution is zero, so an absent old bucket is expected.
+  for (const key of oldTotals.keys()) {
     const [model, bucketStart] = JSON.parse(key);
     const oldUsage = oldTotals.get(key) || initTotals();
     if (!copilotTotalsCover(
@@ -18040,6 +19454,9 @@ async function parseAntigravityIncremental({
     const initialContextTokens = sameFile ? Number(prev.contextTokens || 0) : 0;
     const initialPrevContext = sameFile ? Number(prev.previousContextTokens || 0) : 0;
     const initialModel = sameFile && typeof prev.currentModel === "string" ? prev.currentModel : null;
+    const initialLastPlannerModel =
+      sameFile && typeof prev.lastPlannerModel === "string" ? prev.lastPlannerModel : null;
+    const initialUsageSource = sameFile && typeof prev.usageSource === "string" ? prev.usageSource : null;
 
     const projectContext = projectEnabled
       ? await resolveProjectContextForFile({
@@ -18059,6 +19476,8 @@ async function parseAntigravityIncremental({
       initialContextTokens,
       initialPrevContext,
       initialModel,
+      initialLastPlannerModel,
+      initialUsageSource,
       hourlyState,
       touchedBuckets,
       source: fileSource,
@@ -18076,6 +19495,8 @@ async function parseAntigravityIncremental({
       contextTokens: result.contextTokens,
       previousContextTokens: result.previousContextTokens,
       currentModel: result.currentModel,
+      lastPlannerModel: result.lastPlannerModel,
+      usageSource: result.usageSource,
       updatedAt: new Date().toISOString(),
     };
 
@@ -18108,12 +19529,121 @@ async function parseAntigravityIncremental({
   return { filesProcessed, eventsAggregated, bucketsQueued, projectBucketsQueued };
 }
 
+function decodeAntigravityVarint(buf, offset) {
+  let res = 0;
+  let shift = 0;
+  while (offset < buf.length) {
+    const b = buf[offset++];
+    res += (b & 0x7f) * 2 ** shift;
+    if (!(b & 0x80)) break;
+    shift += 7;
+  }
+  return [res, offset];
+}
+
+function findAntigravityProtoFields(buf) {
+  const fields = [];
+  let offset = 0;
+  while (offset < buf.length) {
+    const [tag, next] = decodeAntigravityVarint(buf, offset);
+    offset = next;
+    const fieldNum = tag >> 3;
+    const wireType = tag & 7;
+    if (wireType === 0) {
+      const [val, vNext] = decodeAntigravityVarint(buf, offset);
+      offset = vNext;
+      fields.push({ num: fieldNum, val });
+    } else if (wireType === 2) {
+      const [len, lNext] = decodeAntigravityVarint(buf, offset);
+      offset = lNext;
+      fields.push({ num: fieldNum, val: buf.subarray(offset, offset + len) });
+      offset += len;
+    } else if (wireType === 1) {
+      offset += 8;
+    } else if (wireType === 5) {
+      offset += 4;
+    } else {
+      break;
+    }
+  }
+  return fields;
+}
+
+function extractAntigravityGenInfo(buf) {
+  const root = findAntigravityProtoFields(buf);
+  const f1 = root.find((f) => f.num === 1)?.val;
+  if (!f1) return null;
+
+  const inner = findAntigravityProtoFields(f1);
+  let model = null;
+  const f19 = inner.find((f) => f.num === 19)?.val;
+  if (f19) model = Buffer.from(f19).toString("utf8").trim();
+
+  let contextTokens = 0;
+  const f9 = inner.find((f) => f.num === 9)?.val;
+  if (f9) {
+    const f10 = findAntigravityProtoFields(f9).find((f) => f.num === 10)?.val;
+    if (f10) {
+      const tok = findAntigravityProtoFields(f10).find((f) => f.num === 1)?.val;
+      if (Number.isFinite(tok)) contextTokens = tok;
+    }
+  }
+
+  let lastStepIndex = null;
+  for (const f of inner) {
+    if (f.num !== 20 || !f.val) continue;
+    const kv = findAntigravityProtoFields(f.val);
+    const k = kv.find((x) => x.num === 1)?.val;
+    const v = kv.find((x) => x.num === 2)?.val;
+    if (k && Buffer.from(k).toString("utf8") === "last_step_index" && v) {
+      const parsed = parseInt(Buffer.from(v).toString("utf8"), 10);
+      if (Number.isFinite(parsed)) lastStepIndex = parsed;
+    }
+  }
+
+  return { model, contextTokens, lastStepIndex };
+}
+
+function resolveAntigravityDbPath(transcriptPath) {
+  if (!transcriptPath || typeof transcriptPath !== "string") return null;
+  const m = transcriptPath.match(/^(.*)[/\\]brain[/\\]([^/\\]+)[/\\]\.system_generated[/\\]logs[/\\]transcript.*\.jsonl$/);
+  if (!m) return null;
+  return path.join(m[1], "conversations", `${m[2]}.db`);
+}
+
+function readAntigravityConversationDb(dbPath) {
+  if (!dbPath) return null;
+  try {
+    const rows = readSqliteJsonRows(
+      dbPath,
+      "SELECT idx, quote(data) as hex FROM gen_metadata ORDER BY idx",
+      { readOnly: true },
+    );
+    if (!Array.isArray(rows) || rows.length === 0) return null;
+
+    const stepMap = new Map();
+    for (const r of rows) {
+      if (!r || typeof r.hex !== "string" || !r.hex.startsWith("X'")) continue;
+      const buf = Buffer.from(r.hex.slice(2, -1), "hex");
+      const info = extractAntigravityGenInfo(buf);
+      if (info && info.lastStepIndex != null && info.contextTokens > 0) {
+        stepMap.set(info.lastStepIndex + 1, info);
+      }
+    }
+    return stepMap.size > 0 ? stepMap : null;
+  } catch (_) {
+    return null;
+  }
+}
+
 async function parseAntigravityFile({
   filePath,
   lastLine,
   initialContextTokens,
   initialPrevContext,
   initialModel,
+  initialLastPlannerModel,
+  initialUsageSource,
   hourlyState,
   touchedBuckets,
   source,
@@ -18130,6 +19660,8 @@ async function parseAntigravityFile({
       contextTokens: 0,
       previousContextTokens: 0,
       currentModel: null,
+      lastPlannerModel: null,
+      usageSource: "estimated",
     };
   }
 
@@ -18138,6 +19670,8 @@ async function parseAntigravityFile({
     .map((line) => line.trim())
     .filter(Boolean);
   let eventsAggregated = 0;
+  const dbPath = resolveAntigravityDbPath(filePath);
+  const stepMap = dbPath ? readAntigravityConversationDb(dbPath) : null;
   // Resume cached context-token total + model so historical lines (i < lastLine)
   // don't need to be re-tokenized on every sync. Falls back to a full re-walk
   // when the cached state is missing (legacy cursor) or the file rotated.
@@ -18146,7 +19680,9 @@ async function parseAntigravityFile({
   const cachedTokens = Number.isFinite(initialContextTokens) ? initialContextTokens : 0;
   const cachedPrev = Number.isFinite(initialPrevContext) ? initialPrevContext : 0;
   const cachedModel = typeof initialModel === "string" ? initialModel : null;
-  const resumed = canResume && (cachedTokens > 0 || cachedModel !== null);
+  const sqliteCursor = initialUsageSource === "sqlite";
+  const resumed =
+    canResume && (cachedTokens > 0 || cachedModel !== null) && (!stepMap || sqliteCursor);
   const scanStart = resumed ? lastLine : 0;
   let currentModel = resumed ? cachedModel : null;
   if (!currentModel) {
@@ -18157,6 +19693,11 @@ async function parseAntigravityFile({
   // tokens accumulated AFTER that point count as new input on the next planner
   // call — prevents O(N²) double-counting of the full history every turn.
   let previousContextTokens = resumed ? cachedPrev : 0;
+  let lastPlannerModel = null;
+  if (resumed) {
+    lastPlannerModel =
+      typeof initialLastPlannerModel === "string" ? initialLastPlannerModel : cachedModel;
+  }
   let lastCompletedLine = Math.min(Number.isFinite(lastLine) ? lastLine : 0, lines.length);
 
   for (let i = scanStart; i < lines.length; i++) {
@@ -18179,9 +19720,27 @@ async function parseAntigravityFile({
     }
 
     const eventContextTokens = antigravityContextTokens(parsed);
+    const dbTurn =
+      parsed.type === "PLANNER_RESPONSE" && stepMap && Number.isFinite(parsed.step_index)
+        ? stepMap.get(parsed.step_index)
+        : null;
+    const dbContextTokens = dbTurn && dbTurn.contextTokens > 0 ? dbTurn.contextTokens : 0;
+    if (dbTurn && dbTurn.model) {
+      const norm = normalizeAntigravityTranscriptModel(dbTurn.model);
+      if (norm) currentModel = norm;
+    }
 
     if (!isNewEvent) {
-      contextTokens += eventContextTokens;
+      if (parsed.type === "PLANNER_RESPONSE") {
+        if (dbContextTokens > 0) {
+          contextTokens = dbContextTokens;
+        }
+        previousContextTokens = contextTokens;
+        lastPlannerModel = currentModel;
+        contextTokens += eventContextTokens;
+      } else {
+        contextTokens += eventContextTokens;
+      }
       lastCompletedLine = i + 1;
       continue;
     }
@@ -18208,7 +19767,14 @@ async function parseAntigravityFile({
       const content = typeof parsed.content === "string" ? parsed.content : "";
       const thinking = typeof parsed.thinking === "string" ? parsed.thinking : "";
 
+      if (dbContextTokens > 0) {
+        contextTokens = dbContextTokens;
+      }
+      if (lastPlannerModel && model !== lastPlannerModel) {
+        previousContextTokens = 0;
+      }
       const inputDelta = Math.max(0, contextTokens - previousContextTokens);
+
       const outputTokens =
         antigravityValueTokens(content) + antigravityValueTokens(parsed.tool_calls);
       const reasoningTokens = antigravityValueTokens(thinking);
@@ -18216,9 +19782,8 @@ async function parseAntigravityFile({
       delta.input_tokens = inputDelta;
       delta.output_tokens = outputTokens;
       delta.reasoning_output_tokens = reasoningTokens;
-      // Match the mainstream convention (Codebuddy / Kilocode / OMP / Hermes):
-      // total_tokens = sum of every token column. No cache columns here.
       delta.total_tokens = inputDelta + outputTokens + reasoningTokens;
+      delta.billable_total_tokens = delta.total_tokens;
       delta.conversation_count = 1;
       billedPlanner = delta.total_tokens > 0;
     }
@@ -18250,6 +19815,7 @@ async function parseAntigravityFile({
     // so they MUST be billed as input on the next planner — don't fold them into
     // previousContextTokens or that history vanishes from the totals.
     previousContextTokens = contextTokens;
+    lastPlannerModel = model;
     contextTokens += eventContextTokens;
     lastCompletedLine = i + 1;
   }
@@ -18260,6 +19826,8 @@ async function parseAntigravityFile({
     contextTokens,
     previousContextTokens,
     currentModel,
+    lastPlannerModel,
+    usageSource: stepMap ? "sqlite" : "estimated",
   };
 }
 
@@ -19668,6 +21236,10 @@ module.exports = {
   resolveQoderDbPaths,
   resolveQoderCnDbPaths,
   readQoderDbMessages,
+  resolveQoderProjectsDir,
+  resolveQoderCnProjectsDir,
+  listQoderNewSessionFiles,
+  parseQoderNewIncremental,
   resolveKiroBasePath,
   resolveKiroDbPath,
   resolveKiroJsonlPath,
@@ -19759,6 +21331,15 @@ module.exports = {
   sumZedRequestUsage,
   readZedUsage,
   parseZedIncremental,
+  resolveLmstudioHome,
+  resolveLmstudioLogFiles,
+  normalizeLocalStudioTokens,
+  readLmstudioFileRecords,
+  parseLmstudioIncremental,
+  resolveUnslothDbPath,
+  readUnslothUsageRows,
+  normalizeUnslothUsageRow,
+  parseUnslothIncremental,
   resolveAnythingllmDbPath,
   parseAnythingllmTimestamp,
   readAnythingllmUsageRows,
@@ -19804,6 +21385,7 @@ module.exports = {
   normalizeGeminiTokens,
   normalizeOpencodeTokens,
   normalizeQoderTokens,
+  normalizeQoderNewTokens,
   sameGeminiTotals,
   diffGeminiTotals,
   // Exposed so the queue-repair migration can mutate cursors state in the
@@ -19830,6 +21412,9 @@ module.exports = {
   parseAntigravityIncremental,
   estimateAntigravityTokens,
   isCjkCodePoint,
+  resolveAntigravityDbPath,
+  extractAntigravityGenInfo,
+  readAntigravityConversationDb,
 
   // Trae SOLO (ByteDance AI IDE)
   resolveTraePath,

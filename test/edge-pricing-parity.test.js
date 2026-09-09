@@ -70,6 +70,8 @@ test("canonical pricing block retains regression-prone entries and matcher order
     '"mimo-v2-flash"',
     '"cursor-grok-4.5"',
     '"cursor-grok-4.5-fast"',
+    '"glm-5.3"',
+    '"glm-5.3-flash"',
   ]) {
     assert.ok(block.includes(`${key}:`), `canonical table lost ${key}`);
   }
@@ -102,6 +104,11 @@ test("canonical pricing block retains regression-prone entries and matcher order
     'lower.includes("grok-4.5"))',
   );
   order('lower.includes("grok-4.5"))', 'lower.includes("grok-4"))');
+  // GLM-5.3 Flash is a distinct cheap SKU ($0.15/$0.50 vs the flagship's
+  // $1.4/$4.4); its matcher must precede the base glm-5.3 matcher (substring)
+  // and glm-5.3 must precede glm-5, or flash rows bill at 6.7x.
+  order('lower.includes("glm-5.3-flash")', 'lower.includes("glm-5.3")');
+  order('lower.includes("glm-5.3")', 'lower.includes("glm-5")');
 });
 
 test("all cloud cost paths keep Pi Copilot subscription rows at zero cost", () => {
@@ -122,6 +129,27 @@ test("all cloud cost paths keep Pi Copilot subscription rows at zero cost", () =
         `${name}: subscription rows must bypass model pricing`,
       );
     }
+  }
+});
+
+test("all cloud cost paths distinguish local usage from metered Unsloth providers", () => {
+  for (const name of [CANONICAL, ...MIRRORS]) {
+    const source = readEdge(name);
+    assert.ok(source.includes('"lmstudio"'), `${name}: LM Studio zero-cost guard missing`);
+    assert.ok(
+      source.includes('__tokentracker_unpriced_unsloth_model__'),
+      `${name}: Unsloth local/unpriced model guard missing`,
+    );
+    assert.match(
+      source,
+      /\^\(local\|unpriced\)\\\//,
+      `${name}: Unsloth guard must cover local and ambiguous provider routes`,
+    );
+    assert.match(
+      source,
+      /String\(row\.model \|\| (?:""|"unknown")\)\.trim\(\)/,
+      `${name}: model must be trimmed before the Unsloth pricing guard`,
+    );
   }
 });
 

@@ -66,6 +66,9 @@ const {
   parseAntigravityIncremental,
   listAntigravitySessionFiles,
   estimateAntigravityTokens,
+  resolveAntigravityDbPath,
+  extractAntigravityGenInfo,
+  readAntigravityConversationDb,
   parseKimiCodeIncremental,
   resolveKimiHome,
   resolveKimiCodeHome,
@@ -3469,6 +3472,72 @@ test("readZcodeDbMessages snapshots native model_usage DBs on UNC paths", async 
   }
 });
 
+test("readZcodeDbMessages preserves normalized legacy history before native model_usage begins", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-zcode-native-history-"));
+  try {
+    const dbPath = path.join(tmp, "db.sqlite");
+    const legacyBeforeNative = {
+      id: "legacy-before-native",
+      sessionID: "session-real",
+      role: "assistant",
+      providerID: "builtin:zai-start-plan",
+      modelID: "GLM-5.2",
+      time: { created: 1781514000000, completed: 1781514060000 },
+      tokens: { input: 70, output: 14, reasoning: 4, cache: { read: 20, write: 10 } },
+    };
+    const legacyCoveredByNative = {
+      ...legacyBeforeNative,
+      id: "legacy-covered-by-native",
+      time: { created: 1787105605912, completed: 1787105665912 },
+    };
+    const beforeJson = JSON.stringify(legacyBeforeNative).replace(/'/g, "''");
+    const coveredJson = JSON.stringify(legacyCoveredByNative).replace(/'/g, "''");
+    runSqliteWrite(dbPath, `
+      CREATE TABLE session (id TEXT PRIMARY KEY, directory TEXT NOT NULL);
+      CREATE TABLE message (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        time_created INTEGER NOT NULL,
+        time_updated INTEGER NOT NULL,
+        data TEXT NOT NULL
+      );
+      CREATE TABLE model_usage (
+        id TEXT PRIMARY KEY,
+        logical_request_id TEXT NOT NULL,
+        attempt_index INTEGER NOT NULL DEFAULT 0,
+        session_id TEXT NOT NULL,
+        provider_id TEXT NOT NULL,
+        model_id TEXT NOT NULL,
+        status TEXT NOT NULL,
+        started_at INTEGER NOT NULL,
+        input_tokens INTEGER NOT NULL DEFAULT 0,
+        output_tokens INTEGER NOT NULL DEFAULT 0,
+        reasoning_tokens INTEGER NOT NULL DEFAULT 0,
+        cache_creation_input_tokens INTEGER NOT NULL DEFAULT 0,
+        cache_read_input_tokens INTEGER NOT NULL DEFAULT 0
+      );
+      INSERT INTO session VALUES ('session-real', '/real/project');
+      INSERT INTO message VALUES
+        ('legacy-before-native', 'session-real', 1781514000000, 1781514060000, '${beforeJson}'),
+        ('legacy-covered-by-native', 'session-real', 1787105605912, 1787105665912, '${coveredJson}');
+      INSERT INTO model_usage VALUES
+        ('native', 'logical-native', 0, 'session-real', 'builtin:zai-start-plan', 'GLM-5.3',
+         'completed', 1787105605912, 101, 21, 6, 11, 31);
+    `);
+
+    const rows = readZcodeDbMessages(dbPath);
+    assert.deepEqual(rows.map((row) => row.id), ["legacy-before-native", "native"]);
+    assert.deepEqual(rows[0].data.tokens, {
+      input: 40,
+      output: 10,
+      reasoning: 4,
+      cache: { read: 20, write: 10 },
+    });
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test("readZcodeDbMessages keeps Z.ai/BigModel + third-party rows, drops bundled sub-agent turns", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-zcode-db-"));
   try {
@@ -3506,6 +3575,7 @@ test("readZcodeDbMessages keeps Z.ai/BigModel + third-party rows, drops bundled 
     assert.deepEqual(models, ["GLM-5-Turbo", "GLM-5.2", "fugu-ultra", "mimo-v2.5-pro"]);
     // No bundled anthropic/openai/google sub-agent turn survives the filter.
     assert.ok(!rows.some((r) => /anthropic|openai|google/.test(r.data.providerID)));
+    assert.ok(rows.every((row) => row.data.tokens.input === 50));
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }
@@ -3549,7 +3619,7 @@ test("parseOpencodeDbIncremental aggregates ZCode GLM rows into source=zcode buc
     // Model is stored with the DB's original case ("GLM-5.2"); the pricing
     // matcher is case-insensitive so cost still resolves to the curated key.
     assert.equal(queued[0].model, "GLM-5.2");
-    assert.equal(queued[0].input_tokens, 10478);
+    assert.equal(queued[0].input_tokens, 3438);
     assert.equal(queued[0].output_tokens, 203);
     assert.equal(queued[0].cached_input_tokens, 7040);
 
@@ -3932,9 +4002,50 @@ test("parseRolloutIncremental subtracts cached_input_tokens from Codex input_tok
     assert.equal(queued[0].cached_input_tokens, 950_000);
     assert.equal(queued[0].output_tokens, 10_000);
     assert.equal(queued[0].reasoning_output_tokens, 4_000);
-    // total_tokens left as reported: still equals non_cached + cached + output
-    // numerically, so downstream aggregation stays stable.
+    // The reported total already equals the normalized, mutually-exclusive parts.
     assert.equal(queued[0].total_tokens, 1_010_000);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseRolloutIncremental drops Codex total-only sentinel usage", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-codex-total-sentinel-"));
+  try {
+    const rolloutPath = path.join(tmp, "rollout-codex.jsonl");
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const cursors = { version: 1, files: {}, updatedAt: null };
+    const zero = {
+      input_tokens: 0,
+      cached_input_tokens: 0,
+      cache_write_input_tokens: 0,
+      output_tokens: 0,
+      reasoning_output_tokens: 0,
+      total_tokens: 0,
+    };
+    const sentinel = { ...zero, total_tokens: 4_442 };
+    const valid = { ...zero, input_tokens: 100, output_tokens: 10, total_tokens: 110 };
+
+    await fs.writeFile(
+      rolloutPath,
+      [
+        buildTokenCountLine({ ts: "2026-08-04T12:58:55.420Z", last: sentinel, total: zero }),
+        buildTokenCountLine({ ts: "2026-08-04T12:59:06.736Z", last: valid, total: valid }),
+      ].join("\n") + "\n",
+      "utf8",
+    );
+
+    await parseRolloutIncremental({
+      rolloutFiles: [{ path: rolloutPath, source: "codex" }],
+      cursors,
+      queuePath,
+    });
+
+    const queued = await readJsonLines(queuePath);
+    assert.equal(queued.length, 1);
+    assert.equal(queued[0].input_tokens, 100);
+    assert.equal(queued[0].output_tokens, 10);
+    assert.equal(queued[0].total_tokens, 110);
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }
@@ -4076,6 +4187,56 @@ test("parseRolloutIncremental keeps buckets separate per model within the same h
     assert.ok(byModel.has("gpt-4o-mini"));
     assert.equal(byModel.get("gpt-4o").total_tokens, usage1.total_tokens);
     assert.equal(byModel.get("gpt-4o-mini").total_tokens, usage2.total_tokens);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseRolloutIncremental persists selected-model state and bills an observed reroute to the effective model", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-codex-reroute-"));
+  try {
+    const rolloutPath = path.join(tmp, "rollout-reroute.jsonl");
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const cursors = { version: 1, files: {}, updatedAt: null };
+    await fs.writeFile(
+      rolloutPath,
+      `${buildTurnContextLine({ model: "gpt-5.6-sol" })}\n`,
+      "utf8",
+    );
+    await parseRolloutIncremental({ rolloutFiles: [rolloutPath], cursors, queuePath });
+
+    const usage = {
+      input_tokens: 100,
+      cached_input_tokens: 0,
+      output_tokens: 20,
+      reasoning_output_tokens: 0,
+      total_tokens: 120,
+    };
+    const reroute = JSON.stringify({
+      timestamp: "2025-12-17T00:04:59.000Z",
+      method: "model/rerouted",
+      params: {
+        threadId: "thread-1",
+        turnId: "turn-1",
+        fromModel: "gpt-5.6-sol",
+        toModel: "gpt-5.6-terra",
+        reason: "capacity",
+      },
+    });
+    await fs.appendFile(
+      rolloutPath,
+      `${reroute}\n${buildTokenCountLine({ ts: "2025-12-17T00:05:00.000Z", last: usage, total: usage })}\n`,
+      "utf8",
+    );
+    await parseRolloutIncremental({ rolloutFiles: [rolloutPath], cursors, queuePath });
+
+    const queued = await readJsonLines(queuePath);
+    assert.equal(queued.length, 1);
+    assert.equal(queued[0].model, "gpt-5.6-terra");
+    assert.equal(queued[0].total_tokens, 120);
+    const cursor = cursors.files[rolloutPath];
+    assert.equal(cursor.modelAttributionState.selectedModel, "gpt-5.6-sol");
+    assert.equal(cursor.modelAttributionState.effectiveModel, "gpt-5.6-terra");
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }
@@ -6857,6 +7018,142 @@ test("parseCopilotIncremental repairs v2 Chat deduplication before upgrading the
     assert.equal(bucket.output_tokens, 140);
     assert.equal(bucket.total_tokens, 1440);
     assert.equal(bucket.conversation_count, 2);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseCopilotIncremental migrates v2 when a recovered request creates a new bucket", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-copilot-v2-new-bucket-"));
+  try {
+    const otelPath = path.join(tmp, "vscode-chat.jsonl");
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const first = makeCopilotChatLogRecord({
+      responseId: "v2-new-bucket-r1",
+      model: "gpt-4o-mini-2024-07-18",
+      inputTokens: 500,
+      outputTokens: 50,
+      cacheRead: 0,
+    });
+    const recovered = makeCopilotChatLogRecord({
+      responseId: "v2-new-bucket-r2",
+      model: "gpt-5.6-luna",
+      inputTokens: 800,
+      outputTokens: 90,
+      cacheRead: 0,
+    });
+    // v2 collapsed these two Chat LogRecords into the first request because
+    // they share a spanContext. v3 must recover the second model's bucket.
+    first.spanContext = { traceId: "v2-new-bucket-trace", spanId: "v2-new-bucket-span" };
+    recovered.spanContext = { traceId: "v2-new-bucket-trace", spanId: "v2-new-bucket-span" };
+    writeCopilotOtelFile(otelPath, [first, recovered]);
+    const stat = fssync.statSync(otelPath);
+    const firstModel = "gpt-4o-mini-2024-07-18";
+    const recoveredModel = "gpt-5.6-luna";
+    const hourStart = "2026-05-13T03:00:00.000Z";
+    const cursors = {
+      copilot: {
+        version: 2,
+        seenIds: ["v2-new-bucket-trace:v2-new-bucket-span"],
+        fileOffsets: {
+          [otelPath]: { size: stat.size, mtimeMs: stat.mtimeMs, ino: stat.ino },
+        },
+      },
+      hourly: {
+        version: 3,
+        buckets: {
+          [bucketKey("copilot", firstModel, hourStart)]: {
+            totals: {
+              input_tokens: 500,
+              cached_input_tokens: 0,
+              cache_creation_input_tokens: 0,
+              output_tokens: 50,
+              reasoning_output_tokens: 0,
+              total_tokens: 550,
+              billable_total_tokens: 550,
+              conversation_count: 1,
+            },
+            queuedKey: null,
+          },
+        },
+        groupQueued: {},
+      },
+    };
+
+    const result = await parseCopilotIncremental({
+      otelPaths: [otelPath],
+      cursors,
+      queuePath,
+    });
+    assert.equal(result.eventsAggregated, 0, "migration should process the historical prefix");
+    assert.equal(cursors.copilot.version, 3, "migration should advance the cursor");
+
+    const recoveredBucket = cursors.hourly.buckets[
+      bucketKey("copilot", recoveredModel, hourStart)
+    ];
+    assert.equal(recoveredBucket.totals.input_tokens, 800);
+    assert.equal(recoveredBucket.totals.output_tokens, 90);
+    assert.equal(recoveredBucket.totals.total_tokens, 890);
+    assert.equal(recoveredBucket.totals.conversation_count, 1);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseCopilotIncremental prunes deleted v2 files before processing new files", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-copilot-v2-deleted-file-"));
+  try {
+    const oldPath = path.join(tmp, "copilot-otel-old.jsonl");
+    const newPath = path.join(tmp, "copilot-otel-new.jsonl");
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const oldRecord = makeCopilotChatLogRecord({
+      responseId: "v2-deleted-old",
+      inputTokens: 400,
+      outputTokens: 40,
+      cacheRead: 0,
+    });
+    oldRecord.spanContext = { traceId: "v2-deleted-trace", spanId: "v2-deleted-span" };
+    writeCopilotOtelFile(oldPath, [oldRecord]);
+    const oldStat = fssync.statSync(oldPath);
+
+    writeCopilotOtelFile(newPath, [
+      makeCopilotChatLogRecord({
+        responseId: "v2-new-file",
+        model: "gpt-5.6-luna",
+        inputTokens: 700,
+        outputTokens: 80,
+        cacheRead: 0,
+      }),
+    ]);
+    await fs.rm(oldPath);
+
+    const cursors = {
+      copilot: {
+        version: 2,
+        seenIds: ["v2-deleted-trace:v2-deleted-span"],
+        fileOffsets: {
+          [oldPath]: { size: oldStat.size, mtimeMs: oldStat.mtimeMs, ino: oldStat.ino },
+        },
+      },
+    };
+    const result = await parseCopilotIncremental({
+      otelPaths: [newPath],
+      cursors,
+      queuePath,
+    });
+
+    assert.equal(result.eventsAggregated, 1, "the newly discovered file should be processed");
+    assert.equal(cursors.copilot.version, 3, "migration should advance past the deleted file");
+    assert.equal(cursors.copilot.fileOffsets[oldPath], undefined);
+    assert.equal(cursors.copilot.fileOffsets[newPath].size, fssync.statSync(newPath).size);
+
+    const [bucket] = (await readJsonLines(queuePath)).filter(
+      (entry) => entry.source === "copilot",
+    );
+    assert.equal(bucket.model, "gpt-5.6-luna");
+    assert.equal(bucket.input_tokens, 700);
+    assert.equal(bucket.output_tokens, 80);
+    assert.equal(bucket.total_tokens, 780);
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }
@@ -11880,6 +12177,7 @@ test("parseAntigravityIncremental bills only newly added context per planner cal
       queued[0].total_tokens,
       queued[0].input_tokens + queued[0].output_tokens + queued[0].reasoning_output_tokens,
     );
+    assert.equal(queued[0].billable_total_tokens, queued[0].total_tokens);
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }
@@ -12362,6 +12660,710 @@ for (const eventType of ["USER_INPUT", "USER_SETTINGS_CHANGE"]) {
     }
   });
 }
+
+function encodeAntigravityTestVarint(val) {
+  const bytes = [];
+  let n = val;
+  while (n >= 0x80) {
+    bytes.push((n & 0x7f) | 0x80);
+    n = Math.floor(n / 128);
+  }
+  bytes.push(n & 0x7f);
+  return Buffer.from(bytes);
+}
+function encodeAntigravityTestTag(f, wire) {
+  return encodeAntigravityTestVarint((f << 3) | wire);
+}
+function encodeAntigravityTestLd(f, buf) {
+  const b = Buffer.isBuffer(buf) ? buf : Buffer.from(buf);
+  return Buffer.concat([encodeAntigravityTestTag(f, 2), encodeAntigravityTestVarint(b.length), b]);
+}
+function encodeAntigravityTestVi(f, val) {
+  return Buffer.concat([encodeAntigravityTestTag(f, 0), encodeAntigravityTestVarint(val)]);
+}
+
+function buildAntigravityTestProto({ model, contextTokens, lastStepIndex }) {
+  const parts = [];
+  if (model) parts.push(encodeAntigravityTestLd(19, model));
+  if (Number.isFinite(contextTokens)) {
+    const f1 = encodeAntigravityTestVi(1, contextTokens);
+    const f10 = encodeAntigravityTestLd(10, f1);
+    const f9 = encodeAntigravityTestLd(9, f10);
+    parts.push(f9);
+  }
+  if (lastStepIndex != null) {
+    const k = encodeAntigravityTestLd(1, "last_step_index");
+    const v = encodeAntigravityTestLd(2, String(lastStepIndex));
+    parts.push(encodeAntigravityTestLd(20, Buffer.concat([k, v])));
+  }
+  return encodeAntigravityTestLd(1, Buffer.concat(parts));
+}
+
+async function setupAntigravitySqliteSession(tmp, { convId = "conv-123", protos, lines } = {}) {
+  const brainDir = path.join(
+    tmp,
+    "antigravity",
+    "brain",
+    convId,
+    ".system_generated",
+    "logs",
+  );
+  const convDir = path.join(tmp, "antigravity", "conversations");
+  await fs.mkdir(brainDir, { recursive: true });
+  await fs.mkdir(convDir, { recursive: true });
+  const transcriptPath = path.join(brainDir, "transcript.jsonl");
+  const dbPath = path.join(convDir, `${convId}.db`);
+  sqliteCli.execFileSync("sqlite3", [
+    dbPath,
+    "CREATE TABLE gen_metadata (idx INTEGER PRIMARY KEY, data BLOB);",
+  ]);
+  if (Array.isArray(protos) && protos.length > 0) {
+    const values = protos
+      .map((proto, idx) => `(${idx}, X'${proto.toString("hex")}')`)
+      .join(", ");
+    sqliteCli.execFileSync("sqlite3", [
+      dbPath,
+      `INSERT INTO gen_metadata (idx, data) VALUES ${values};`,
+    ]);
+  }
+  if (Array.isArray(lines)) {
+    await fs.writeFile(transcriptPath, lines.map((line) => JSON.stringify(line)).join("\n"));
+  }
+  return {
+    transcriptPath,
+    dbPath,
+    queuePath: path.join(tmp, "queue.jsonl"),
+  };
+}
+
+function antigravityPlannerLines(turns) {
+  const lines = [];
+  for (const turn of turns) {
+    lines.push({
+      type: "USER_INPUT",
+      step_index: turn.userStep,
+      created_at: turn.userAt,
+      content: turn.userContent,
+    });
+    lines.push({
+      type: "PLANNER_RESPONSE",
+      step_index: turn.plannerStep,
+      created_at: turn.plannerAt,
+      content: turn.plannerContent,
+      thinking: turn.thinking,
+    });
+  }
+  return lines;
+}
+
+test("resolveAntigravityDbPath maps brain transcript logs to conversations database", () => {
+  const transcriptPath =
+    "/Users/test/.gemini/antigravity/brain/session-abc-123/.system_generated/logs/transcript.jsonl";
+  const expectedDb = path.join(
+    "/Users/test/.gemini/antigravity",
+    "conversations",
+    "session-abc-123.db",
+  );
+  assert.equal(resolveAntigravityDbPath(transcriptPath), expectedDb);
+  assert.equal(resolveAntigravityDbPath("/var/tmp/other.jsonl"), null);
+});
+
+test("extractAntigravityGenInfo extracts model, context tokens, and step index from protobuf payload", () => {
+  const proto = buildAntigravityTestProto({
+    model: "gemini-3.8-flash",
+    contextTokens: 25000,
+    lastStepIndex: 0,
+  });
+  const info = extractAntigravityGenInfo(proto);
+  assert.deepEqual(info, {
+    model: "gemini-3.8-flash",
+    contextTokens: 25000,
+    lastStepIndex: 0,
+  });
+});
+
+test("parseAntigravityIncremental uses SQLite context size without inferring cache hits", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-antigravity-sqlite-"));
+  try {
+    const { transcriptPath, queuePath } = await setupAntigravitySqliteSession(tmp, {
+      protos: [
+        buildAntigravityTestProto({
+          model: "gemini-3.8-flash",
+          contextTokens: 25000,
+          lastStepIndex: 0,
+        }),
+        buildAntigravityTestProto({
+          model: "gemini-3.8-flash",
+          contextTokens: 30000,
+          lastStepIndex: 2,
+        }),
+      ],
+      lines: antigravityPlannerLines([
+        {
+          userStep: 0,
+          userAt: "2026-04-05T14:00:00.000Z",
+          userContent: "hello",
+          plannerStep: 1,
+          plannerAt: "2026-04-05T14:01:00.000Z",
+          plannerContent: "hi",
+          thinking: "think1",
+        },
+        {
+          userStep: 2,
+          userAt: "2026-04-05T14:02:00.000Z",
+          userContent: "next prompt",
+          plannerStep: 3,
+          plannerAt: "2026-04-05T14:03:00.000Z",
+          plannerContent: "done",
+          thinking: "think2",
+        },
+      ]),
+    });
+    const cursors = { version: 1, files: {}, updatedAt: null };
+
+    const result = await parseAntigravityIncremental({
+      sessionFiles: [transcriptPath],
+      cursors,
+      queuePath,
+    });
+    assert.equal(result.eventsAggregated, 2);
+
+    const queued = await readJsonLines(queuePath);
+    assert.equal(queued.length, 1);
+    assert.equal(queued[0].source, "antigravity");
+    assert.equal(queued[0].model, "gemini-3.8-flash");
+    assert.equal(queued[0].input_tokens, 30000);
+    assert.equal(queued[0].cached_input_tokens, 0);
+    assert.equal(queued[0].conversation_count, 2);
+    assert.equal(
+      queued[0].total_tokens,
+      queued[0].input_tokens + queued[0].output_tokens + queued[0].reasoning_output_tokens,
+    );
+    assert.equal(cursors.files[transcriptPath].usageSource, "sqlite");
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseAntigravityIncremental does not invent cache hits on a repeated context", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-antigravity-cold-cache-"));
+  try {
+    const { transcriptPath, queuePath } = await setupAntigravitySqliteSession(tmp, {
+      protos: [
+        buildAntigravityTestProto({
+          model: "gemini-3.8-flash",
+          contextTokens: 25000,
+          lastStepIndex: 0,
+        }),
+        buildAntigravityTestProto({
+          model: "gemini-3.8-flash",
+          contextTokens: 25000,
+          lastStepIndex: 2,
+        }),
+      ],
+      lines: antigravityPlannerLines([
+        {
+          userStep: 0,
+          userAt: "2026-04-05T14:00:00.000Z",
+          userContent: "hello",
+          plannerStep: 1,
+          plannerAt: "2026-04-05T14:01:00.000Z",
+          plannerContent: "hi",
+          thinking: "think1",
+        },
+        {
+          userStep: 2,
+          userAt: "2026-04-05T14:02:00.000Z",
+          userContent: "again",
+          plannerStep: 3,
+          plannerAt: "2026-04-05T14:03:00.000Z",
+          plannerContent: "still hi",
+          thinking: "think2",
+        },
+      ]),
+    });
+
+    await parseAntigravityIncremental({
+      sessionFiles: [transcriptPath],
+      cursors: { version: 1, files: {}, updatedAt: null },
+      queuePath,
+    });
+    const queued = await readJsonLines(queuePath);
+    assert.equal(queued[0].input_tokens, 25000);
+    assert.equal(queued[0].cached_input_tokens, 0);
+    assert.equal(queued[0].conversation_count, 2);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseAntigravityIncremental bills full context after a model switch", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-antigravity-model-switch-"));
+  try {
+    const { transcriptPath, queuePath } = await setupAntigravitySqliteSession(tmp, {
+      protos: [
+        buildAntigravityTestProto({
+          model: "gemini-3.8-flash",
+          contextTokens: 25000,
+          lastStepIndex: 0,
+        }),
+        buildAntigravityTestProto({
+          model: "claude-sonnet-4-6",
+          contextTokens: 40000,
+          lastStepIndex: 2,
+        }),
+      ],
+      lines: antigravityPlannerLines([
+        {
+          userStep: 0,
+          userAt: "2026-04-05T14:00:00.000Z",
+          userContent: "hello",
+          plannerStep: 1,
+          plannerAt: "2026-04-05T14:01:00.000Z",
+          plannerContent: "hi",
+          thinking: "think1",
+        },
+        {
+          userStep: 2,
+          userAt: "2026-04-05T14:02:00.000Z",
+          userContent: "switch",
+          plannerStep: 3,
+          plannerAt: "2026-04-05T14:03:00.000Z",
+          plannerContent: "ok",
+          thinking: "think2",
+        },
+      ]),
+    });
+
+    await parseAntigravityIncremental({
+      sessionFiles: [transcriptPath],
+      cursors: { version: 1, files: {}, updatedAt: null },
+      queuePath,
+    });
+    const queued = await readJsonLines(queuePath);
+    const byModel = Object.fromEntries(queued.map((row) => [row.model, row]));
+    assert.equal(byModel["gemini-3.8-flash"].input_tokens, 25000);
+    assert.equal(byModel["gemini-3.8-flash"].cached_input_tokens, 0);
+    assert.equal(byModel["claude-sonnet-4-6"].input_tokens, 40000);
+    assert.equal(byModel["claude-sonnet-4-6"].cached_input_tokens, 0);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseAntigravityIncremental SQLite full scan matches incremental append", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-antigravity-full-vs-inc-"));
+  try {
+    const firstLines = antigravityPlannerLines([
+      {
+        userStep: 0,
+        userAt: "2026-04-05T14:00:00.000Z",
+        userContent: "hello",
+        plannerStep: 1,
+        plannerAt: "2026-04-05T14:01:00.000Z",
+        plannerContent: "hi",
+        thinking: "think1",
+      },
+    ]);
+    const allLines = antigravityPlannerLines([
+      {
+        userStep: 0,
+        userAt: "2026-04-05T14:00:00.000Z",
+        userContent: "hello",
+        plannerStep: 1,
+        plannerAt: "2026-04-05T14:01:00.000Z",
+        plannerContent: "hi",
+        thinking: "think1",
+      },
+      {
+        userStep: 2,
+        userAt: "2026-04-05T14:02:00.000Z",
+        userContent: "next prompt",
+        plannerStep: 3,
+        plannerAt: "2026-04-05T14:03:00.000Z",
+        plannerContent: "done",
+        thinking: "think2",
+      },
+    ]);
+    const protos = [
+      buildAntigravityTestProto({
+        model: "gemini-3.8-flash",
+        contextTokens: 25000,
+        lastStepIndex: 0,
+      }),
+      buildAntigravityTestProto({
+        model: "gemini-3.8-flash",
+        contextTokens: 30000,
+        lastStepIndex: 2,
+      }),
+    ];
+
+    const fullDir = path.join(tmp, "full");
+    const incDir = path.join(tmp, "inc");
+    await fs.mkdir(fullDir, { recursive: true });
+    await fs.mkdir(incDir, { recursive: true });
+
+    const full = await setupAntigravitySqliteSession(fullDir, { protos, lines: allLines });
+    await parseAntigravityIncremental({
+      sessionFiles: [full.transcriptPath],
+      cursors: { version: 1, files: {}, updatedAt: null },
+      queuePath: full.queuePath,
+    });
+    const fullQueued = await readJsonLines(full.queuePath);
+
+    const inc = await setupAntigravitySqliteSession(incDir, { protos, lines: firstLines });
+    const incCursors = { version: 1, files: {}, updatedAt: null };
+    await parseAntigravityIncremental({
+      sessionFiles: [inc.transcriptPath],
+      cursors: incCursors,
+      queuePath: inc.queuePath,
+    });
+    await fs.writeFile(inc.transcriptPath, allLines.map((line) => JSON.stringify(line)).join("\n"));
+    await parseAntigravityIncremental({
+      sessionFiles: [inc.transcriptPath],
+      cursors: incCursors,
+      queuePath: inc.queuePath,
+    });
+    const incQueued = await readJsonLines(inc.queuePath);
+    const incLatest = incQueued.at(-1);
+    const fullLatest = fullQueued.at(-1);
+
+    assert.equal(incLatest.input_tokens, fullLatest.input_tokens);
+    assert.equal(incLatest.cached_input_tokens, 0);
+    assert.equal(fullLatest.cached_input_tokens, 0);
+    assert.equal(incLatest.output_tokens, fullLatest.output_tokens);
+    assert.equal(incLatest.conversation_count, fullLatest.conversation_count);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseAntigravityIncremental reconciles a legacy estimated cursor with SQLite context", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-antigravity-legacy-cursor-"));
+  try {
+    const firstLines = antigravityPlannerLines([
+      {
+        userStep: 0,
+        userAt: "2026-04-05T14:00:00.000Z",
+        userContent: "hello",
+        plannerStep: 1,
+        plannerAt: "2026-04-05T14:01:00.000Z",
+        plannerContent: "hi",
+        thinking: "think1",
+      },
+    ]);
+    const allLines = antigravityPlannerLines([
+      {
+        userStep: 0,
+        userAt: "2026-04-05T14:00:00.000Z",
+        userContent: "hello",
+        plannerStep: 1,
+        plannerAt: "2026-04-05T14:01:00.000Z",
+        plannerContent: "hi",
+        thinking: "think1",
+      },
+      {
+        userStep: 2,
+        userAt: "2026-04-05T14:02:00.000Z",
+        userContent: "next prompt",
+        plannerStep: 3,
+        plannerAt: "2026-04-05T14:03:00.000Z",
+        plannerContent: "done",
+        thinking: "think2",
+      },
+    ]);
+    const { transcriptPath, dbPath, queuePath } = await setupAntigravitySqliteSession(tmp, {
+      protos: [],
+      lines: firstLines,
+    });
+    const cursors = { version: 1, files: {}, updatedAt: null };
+    await parseAntigravityIncremental({
+      sessionFiles: [transcriptPath],
+      cursors,
+      queuePath,
+    });
+    const afterEstimate = await readJsonLines(queuePath);
+    const estimatedInput = afterEstimate[0].input_tokens;
+    assert.ok(estimatedInput > 0);
+    assert.ok(estimatedInput < 1000);
+    assert.equal(afterEstimate[0].cached_input_tokens, 0);
+    assert.equal(cursors.files[transcriptPath].usageSource, "estimated");
+
+    const turn1Proto = buildAntigravityTestProto({
+      model: "gemini-3.8-flash",
+      contextTokens: 25000,
+      lastStepIndex: 0,
+    });
+    const turn2Proto = buildAntigravityTestProto({
+      model: "gemini-3.8-flash",
+      contextTokens: 30000,
+      lastStepIndex: 2,
+    });
+    sqliteCli.execFileSync("sqlite3", [
+      dbPath,
+      `INSERT INTO gen_metadata (idx, data) VALUES (0, X'${turn1Proto.toString("hex")}'), (1, X'${turn2Proto.toString("hex")}');`,
+    ]);
+    await fs.writeFile(transcriptPath, allLines.map((line) => JSON.stringify(line)).join("\n"));
+    const second = await parseAntigravityIncremental({
+      sessionFiles: [transcriptPath],
+      cursors,
+      queuePath,
+    });
+    assert.equal(second.eventsAggregated, 1);
+
+    const queued = await readJsonLines(queuePath);
+    const estimatedRow = queued.find((row) => row.model === afterEstimate[0].model);
+    const sqliteRow = queued.filter((row) => row.model === "gemini-3.8-flash").at(-1);
+    assert.equal(estimatedRow.input_tokens, estimatedInput);
+    assert.equal(estimatedRow.cached_input_tokens, 0);
+    assert.equal(sqliteRow.input_tokens, 5000);
+    assert.equal(sqliteRow.cached_input_tokens, 0);
+    assert.equal(sqliteRow.conversation_count, 1);
+    assert.equal(cursors.files[transcriptPath].usageSource, "sqlite");
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseAntigravityIncremental resumes a sqlite cursor without re-walking estimated history", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-antigravity-sqlite-resume-"));
+  try {
+    const firstLines = antigravityPlannerLines([
+      {
+        userStep: 0,
+        userAt: "2026-04-05T14:00:00.000Z",
+        userContent: "hello",
+        plannerStep: 1,
+        plannerAt: "2026-04-05T14:01:00.000Z",
+        plannerContent: "hi",
+        thinking: "think1",
+      },
+    ]);
+    const allLines = antigravityPlannerLines([
+      {
+        userStep: 0,
+        userAt: "2026-04-05T14:00:00.000Z",
+        userContent: "hello",
+        plannerStep: 1,
+        plannerAt: "2026-04-05T14:01:00.000Z",
+        plannerContent: "hi",
+        thinking: "think1",
+      },
+      {
+        userStep: 2,
+        userAt: "2026-04-05T14:02:00.000Z",
+        userContent: "next prompt",
+        plannerStep: 3,
+        plannerAt: "2026-04-05T14:03:00.000Z",
+        plannerContent: "done",
+        thinking: "think2",
+      },
+    ]);
+    const { transcriptPath, dbPath, queuePath } = await setupAntigravitySqliteSession(tmp, {
+      protos: [
+        buildAntigravityTestProto({
+          model: "gemini-3.8-flash",
+          contextTokens: 25000,
+          lastStepIndex: 0,
+        }),
+      ],
+      lines: firstLines,
+    });
+    const cursors = { version: 1, files: {}, updatedAt: null };
+    await parseAntigravityIncremental({
+      sessionFiles: [transcriptPath],
+      cursors,
+      queuePath,
+    });
+    assert.equal(cursors.files[transcriptPath].usageSource, "sqlite");
+    assert.equal(cursors.files[transcriptPath].previousContextTokens, 25000);
+
+    sqliteCli.execFileSync("sqlite3", [dbPath, "DELETE FROM gen_metadata;"]);
+    const turn2Proto = buildAntigravityTestProto({
+      model: "gemini-3.8-flash",
+      contextTokens: 30000,
+      lastStepIndex: 2,
+    });
+    sqliteCli.execFileSync("sqlite3", [
+      dbPath,
+      `INSERT INTO gen_metadata (idx, data) VALUES (0, X'${turn2Proto.toString("hex")}');`,
+    ]);
+    await fs.writeFile(transcriptPath, allLines.map((line) => JSON.stringify(line)).join("\n"));
+    const second = await parseAntigravityIncremental({
+      sessionFiles: [transcriptPath],
+      cursors,
+      queuePath,
+    });
+    assert.equal(second.eventsAggregated, 1);
+
+    const queued = await readJsonLines(queuePath);
+    const latest = queued.filter((row) => row.model === "gemini-3.8-flash").at(-1);
+    assert.equal(latest.input_tokens, 30000);
+    assert.equal(latest.cached_input_tokens, 0);
+    assert.equal(cursors.files[transcriptPath].usageSource, "sqlite");
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseAntigravityIncremental sparse sqlite full scan matches incremental append", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-antigravity-sparse-full-inc-"));
+  try {
+    const planner1 = "hi";
+    const user2 = "next prompt";
+    const firstLines = antigravityPlannerLines([
+      {
+        userStep: 0,
+        userAt: "2026-04-05T14:00:00.000Z",
+        userContent: "hello",
+        plannerStep: 1,
+        plannerAt: "2026-04-05T14:01:00.000Z",
+        plannerContent: planner1,
+        thinking: "think1",
+      },
+    ]);
+    const allLines = antigravityPlannerLines([
+      {
+        userStep: 0,
+        userAt: "2026-04-05T14:00:00.000Z",
+        userContent: "hello",
+        plannerStep: 1,
+        plannerAt: "2026-04-05T14:01:00.000Z",
+        plannerContent: planner1,
+        thinking: "think1",
+      },
+      {
+        userStep: 2,
+        userAt: "2026-04-05T14:02:00.000Z",
+        userContent: user2,
+        plannerStep: 3,
+        plannerAt: "2026-04-05T14:03:00.000Z",
+        plannerContent: "done",
+        thinking: "think2",
+      },
+    ]);
+    const protos = [
+      buildAntigravityTestProto({
+        model: "gemini-3.8-flash",
+        contextTokens: 25000,
+        lastStepIndex: 0,
+      }),
+    ];
+
+    const fullDir = path.join(tmp, "full");
+    const incDir = path.join(tmp, "inc");
+    await fs.mkdir(fullDir, { recursive: true });
+    await fs.mkdir(incDir, { recursive: true });
+
+    const full = await setupAntigravitySqliteSession(fullDir, { protos, lines: allLines });
+    await parseAntigravityIncremental({
+      sessionFiles: [full.transcriptPath],
+      cursors: { version: 1, files: {}, updatedAt: null },
+      queuePath: full.queuePath,
+    });
+    const fullQueued = await readJsonLines(full.queuePath);
+
+    const inc = await setupAntigravitySqliteSession(incDir, { protos, lines: firstLines });
+    const incCursors = { version: 1, files: {}, updatedAt: null };
+    await parseAntigravityIncremental({
+      sessionFiles: [inc.transcriptPath],
+      cursors: incCursors,
+      queuePath: inc.queuePath,
+    });
+    await fs.writeFile(inc.transcriptPath, allLines.map((line) => JSON.stringify(line)).join("\n"));
+    await parseAntigravityIncremental({
+      sessionFiles: [inc.transcriptPath],
+      cursors: incCursors,
+      queuePath: inc.queuePath,
+    });
+    const incLatest = (await readJsonLines(inc.queuePath)).at(-1);
+    const fullLatest = fullQueued.at(-1);
+    const expectedSecondInput = antigravityTestTokens(planner1) + antigravityTestTokens(user2);
+
+    assert.equal(fullLatest.input_tokens, 25000 + expectedSecondInput);
+    assert.equal(incLatest.input_tokens, fullLatest.input_tokens);
+    assert.equal(incLatest.cached_input_tokens, 0);
+    assert.equal(fullLatest.cached_input_tokens, 0);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseAntigravityIncremental re-walk with sparse sqlite keeps prior planner output", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-antigravity-sparse-rewalk-"));
+  try {
+    const planner1 = "hi";
+    const user2 = "next prompt";
+    const firstLines = antigravityPlannerLines([
+      {
+        userStep: 0,
+        userAt: "2026-04-05T14:00:00.000Z",
+        userContent: "hello",
+        plannerStep: 1,
+        plannerAt: "2026-04-05T14:01:00.000Z",
+        plannerContent: planner1,
+        thinking: "think1",
+      },
+    ]);
+    const allLines = antigravityPlannerLines([
+      {
+        userStep: 0,
+        userAt: "2026-04-05T14:00:00.000Z",
+        userContent: "hello",
+        plannerStep: 1,
+        plannerAt: "2026-04-05T14:01:00.000Z",
+        plannerContent: planner1,
+        thinking: "think1",
+      },
+      {
+        userStep: 2,
+        userAt: "2026-04-05T14:02:00.000Z",
+        userContent: user2,
+        plannerStep: 3,
+        plannerAt: "2026-04-05T14:03:00.000Z",
+        plannerContent: "done",
+        thinking: "think2",
+      },
+    ]);
+    const { transcriptPath, dbPath, queuePath } = await setupAntigravitySqliteSession(tmp, {
+      protos: [],
+      lines: firstLines,
+    });
+    const cursors = { version: 1, files: {}, updatedAt: null };
+    await parseAntigravityIncremental({
+      sessionFiles: [transcriptPath],
+      cursors,
+      queuePath,
+    });
+
+    sqliteCli.execFileSync("sqlite3", [
+      dbPath,
+      `INSERT INTO gen_metadata (idx, data) VALUES (0, X'${buildAntigravityTestProto({
+        model: "gemini-3.8-flash",
+        contextTokens: 25000,
+        lastStepIndex: 0,
+      }).toString("hex")}');`,
+    ]);
+    await fs.writeFile(transcriptPath, allLines.map((line) => JSON.stringify(line)).join("\n"));
+    const second = await parseAntigravityIncremental({
+      sessionFiles: [transcriptPath],
+      cursors,
+      queuePath,
+    });
+    assert.equal(second.eventsAggregated, 1);
+
+    const sqliteRow = (await readJsonLines(queuePath))
+      .filter((row) => row.model === "gemini-3.8-flash")
+      .at(-1);
+    assert.equal(
+      sqliteRow.input_tokens,
+      antigravityTestTokens(planner1) + antigravityTestTokens(user2),
+    );
+    assert.equal(sqliteRow.cached_input_tokens, 0);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
 
 // ── Kimi Code official (@moonshot-ai/kimi-code) ──────────────────────────────
 

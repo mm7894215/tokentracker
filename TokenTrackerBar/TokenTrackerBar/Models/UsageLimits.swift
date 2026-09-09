@@ -13,14 +13,17 @@ struct UsageLimitsResponse: Codable, Equatable {
     let copilot: CopilotLimits?
     let zcode: ZcodeLimits?
     let opencodeGo: OpencodeGoLimits?
+    let commandCode: CommandCodeLimits?
     let qoder: QoderLimits?
     let qoderCn: QoderLimits?
     let codingPlan: CodingPlanLimits?
+    let agentPlan: AgentPlanLimits?
 
     enum CodingKeys: String, CodingKey {
         case fetchedAt = "fetched_at"
-        case claude, codex, cursor, gemini, kimi, kiro, grok, antigravity, copilot, zcode, qoder, qoderCn, codingPlan
+        case claude, codex, cursor, gemini, kimi, kiro, grok, antigravity, copilot, zcode, qoder, qoderCn, codingPlan, agentPlan
         case opencodeGo = "opencodeGo"
+        case commandCode = "commandCode"
     }
 }
 
@@ -100,6 +103,10 @@ extension UsageLimitsResponse {
             return guarded(opencodeGo?.configured, opencodeGo?.error, opencodeGo?.secondaryWindow?.usedPercent)
         case .opencodeGoMonthly:
             return guarded(opencodeGo?.configured, opencodeGo?.error, opencodeGo?.tertiaryWindow?.usedPercent)
+        case .commandCode5h:
+            return guarded(commandCode?.configured, commandCode?.error, commandCode?.primaryWindow?.usedPercent)
+        case .commandCodeWeekly:
+            return guarded(commandCode?.configured, commandCode?.error, commandCode?.secondaryWindow?.usedPercent)
         case .qoderQuota:
             return guarded(qoder?.configured, qoder?.error, qoder?.primaryWindow?.usedPercent)
         case .qoderUltimate:
@@ -110,10 +117,21 @@ extension UsageLimitsResponse {
 
 enum UsageLimitsCache {
     static let defaultsKey = "UsageLimitsLastGoodResponse"
+    private static let maximumFutureSkew: TimeInterval = 5 * 60
 
-    static func load(defaults: UserDefaults = .standard) -> UsageLimitsResponse? {
+    static func load(
+        defaults: UserDefaults = .standard,
+        now: Date = Date()
+    ) -> UsageLimitsResponse? {
         guard let data = defaults.data(forKey: defaultsKey) else { return nil }
-        return try? JSONDecoder().decode(UsageLimitsResponse.self, from: data)
+        guard let limits = try? JSONDecoder().decode(UsageLimitsResponse.self, from: data) else {
+            return nil
+        }
+        if let fetchedAt = parseTimestamp(limits.fetchedAt),
+           fetchedAt.timeIntervalSince(now) > maximumFutureSkew {
+            return nil
+        }
+        return limits
     }
 
     static func save(
@@ -123,6 +141,14 @@ enum UsageLimitsCache {
         guard limits.hasAnyProviderWithoutError,
               let data = try? JSONEncoder().encode(limits) else { return }
         defaults.set(data, forKey: defaultsKey)
+    }
+
+    private static func parseTimestamp(_ rawValue: String) -> Date? {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = formatter.date(from: rawValue) { return date }
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter.date(from: rawValue)
     }
 }
 
@@ -484,6 +510,31 @@ struct OpencodeGoLimits: Codable, Equatable {
     }
 }
 
+/// Command Code (commandcode.ai): subscription windows (5h + weekly rolling
+/// caps over included monthly credits) read from the CLI's own alpha endpoints
+/// by the local server. Mirror of OpencodeGoLimits minus the monthly window.
+struct CommandCodeLimits: Codable, Equatable {
+    let configured: Bool
+    let error: String?
+    let planLabel: String?
+    let subscriptionStatus: String?
+    let primaryWindow: GenericLimitWindow?
+    let secondaryWindow: GenericLimitWindow?
+    let cachedAt: String?
+    let stale: Bool?
+    let authActionRequired: String?
+
+    enum CodingKeys: String, CodingKey {
+        case configured, error, stale
+        case planLabel = "plan_label"
+        case subscriptionStatus = "subscription_status"
+        case primaryWindow = "primary_window"
+        case secondaryWindow = "secondary_window"
+        case cachedAt = "cached_at"
+        case authActionRequired = "auth_action_required"
+    }
+}
+
 struct QoderLimits: Codable, Equatable {
     let configured: Bool
     let error: String?
@@ -521,6 +572,8 @@ struct CodingPlanLimits: Codable, Equatable {
         case cachedAt = "cached_at"
     }
 }
+
+typealias AgentPlanLimits = CodingPlanLimits
 
 struct AntigravityLimits: Codable, Equatable {
     let configured: Bool
@@ -563,9 +616,11 @@ extension UsageLimitsResponse {
             (copilot?.configured ?? false, copilot?.error),
             (zcode?.configured ?? false, zcode?.error),
             (opencodeGo?.configured ?? false, opencodeGo?.error),
+            (commandCode?.configured ?? false, commandCode?.error),
             (qoder?.configured ?? false, qoder?.error),
             (qoderCn?.configured ?? false, qoderCn?.error),
             (codingPlan?.configured ?? false, codingPlan?.error),
+            (agentPlan?.configured ?? false, agentPlan?.error),
         ]
         return providers.contains { $0.0 && $0.1 == nil }
     }

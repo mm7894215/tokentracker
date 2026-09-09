@@ -47,12 +47,19 @@
       "cache_write": 1.25,
       "note": "Canonical undated alias emitted by Cursor. Pin to the same rates as claude-haiku-4-5-20251001 so local cost does not depend on which dated LiteLLM aliases are present in the current cache."
     },
+    "gpt-6-astra": {
+      "input": 10,
+      "output": 50,
+      "cache_read": 1,
+      "cache_write": 12.5,
+      "note": "Official Standard USD/MTok rates verified 2026-09-07: https://developers.openai.com/api/docs/models/gpt-6-astra. Requests above 272K input tokens use 2x input/cache and 1.5x output rates; computeRowCost applies this only to observed long-context request subsets. Cloud aggregates use Standard short-context estimates because they do not retain per-request context or service tier. Reasoning-effort suffixes use the same base rates."
+    },
     "gpt-5.6-sol": {
-      "input": 5,
-      "output": 30,
-      "cache_read": 0.5,
-      "cache_write": 6.25,
-      "note": "GPT-5.6 family (public 2026-07-09). Flagship tier. Not yet in LiteLLM. developers.openai.com/api/docs/pricing short-context: $5/$30 per MTok, cached input 0.1x, cache write 1.25x. Codex emits gpt-5.6-sol (+ reasoning-effort variants like gpt-5.6-solhigh, caught by fuzzy). Remove once LiteLLM carries it."
+      "input": 4,
+      "output": 20,
+      "cache_read": 0.4,
+      "cache_write": 5,
+      "note": "Official GPT-5.6 Sol standard pricing: $4 input, $0.40 cached input, $5 cache write, and $20 output per MTok. Requests above 272K input are repriced from their preserved per-request long-context subset. Codex emits gpt-5.6-sol plus reasoning-effort variants caught by fuzzy matching."
     },
     "gpt-5.6-terra": {
       "input": 2,
@@ -254,6 +261,16 @@
       "cache_read": 0.3,
       "note": "Bare alias emitted by Kimi Code (modelAlias \"kimi-code/k3\" -> \"k3\"). Same rates as kimi-k3."
     },
+    "glm-5.3": {
+      "input": 1.4,
+      "output": 4.4,
+      "cache_read": 0.26
+    },
+    "glm-5.3-flash": {
+      "input": 0.15,
+      "output": 0.5,
+      "cache_read": 0.03
+    },
     "glm-5.2": {
       "input": 1.4,
       "output": 4.4,
@@ -405,6 +422,10 @@
   },
   "fuzzy": [
     {
+      "match": "gpt-6-astra",
+      "ref": "gpt-6-astra"
+    },
+    {
       "match": "gpt-5.6-sol",
       "ref": "gpt-5.6-sol"
     },
@@ -418,7 +439,7 @@
     },
     {
       "match": "gpt-5.6",
-      "ref": "gpt-5.6-terra"
+      "ref": "gpt-5.6-sol"
     },
     {
       "match": "kiro",
@@ -515,6 +536,14 @@
     {
       "match": "glm-4.6",
       "ref": "glm-4.6"
+    },
+    {
+      "match": "glm-5.3-flash",
+      "ref": "glm-5.3-flash"
+    },
+    {
+      "match": "glm-5.3",
+      "ref": "glm-5.3"
     },
     {
       "match": "glm-5-turbo",
