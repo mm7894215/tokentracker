@@ -150,6 +150,14 @@ final class WeeklyLimitResetDetectorTests: XCTestCase {
             "primary_window": { "used_percent": 10, "reset_at": "2026-07-22T05:00:00Z" },
             "secondary_window": { "used_percent": 20, "reset_at": "2026-07-29T00:00:00Z" },
             "tertiary_window": { "used_percent": 30, "reset_at": "2026-08-22T00:00:00Z" }
+          },
+          "commandCode": {
+            "configured": true,
+            "error": null,
+            "plan_label": "GOAT",
+            "subscription_status": "active",
+            "primary_window": { "used_percent": 15, "reset_at": "2026-07-22T05:00:00Z" },
+            "secondary_window": { "used_percent": 25, "reset_at": "2026-07-29T00:00:00Z" }
           }
         }
         """
@@ -158,7 +166,11 @@ final class WeeklyLimitResetDetectorTests: XCTestCase {
 
         XCTAssertEqual(
             readings.map { "\($0.provider).\($0.windowLabel)" },
-            ["zcode.5h", "zcode.Weekly", "zcode.Tools", "opencodeGo.5h", "opencodeGo.Weekly", "opencodeGo.Monthly"]
+            [
+                "zcode.5h", "zcode.Weekly", "zcode.Tools",
+                "opencodeGo.5h", "opencodeGo.Weekly", "opencodeGo.Monthly",
+                "commandCode.5h", "commandCode.Weekly",
+            ]
         )
     }
 

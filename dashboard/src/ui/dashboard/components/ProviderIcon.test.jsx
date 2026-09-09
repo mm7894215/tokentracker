@@ -145,3 +145,18 @@ describe("ProviderIcon", () => {
       expect(icon, `${provider} switches luminance`).toHaveClass("brightness-0", "dark:brightness-100");
     }
   });
+
+  it("renders the Command Code mark from the official brand asset", () => {
+    const { container } = render(
+      <ProviderIcon provider="COMMAND-CODE" size={16} />,
+    );
+    const icon = container.querySelector(
+      'img[src="/brand-logos/commandcode.svg"]',
+    );
+
+    expect(icon).not.toBeNull();
+    expect(icon).toHaveAttribute("width", "16");
+    expect(icon).toHaveAttribute("height", "16");
+    expect(container.querySelector(".text-oai-gray-400")).toBeNull();
+    expect(container.querySelector("circle")).toBeNull();
+  });

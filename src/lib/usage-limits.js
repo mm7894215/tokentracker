@@ -30,6 +30,7 @@ const {
 const { fetchGrokLimits } = require("./grok-limits");
 const { fetchZcodeLimits } = require("./zcode-limits");
 const { fetchOpencodeGoLimits } = require("./opencode-go-limits");
+const { fetchCommandcodeLimits } = require("./commandcode-limits");
 const { fetchQoderLimits, fetchQoderCnLimits } = require("./qoder-limits");
 const { fetchArkCodingPlanLimits } = require("./ark-coding-plan-limits");
 const { fetchArkAgentPlanLimits } = require("./ark-agent-plan-limits");
@@ -3716,7 +3717,7 @@ async function fetchUsageLimitsUncached({
     : null;
 
   const providerFetch = withFetchTimeout(fetchImpl, providerTimeoutMs);
-  const [claudeResult, codexResult, cursor, kimi, gemini, kiro, antigravity, copilot, grok, zcode, opencodeGoRaw, qoder, qoderCn, codingPlan, agentPlan, claudeServiceStatus] = await Promise.all([
+  const [claudeResult, codexResult, cursor, kimi, gemini, kiro, antigravity, copilot, grok, zcode, opencodeGoRaw, qoder, qoderCn, codingPlan, agentPlan, commandCodeRaw, claudeServiceStatus] = await Promise.all([
     claudeToken && !freshClaudeCache && !claudeRetryAtMs
       ? withProviderTimeout(fetchClaudeUsageLimits(claudeToken, { fetchImpl: providerFetch, maxAttempts: 1 }), "Claude", providerTimeoutMs).then(
           (value) => ({ status: "fulfilled", value }),
@@ -3817,6 +3818,19 @@ async function fetchUsageLimitsUncached({
       "Ark Agent Plan",
       providerTimeoutMs,
     ).catch((reason) => ({ configured: true, error: reason?.message || "Unknown error" })),
+    // CommandCode (commandcode.ai): official subscription windows (5h + weekly)
+    // from the CLI's own alpha endpoints, keyed by the apiKey the CLI stores in
+    // ~/.commandcode/auth.json (or COMMAND_CODE_API_KEY). No local fallback —
+    // window state lives server-side. fetchCommandcodeLimits throws on auth
+    // expiry so the assemble step below can flag auth_action_required. The
+    // outer race bounds the whole slot: without it three sequential per-request
+    // timeouts (whoami, then credits+subscriptions) could hold the aggregate
+    // ~2x longer than any sibling provider.
+    withProviderTimeout(fetchCommandcodeLimits({ home, env, fetchImpl: providerFetch }), "CommandCode", providerTimeoutMs)
+      .then(
+        (value) => ({ status: "fulfilled", value }),
+        (reason) => ({ status: "rejected", reason }),
+      ),
     // Public status-page probe (fail-soft, own 5-min cache in provider-status.js).
     // Only probed for configured accounts — without a token the Claude section
     // never renders, so the reading would have nowhere to go.
@@ -3993,6 +4007,28 @@ async function fetchUsageLimitsUncached({
     }
   }
 
+  // CommandCode: official windows straight from the API — nothing to cache on
+  // disk beyond the shared 2-minute in-memory cache, so keep the assembly
+  // simple. A fulfilled `configured: false` means no apiKey found; a rejected
+  // fetch surfaced an auth-expired error the panel should act on.
+  let commandCodeObj;
+  if (commandCodeRaw?.status === "fulfilled") {
+    const value = commandCodeRaw.value;
+    commandCodeObj = value && value.configured === false
+      ? value
+      : { ...value, stale: false, cached_at: new Date(nowMs).toISOString() };
+  } else {
+    const reason = commandCodeRaw?.reason || null;
+    const authExpired = Boolean(
+      reason &&
+      (reason?.code === "AUTH_EXPIRED" ||
+        /token expired|run `cmd login`|Not authenticated/i.test(reason?.message || "")),
+    );
+    commandCodeObj = authExpired
+      ? { configured: true, error: reason?.message || "Unknown error", auth_action_required: "reauth" }
+      : { configured: true, error: reason?.message || "Unknown error" };
+  }
+
   const data = {
     fetched_at: new Date(nowMs).toISOString(),
     claude: withPlanLabel(claude, claudePlanType, "Claude"),
@@ -4010,6 +4046,10 @@ async function fetchUsageLimitsUncached({
     grok: withPlanLabel(grok, null, "Grok"),
     zcode: withPlanLabel(zcode, zcode.plan_label, "ZCode"),
     opencodeGo: withPlanLabel(opencodeGo, opencodeGo?.plan_label, "OpenCode Go"),
+    // CommandCode tiers are acronym brands (GOAT/Pro/Max) — the fetcher already
+    // maps plan ids to the CLI's exact display strings, so skip the shared
+    // Title-Case normalization ("Goat") and surface them as-is.
+    commandCode: commandCodeObj,
     qoder: withPlanLabel(qoder, qoder?.plan_label, "Qoder"),
     qoderCn: withPlanLabel(qoderCn, qoderCn?.plan_label, "Qoder CN"),
     codingPlan: withPlanLabel(codingPlan, codingPlan?.plan_label, "Ark Coding Plan"),
@@ -4080,6 +4120,7 @@ module.exports = {
   fetchGrokLimits,
   fetchZcodeLimits,
   fetchOpencodeGoLimits,
+  fetchCommandcodeLimits,
   fetchQoderLimits,
   fetchQoderCnLimits,
 };
